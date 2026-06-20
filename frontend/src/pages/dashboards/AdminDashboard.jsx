@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -8,6 +8,7 @@ import api from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
 import AdminSidebar from '../../components/AdminSidebar';
+import { getServiceIcon, SERVICE_ICON_NAMES } from '../../lib/serviceIcons';
 
 const AdminDashboard = () => {
   const { user } = useAuthStore();
@@ -54,6 +55,7 @@ const AdminDashboard = () => {
   const [videoFile, setVideoFile] = useState(null);
   const [videoTitle, setVideoTitle] = useState('');
   const [videoDescription, setVideoDescription] = useState('');
+  const videoFileInputRef = useRef(null);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
 
   // Detailed Stats state
@@ -68,13 +70,21 @@ const AdminDashboard = () => {
 
   // Vacation Programs state
   const [vacationPrograms, setVacationPrograms] = useState([]);
+  const [vacationRegistrations, setVacationRegistrations] = useState([]);
   const [vacationStats, setVacationStats] = useState(null);
   const [showVacationForm, setShowVacationForm] = useState(false);
   const [editingVacation, setEditingVacation] = useState(null);
   const [vacationForm, setVacationForm] = useState({
-    title: '', description: '', start_date: '', end_date: '', 
+    title: '', description: '', start_date: '', end_date: '',
     price: '', location: '', max_participants: 20, age_range: ''
   });
+
+  // Services state
+  const [services, setServices] = useState([]);
+  const [showServiceForm, setShowServiceForm] = useState(false);
+  const [editingService, setEditingService] = useState(null);
+  const emptyServiceForm = { title: '', description: '', icon: 'Briefcase', color: 'text-primary', order: 0, is_active: true };
+  const [serviceForm, setServiceForm] = useState(emptyServiceForm);
 
   // Email state
   const [emailRecipients, setEmailRecipients] = useState([]);
@@ -294,6 +304,7 @@ const AdminDashboard = () => {
       setVideoFile(null);
       setVideoTitle('');
       setVideoDescription('');
+      if (videoFileInputRef.current) videoFileInputRef.current.value = '';
       fetchAnnouncements();
       fetchAnnouncementStats();
       toast.success('Vidéo publiée avec succès !');
@@ -408,6 +419,78 @@ const AdminDashboard = () => {
       setVacationStats(res.data);
     } catch (err) {
       console.error("Error fetching vacation stats", err);
+    }
+  };
+
+  const fetchVacationRegistrations = async () => {
+    try {
+      const res = await api.get('/vacation-programs/admin/registrations');
+      setVacationRegistrations(res.data);
+    } catch (err) {
+      console.error("Error fetching vacation registrations", err);
+    }
+  };
+
+  // Services fetch & CRUD
+  const fetchServices = async () => {
+    try {
+      const res = await api.get('/services/admin/all');
+      setServices(res.data);
+    } catch (err) {
+      console.error("Error fetching services", err);
+    }
+  };
+
+  const handleSubmitService = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = { ...serviceForm, order: Number(serviceForm.order) || 0 };
+      if (editingService) {
+        await api.put(`/services/${editingService.id}`, payload);
+        toast.success('Service mis à jour');
+      } else {
+        await api.post('/services', payload);
+        toast.success('Service créé');
+      }
+      setShowServiceForm(false);
+      setEditingService(null);
+      setServiceForm(emptyServiceForm);
+      fetchServices();
+    } catch (err) {
+      toast.error('Erreur lors de l\'enregistrement du service');
+    }
+  };
+
+  const handleEditService = (service) => {
+    setEditingService(service);
+    setServiceForm({
+      title: service.title || '',
+      description: service.description || '',
+      icon: service.icon || 'Briefcase',
+      color: service.color || 'text-primary',
+      order: service.order || 0,
+      is_active: service.is_active !== false
+    });
+    setShowServiceForm(true);
+  };
+
+  const handleToggleService = async (service) => {
+    try {
+      await api.put(`/services/${service.id}`, { is_active: !service.is_active });
+      fetchServices();
+    } catch (err) {
+      toast.error('Erreur lors de la mise à jour');
+    }
+  };
+
+  const handleDeleteService = async (id) => {
+    if (!window.confirm('Supprimer ce service ?')) return;
+    try {
+      await api.delete(`/services/${id}`);
+      toast.success('Service supprimé');
+      fetchServices();
+    } catch (err) {
+      toast.error('Erreur lors de la suppression');
     }
   };
 
@@ -536,6 +619,8 @@ const AdminDashboard = () => {
       fetchStudentConsultationStats(),
       fetchVacationPrograms(),
       fetchVacationStats(),
+      fetchVacationRegistrations(),
+      fetchServices(),
       fetchEmailRecipients(),
       fetchEmailHistory(),
       fetchEmailTemplates()
@@ -2178,6 +2263,7 @@ const AdminDashboard = () => {
               <div>
                 <label className="text-sm font-medium mb-1 block">Fichier vidéo *</label>
                 <Input
+                  ref={videoFileInputRef}
                   type="file"
                   accept="video/*"
                   onChange={(e) => setVideoFile(e.target.files[0])}
@@ -2869,6 +2955,93 @@ const AdminDashboard = () => {
   );
 
   // Section: Vacation Programs
+  const renderServicesAdmin = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold flex items-center gap-2">
+          <Briefcase className="h-6 w-6" /> Gestion des Services
+        </h2>
+        <Button onClick={() => { setEditingService(null); setServiceForm(emptyServiceForm); setShowServiceForm(true); }}>
+          + Nouveau Service
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-sm">
+        Les services actifs s'affichent sur la page d'accueil et dans l'espace élève.
+      </p>
+
+      {/* Form */}
+      {showServiceForm && (
+        <Card>
+          <CardHeader><CardTitle>{editingService ? 'Modifier' : 'Créer'} un Service</CardTitle></CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmitService} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Titre *</label>
+                  <Input value={serviceForm.title} onChange={e => setServiceForm({ ...serviceForm, title: e.target.value })} required />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Icône</label>
+                  <select className="w-full border rounded-md p-2 bg-background" value={serviceForm.icon} onChange={e => setServiceForm({ ...serviceForm, icon: e.target.value })}>
+                    {SERVICE_ICON_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Ordre d'affichage</label>
+                  <Input type="number" value={serviceForm.order} onChange={e => setServiceForm({ ...serviceForm, order: e.target.value })} />
+                </div>
+                <div className="flex items-center gap-2 pt-7">
+                  <input type="checkbox" id="service-active" checked={serviceForm.is_active} onChange={e => setServiceForm({ ...serviceForm, is_active: e.target.checked })} />
+                  <label htmlFor="service-active" className="text-sm font-medium">Actif</label>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Description</label>
+                <textarea className="w-full border rounded-md p-2 bg-background min-h-[80px]" value={serviceForm.description} onChange={e => setServiceForm({ ...serviceForm, description: e.target.value })} />
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit">{editingService ? 'Mettre à jour' : 'Créer'}</Button>
+                <Button type="button" variant="outline" onClick={() => { setShowServiceForm(false); setEditingService(null); }}>Annuler</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* List */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {services.length === 0 ? (
+          <Card className="col-span-full"><CardContent className="py-12 text-center text-muted-foreground">Aucun service. Cliquez sur "Nouveau Service" pour commencer.</CardContent></Card>
+        ) : services.map(service => {
+          const Icon = getServiceIcon(service.icon);
+          return (
+            <Card key={service.id} className={!service.is_active ? 'opacity-60' : ''}>
+              <CardContent className="pt-6 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div className="inline-flex p-3 rounded-xl bg-primary/10">
+                    <Icon className={`h-8 w-8 ${service.color || 'text-primary'}`} />
+                  </div>
+                  <span className={`px-2 py-1 rounded-full text-xs ${service.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {service.is_active ? 'Actif' : 'Inactif'}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold">{service.title}</h3>
+                <p className="text-sm text-muted-foreground line-clamp-3">{service.description}</p>
+                <div className="flex gap-2 pt-2">
+                  <Button size="sm" variant="outline" onClick={() => handleEditService(service)}><Edit2 className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="outline" onClick={() => handleToggleService(service)}>
+                    {service.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleDeleteService(service.id)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   const renderVacationPrograms = () => (
     <div className="space-y-6">
       {/* Stats */}
@@ -2987,6 +3160,50 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Registrations with payment proofs */}
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <FileCheck className="h-5 w-5" /> Inscriptions & Preuves de paiement
+          </h2>
+          <Button size="sm" variant="outline" onClick={fetchVacationRegistrations}>
+            <RefreshCw className="h-4 w-4 mr-1" /> Actualiser
+          </Button>
+        </div>
+        {vacationRegistrations.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">Aucune inscription pour le moment</CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {vacationRegistrations.map(reg => (
+              <Card key={reg.id}>
+                <CardContent className="pt-6 space-y-2 text-sm">
+                  <div className="flex justify-between items-start">
+                    <p className="font-bold text-base">{reg.program_title || 'Programme Vacances'}</p>
+                    <span className="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">{reg.status || 'pending'}</span>
+                  </div>
+                  <p><strong>Élève :</strong> {reg.student_name || '-'} {reg.student_age ? `(${reg.student_age} ans)` : ''}</p>
+                  <p><strong>Parent :</strong> {reg.parent_name || '-'}</p>
+                  <p><strong>Email :</strong> {reg.parent_email || '-'}</p>
+                  <p><strong>Téléphone :</strong> {reg.parent_phone || '-'}</p>
+                  {reg.amount != null && <p><strong>Montant :</strong> {reg.amount} €</p>}
+                  <p><strong>Date :</strong> {reg.created_at ? new Date(reg.created_at).toLocaleString('fr-FR') : '-'}</p>
+                  {reg.payment_proof_url ? (
+                    <a href={reg.payment_proof_url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary hover:underline font-medium">
+                      <FileCheck className="h-4 w-4" /> Voir la preuve de paiement
+                    </a>
+                  ) : (
+                    <p className="text-muted-foreground italic">Aucune preuve de paiement fournie</p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3140,6 +3357,8 @@ const AdminDashboard = () => {
         return renderProspects();
       case 'vacation-programs':
         return renderVacationPrograms();
+      case 'services':
+        return renderServicesAdmin();
       case 'announcements':
         return renderAnnouncements();
       case 'banners':

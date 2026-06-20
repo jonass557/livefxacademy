@@ -10,6 +10,7 @@ import ClientConsultation from './pages/ClientConsultation';
 import TrainerConsultation from './pages/TrainerConsultation';
 import TrainerRegistration from './pages/TrainerRegistration';
 import Navbar from './components/Navbar';
+import BackButton from './components/BackButton';
 import { Toaster } from './components/ui/toaster';
 import { useAuthStore } from './store/authStore';
 
@@ -32,11 +33,13 @@ function AppLayout({ children }) {
     );
   }
   
-  // Regular pages with container
+  // Regular pages with container — show a Back button except on home/login/register
+  const showBack = !['/', '/login', '/register'].includes(location.pathname);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <main className="container mx-auto px-4 py-8">
+        {showBack && <BackButton />}
         {children}
       </main>
     </div>

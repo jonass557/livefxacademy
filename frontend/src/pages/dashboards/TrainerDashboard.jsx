@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import TrainerSidebar from '../../components/TrainerSidebar';
 import { useAuthStore } from '../../store/authStore';
 import { toast } from 'sonner';
 import api from '../../lib/api';
@@ -24,13 +23,13 @@ import {
   Target,
   ShieldCheck,
   BarChart3,
-  Send
+  Send,
+  FileText,
+  ArrowLeft
 } from 'lucide-react';
 
 const TrainerDashboard = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuthStore();
 
@@ -38,26 +37,52 @@ const TrainerDashboard = () => {
   const handleSectionChange = (section) => {
     setActiveSection(section);
     setRefreshKey(prev => prev + 1);
-    setMobileOpen(false);
   };
 
+  // Feature buttons shown on the main page (replaces the sidebar)
+  const navItems = [
+    { id: 'profile', icon: User, label: 'Mon Profil' },
+    { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
+    { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
+  ];
+
   return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
-      <TrainerSidebar 
-        activeSection={activeSection} 
-        setActiveSection={handleSectionChange}
-        collapsed={sidebarCollapsed}
-        setCollapsed={setSidebarCollapsed}
-        mobileOpen={mobileOpen}
-        setMobileOpen={setMobileOpen}
-      />
-      
-      <main className={`flex-1 transition-all duration-300 w-full ${mobileOpen ? '' : 'ml-0 lg:ml-64'} ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
-        <div className="p-4 md:p-6">
-          {activeSection === 'dashboard' && <DashboardOverview key={`dashboard-${refreshKey}`} user={user} onNavigate={handleSectionChange} />}
-          {activeSection === 'profile' && <ProfileSection key={`profile-${refreshKey}`} />}
-          {activeSection === 'registration' && <RegistrationDetails key={`registration-${refreshKey}`} />}
-          {activeSection === 'strategies' && <StrategiesSection key={`strategies-${refreshKey}`} />}
+    <div className="min-h-[calc(100vh-4rem)]">
+      <main className="w-full">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+          {activeSection === 'dashboard' ? (
+            <div className="space-y-8">
+              {/* Feature button grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSectionChange(item.id)}
+                      className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border bg-card hover:bg-muted hover:shadow-md hover:-translate-y-0.5 transition-all text-center"
+                    >
+                      <div className="p-3 rounded-xl bg-primary/10">
+                        <Icon className="h-7 w-7 text-primary" />
+                      </div>
+                      <span className="font-medium text-sm">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <DashboardOverview key={`dashboard-${refreshKey}`} user={user} onNavigate={handleSectionChange} />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Button variant="ghost" className="gap-2" onClick={() => handleSectionChange('dashboard')}>
+                <ArrowLeft className="h-4 w-4" /> Retour
+              </Button>
+              {activeSection === 'profile' && <ProfileSection key={`profile-${refreshKey}`} />}
+              {activeSection === 'registration' && <RegistrationDetails key={`registration-${refreshKey}`} />}
+              {activeSection === 'strategies' && <StrategiesSection key={`strategies-${refreshKey}`} />}
+            </div>
+          )}
         </div>
       </main>
     </div>

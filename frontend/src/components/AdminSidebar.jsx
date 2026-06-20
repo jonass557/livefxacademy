@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Palmtree,
   Send,
+  Briefcase,
   Menu,
   X
 } from 'lucide-react';
@@ -38,6 +39,7 @@ const AdminSidebar = ({ activeSection, setActiveSection, collapsed, setCollapsed
     { id: 'student-consultations', icon: Users, label: 'Fiches Élèves' },
     { id: 'prospects', icon: Users, label: t('sidebar.prospects') },
     { id: 'vacation-programs', icon: Palmtree, label: 'Programmes Vacances' },
+    { id: 'services', icon: Briefcase, label: 'Services' },
     { id: 'announcements', icon: Video, label: 'Vidéos Annonces' },
     { id: 'banners', icon: Image, label: t('sidebar.banners') },
     { id: 'emails', icon: Send, label: 'Envoyer Emails' },

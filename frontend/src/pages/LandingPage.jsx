@@ -8,6 +8,7 @@ import {
   Globe, Clock, HeadphonesIcon, Facebook
 } from 'lucide-react';
 import api from '../lib/api';
+import { getServiceIcon } from '../lib/serviceIcons';
 import { useLanguageStore } from '../store/languageStore';
 
 const DEFAULT_HERO_IMAGES = [
@@ -21,6 +22,19 @@ const LandingPage = () => {
   const { t, language } = useLanguageStore();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [heroImages, setHeroImages] = useState(DEFAULT_HERO_IMAGES);
+  const [dynamicServices, setDynamicServices] = useState([]);
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const res = await api.get('/services');
+        if (res.data && res.data.length > 0) setDynamicServices(res.data);
+      } catch (err) {
+        console.error("Failed to fetch services", err);
+      }
+    };
+    fetchServices();
+  }, []);
 
   useEffect(() => {
     const fetchBanners = async () => {
@@ -46,7 +60,7 @@ const LandingPage = () => {
     return () => clearInterval(interval);
   }, [heroImages]);
 
-  const services = language === 'fr' ? [
+  const defaultServices = language === 'fr' ? [
     {
       icon: <Video className="h-10 w-10 text-primary" />,
       title: "Formation Vidéo HD",
@@ -139,6 +153,18 @@ const LandingPage = () => {
       description: "Join an active community of traders from around the world to exchange and progress together."
     }
   ];
+
+  // Admin-managed services override the defaults when present
+  const services = dynamicServices.length > 0
+    ? dynamicServices.map((s) => {
+        const Icon = getServiceIcon(s.icon);
+        return {
+          icon: <Icon className={`h-10 w-10 ${s.color || 'text-primary'}`} />,
+          title: s.title,
+          description: s.description
+        };
+      })
+    : defaultServices;
 
   const stats = language === 'fr' ? [
     { value: "500+", label: "Étudiants formés" },

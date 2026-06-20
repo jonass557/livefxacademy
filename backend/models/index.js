@@ -13,6 +13,7 @@ const AnnouncementVideo = require('./AnnouncementVideo');
 const VideoView = require('./VideoView');
 const StudentConsultation = require('./StudentConsultation');
 const EmailLog = require('./EmailLog');
+const Service = require('./Service');
 
 module.exports = {
   User,
@@ -29,5 +30,6 @@ module.exports = {
   AnnouncementVideo,
   VideoView,
   StudentConsultation,
-  EmailLog
+  EmailLog,
+  Service
 };

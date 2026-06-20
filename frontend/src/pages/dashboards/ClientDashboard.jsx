@@ -3,18 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { 
-  Video, TrendingUp, GraduationCap, Link as LinkIcon, 
-  MessageSquare, Phone, Send, Facebook, ClipboardList, 
-  Palmtree, Briefcase, CheckCircle, ArrowRight, ExternalLink,
+  Video, TrendingUp, GraduationCap, Link as LinkIcon,
+  MessageSquare, Phone, Send, Facebook, ClipboardList,
+  Palmtree, Briefcase, CheckCircle, ArrowRight, ArrowLeft, ExternalLink,
   User, MapPin, Clock, Target, BookOpen, Star, AlertCircle,
   DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users
 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
 import api from '../../lib/api';
+import { getServiceIcon } from '../../lib/serviceIcons';
 import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
-import ClientSidebar from '../../components/ClientSidebar';
 import ReactPlayer from 'react-player';
 
 const ClientDashboard = () => {
@@ -23,8 +23,6 @@ const ClientDashboard = () => {
   const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
   const [activeSection, setActiveSection] = useState('dashboard');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   
   // Consultation form state
@@ -57,17 +55,20 @@ const ClientDashboard = () => {
   const [existingConsultation, setExistingConsultation] = useState(null);
   const [submittingConsultation, setSubmittingConsultation] = useState(false);
   const [vacationPrograms, setVacationPrograms] = useState([]);
+  const [services, setServices] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch announcement videos and vacation programs
-        const [videosRes, vacationRes] = await Promise.all([
+        // Fetch announcement videos, vacation programs and services
+        const [videosRes, vacationRes, servicesRes] = await Promise.all([
           api.get('/announcements'),
-          api.get('/vacation-programs')
+          api.get('/vacation-programs'),
+          api.get('/services')
         ]);
         setVideos(videosRes.data);
         setVacationPrograms(vacationRes.data);
+        setServices(servicesRes.data || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -269,7 +270,29 @@ const ClientDashboard = () => {
         <Briefcase className="h-6 w-6" /> {t('client.servicesTitle')}
       </h2>
       <p className="text-muted-foreground">{t('client.servicesDesc')}</p>
-      
+
+      {/* Admin-managed services */}
+      {services.length > 0 && (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {services.map(service => {
+            const Icon = getServiceIcon(service.icon);
+            return (
+              <Card key={service.id} className="hover:shadow-lg transition-shadow">
+                <CardContent className="pt-6 text-center space-y-4">
+                  <div className="inline-flex p-3 rounded-xl bg-primary/10">
+                    <Icon className={`h-10 w-10 ${service.color || 'text-primary'}`} />
+                  </div>
+                  <h3 className="text-xl font-bold">{service.title}</h3>
+                  <p className="text-muted-foreground">{service.description}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Quick access to platform sections */}
+      <h3 className="text-lg font-semibold pt-2">{t('client.servicesTitle')}</h3>
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveSection('trading')}>
           <CardContent className="pt-6 text-center space-y-4">
@@ -964,7 +987,7 @@ const ClientDashboard = () => {
                       <p className="text-2xl font-bold text-primary">{program.price}€</p>
                     )}
                   </div>
-                  <Button onClick={() => navigate('/vacation-program')} className="gap-2">
+                  <Button onClick={() => navigate('/vacation-program', { state: { programId: program.id || program._id } })} className="gap-2">
                     S'inscrire <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -992,29 +1015,60 @@ const ClientDashboard = () => {
     }
   };
 
+  // Feature buttons shown on the main page (replaces the sidebar)
+  const navItems = [
+    { id: 'announcements', icon: Video, label: t('sidebar.announcements') },
+    { id: 'services', icon: Briefcase, label: t('sidebar.services') },
+    { id: 'trading', icon: TrendingUp, label: t('sidebar.tradingInfo') },
+    { id: 'academy', icon: GraduationCap, label: t('sidebar.academy') },
+    { id: 'broker', icon: LinkIcon, label: t('sidebar.broker') },
+    { id: 'contact', icon: MessageSquare, label: t('sidebar.contact') },
+    { id: 'consultation', icon: ClipboardList, label: t('sidebar.consultationForm') },
+    { id: 'vacation', icon: Palmtree, label: t('sidebar.vacationProgram') },
+  ];
+
   return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
-      {/* Sidebar */}
-      <ClientSidebar 
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        collapsed={sidebarCollapsed}
-        setCollapsed={setSidebarCollapsed}
-        mobileOpen={mobileOpen}
-        setMobileOpen={setMobileOpen}
-      />
-      
-      {/* Main Content */}
-      <main className={`flex-1 transition-all duration-300 w-full lg:${sidebarCollapsed ? 'ml-16' : 'ml-64'} ${mobileOpen ? '' : 'ml-0 lg:ml-64'}`}>
-        <div className="p-4 md:p-6">
+    <div className="min-h-[calc(100vh-4rem)]">
+      <main className="w-full">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-4 md:mb-6">
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dashboard.clientTitle')}</h1>
             <p className="text-sm md:text-base text-muted-foreground">{t('dashboard.welcome')}, {user?.full_name}</p>
           </div>
-          
-          {/* Content */}
-          {renderContent()}
+
+          {activeSection === 'dashboard' ? (
+            <div className="space-y-8">
+              {/* Feature button grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveSection(item.id)}
+                      className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border bg-card hover:bg-muted hover:shadow-md hover:-translate-y-0.5 transition-all text-center"
+                    >
+                      <div className="p-3 rounded-xl bg-primary/10">
+                        <Icon className="h-7 w-7 text-primary" />
+                      </div>
+                      <span className="font-medium text-sm">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Dashboard overview */}
+              {renderDashboard()}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Button variant="ghost" className="gap-2" onClick={() => setActiveSection('dashboard')}>
+                <ArrowLeft className="h-4 w-4" /> Retour
+              </Button>
+              {renderContent()}
+            </div>
+          )}
         </div>
       </main>
     </div>
