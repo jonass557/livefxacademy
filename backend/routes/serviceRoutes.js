@@ -52,7 +52,7 @@ router.get('/admin/all', adminOnly, async (req, res) => {
  */
 router.post('/', adminOnly, async (req, res) => {
   try {
-    const { title, description, icon, color, order, is_active } = req.body;
+    const { title, description, icon, color, details, whatsapp, phone, email, telegram, link, order, is_active } = req.body;
     if (!title) return res.status(400).json({ message: 'Le titre est requis' });
 
     const service = await Service.create({
@@ -60,6 +60,12 @@ router.post('/', adminOnly, async (req, res) => {
       description,
       icon,
       color,
+      details,
+      whatsapp,
+      phone,
+      email,
+      telegram,
+      link,
       order,
       is_active,
       created_by: req.user.id
@@ -80,7 +86,7 @@ router.post('/', adminOnly, async (req, res) => {
  */
 router.put('/:id', adminOnly, async (req, res) => {
   try {
-    const { title, description, icon, color, order, is_active } = req.body;
+    const { title, description, icon, color, details, whatsapp, phone, email, telegram, link, order, is_active } = req.body;
     const service = await Service.findByIdAndUpdate(
       req.params.id,
       {
@@ -88,6 +94,12 @@ router.put('/:id', adminOnly, async (req, res) => {
         ...(description !== undefined && { description }),
         ...(icon !== undefined && { icon }),
         ...(color !== undefined && { color }),
+        ...(details !== undefined && { details }),
+        ...(whatsapp !== undefined && { whatsapp }),
+        ...(phone !== undefined && { phone }),
+        ...(email !== undefined && { email }),
+        ...(telegram !== undefined && { telegram }),
+        ...(link !== undefined && { link }),
         ...(order !== undefined && { order }),
         ...(is_active !== undefined && { is_active })
       },

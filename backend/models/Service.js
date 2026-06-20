@@ -19,6 +19,17 @@ const serviceSchema = new mongoose.Schema({
     type: String,
     default: 'text-primary'
   },
+  // Longer detailed description shown in the service detail view
+  details: {
+    type: String,
+    default: ''
+  },
+  // Contact information
+  whatsapp: { type: String, default: '' },
+  phone: { type: String, default: '' },
+  email: { type: String, default: '' },
+  telegram: { type: String, default: '' },
+  link: { type: String, default: '' },
   order: {
     type: Number,
     default: 0

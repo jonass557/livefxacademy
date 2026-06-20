@@ -7,7 +7,7 @@ import {
   MessageSquare, Phone, Send, Facebook, ClipboardList,
   Palmtree, Briefcase, CheckCircle, ArrowRight, ArrowLeft, ExternalLink,
   User, MapPin, Clock, Target, BookOpen, Star, AlertCircle,
-  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users
+  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X
 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
@@ -56,6 +56,7 @@ const ClientDashboard = () => {
   const [submittingConsultation, setSubmittingConsultation] = useState(false);
   const [vacationPrograms, setVacationPrograms] = useState([]);
   const [services, setServices] = useState([]);
+  const [selectedService, setSelectedService] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -271,19 +272,26 @@ const ClientDashboard = () => {
       </h2>
       <p className="text-muted-foreground">{t('client.servicesDesc')}</p>
 
-      {/* Admin-managed services */}
+      {/* Admin-managed services (clickable for details) */}
       {services.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {services.map(service => {
             const Icon = getServiceIcon(service.icon);
             return (
-              <Card key={service.id} className="hover:shadow-lg transition-shadow">
+              <Card
+                key={service.id}
+                onClick={() => setSelectedService(service)}
+                className="hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer"
+              >
                 <CardContent className="pt-6 text-center space-y-4">
                   <div className="inline-flex p-3 rounded-xl bg-primary/10">
                     <Icon className={`h-10 w-10 ${service.color || 'text-primary'}`} />
                   </div>
                   <h3 className="text-xl font-bold">{service.title}</h3>
-                  <p className="text-muted-foreground">{service.description}</p>
+                  <p className="text-muted-foreground line-clamp-2">{service.description}</p>
+                  <span className="inline-flex items-center gap-1 text-sm text-primary font-medium">
+                    Voir les détails <ArrowRight className="h-4 w-4" />
+                  </span>
                 </CardContent>
               </Card>
             );
@@ -1071,6 +1079,80 @@ const ClientDashboard = () => {
           )}
         </div>
       </main>
+
+      {/* Service detail modal */}
+      {selectedService && (() => {
+        const Icon = getServiceIcon(selectedService.icon);
+        const waNumber = (selectedService.whatsapp || '').replace(/[^0-9]/g, '');
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setSelectedService(null)}
+          >
+            <div
+              className="bg-card rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6 space-y-4">
+                <div className="flex justify-between items-start">
+                  <div className="inline-flex p-3 rounded-xl bg-primary/10">
+                    <Icon className={`h-10 w-10 ${selectedService.color || 'text-primary'}`} />
+                  </div>
+                  <button onClick={() => setSelectedService(null)} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <h2 className="text-2xl font-bold">{selectedService.title}</h2>
+                {selectedService.description && (
+                  <p className="text-muted-foreground">{selectedService.description}</p>
+                )}
+                {selectedService.details && (
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedService.details}</p>
+                )}
+
+                {/* Contacts */}
+                {(selectedService.whatsapp || selectedService.phone || selectedService.email || selectedService.telegram || selectedService.link) && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <p className="text-sm font-semibold">Contacts</p>
+                    <div className="flex flex-col gap-2">
+                      {selectedService.whatsapp && (
+                        <a href={`https://wa.me/${waNumber}`} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm text-green-600 hover:underline">
+                          <MessageSquare className="h-4 w-4" /> WhatsApp : {selectedService.whatsapp}
+                        </a>
+                      )}
+                      {selectedService.phone && (
+                        <a href={`tel:${selectedService.phone}`} className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
+                          <Phone className="h-4 w-4" /> {selectedService.phone}
+                        </a>
+                      )}
+                      {selectedService.email && (
+                        <a href={`mailto:${selectedService.email}`} className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
+                          <Mail className="h-4 w-4" /> {selectedService.email}
+                        </a>
+                      )}
+                      {selectedService.telegram && (
+                        <a href={selectedService.telegram.startsWith('http') ? selectedService.telegram : `https://t.me/${selectedService.telegram.replace('@', '')}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm text-blue-500 hover:underline">
+                          <Send className="h-4 w-4" /> Telegram : {selectedService.telegram}
+                        </a>
+                      )}
+                      {selectedService.link && (
+                        <a href={selectedService.link} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
+                          <ExternalLink className="h-4 w-4" /> {selectedService.link}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

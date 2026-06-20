@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const nodemailer = require('nodemailer');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { VacationProgram, VacationRegistration, Prospect, User } = require('../models');
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
+const { sendMail, notifyAdmins } = require('../utils/mailer');
 
 const adminOnly = [authenticateToken, requireRole(['admin'])];
 
@@ -27,14 +27,6 @@ const paymentStorage = new CloudinaryStorage({
 });
 
 const uploadProof = multer({ storage: paymentStorage });
-
-// Email transporter (same config as emailRoutes)
-const createTransporter = () => nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-});
 
 // ==================== PUBLIC ROUTES ====================
 
@@ -128,35 +120,21 @@ router.post('/register', uploadProof.single('payment_proof'), async (req, res) =
     }
 
     // Notify all admins by email (best-effort)
-    try {
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const admins = await User.find({ role: 'admin', email: { $ne: null, $ne: '' } }).select('email');
-        const adminEmails = admins.map(a => a.email).filter(Boolean);
-        if (adminEmails.length > 0) {
-          const transporter = createTransporter();
-          await transporter.sendMail({
-            from: `"LiveFx Academy" <${process.env.SMTP_USER}>`,
-            to: adminEmails.join(','),
-            subject: `Nouvelle inscription - ${programTitle}`,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color:#6366f1;">Nouvelle inscription au programme vacances</h2>
-                <p><strong>Programme :</strong> ${programTitle}</p>
-                <p><strong>Élève :</strong> ${student_name || '-'} (${student_age || '-'} ans)</p>
-                <p><strong>Parent/Tuteur :</strong> ${parent_name || '-'}</p>
-                <p><strong>Email :</strong> ${parent_email || '-'}</p>
-                <p><strong>Téléphone :</strong> ${parent_phone || '-'}</p>
-                <p><strong>Session :</strong> ${session || '-'}</p>
-                <p><strong>Montant :</strong> ${resolvedAmount != null ? resolvedAmount : '-'}</p>
-                <p><strong>Preuve de paiement :</strong> ${req.file ? `<a href="${req.file.path}">Voir le justificatif</a>` : 'Non fournie'}</p>
-              </div>
-            `
-          });
-        }
-      }
-    } catch (mailErr) {
-      console.error('Erreur envoi email inscription vacances:', mailErr.message);
-    }
+    notifyAdmins({
+      subject: `Nouvelle inscription - ${programTitle}`,
+      title: 'Nouvelle inscription au programme vacances',
+      html: `
+        <p><strong>Programme :</strong> ${programTitle}</p>
+        <p><strong>Élève :</strong> ${student_name || '-'} (${student_age || '-'} ans)</p>
+        <p><strong>Parent/Tuteur :</strong> ${parent_name || '-'}</p>
+        <p><strong>Email :</strong> ${parent_email || '-'}</p>
+        <p><strong>Téléphone :</strong> ${parent_phone || '-'}</p>
+        <p><strong>Session :</strong> ${session || '-'}</p>
+        <p><strong>Montant :</strong> ${resolvedAmount != null ? resolvedAmount : '-'}</p>
+        <p><strong>Preuve de paiement :</strong> ${req.file ? `<a href="${req.file.path}">Voir le justificatif</a>` : 'Non fournie'}</p>
+        <p>Connectez-vous à votre tableau de bord pour approuver cette inscription.</p>
+      `
+    });
 
     res.status(201).json({
       message: 'Inscription au programme vacances enregistrée',
@@ -339,6 +317,60 @@ router.get('/admin/registrations', adminOnly, async (req, res) => {
   try {
     const registrations = await VacationRegistration.find().sort({ created_at: -1 });
     res.json(registrations.map(r => ({ ...r.toObject(), id: r._id })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/vacation-programs/admin/registrations/:id/status:
+ *   patch:
+ *     summary: Approve / reject a vacation registration (admin only)
+ *     tags: [Vacation Programs]
+ */
+router.patch('/admin/registrations/:id/status', adminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'confirmed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ message: 'Statut invalide' });
+    }
+
+    const registration = await VacationRegistration.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+    if (!registration) {
+      return res.status(404).json({ message: 'Inscription non trouvée' });
+    }
+
+    // Notifier le parent/élève lorsque l'inscription est approuvée ou annulée
+    if ((status === 'confirmed' || status === 'cancelled') && registration.parent_email) {
+      const approved = status === 'confirmed';
+      sendMail({
+        to: registration.parent_email,
+        subject: approved
+          ? `Inscription confirmée - ${registration.program_title || 'Programme Vacances'}`
+          : `Inscription non retenue - ${registration.program_title || 'Programme Vacances'}`,
+        title: approved ? 'Inscription confirmée ✅' : 'Inscription non retenue',
+        html: approved
+          ? `<p>Bonjour ${registration.parent_name || ''},</p>
+             <p>L'inscription de <strong>${registration.student_name || 'votre enfant'}</strong> au programme
+             <strong>${registration.program_title || 'Programme Vacances'}</strong> a été <strong>approuvée</strong> par l'administrateur.</p>
+             <p>Nous vous contacterons avec les détails pratiques (dates, lieu, horaires). Merci de votre confiance !</p>`
+          : `<p>Bonjour ${registration.parent_name || ''},</p>
+             <p>Nous sommes au regret de vous informer que l'inscription de
+             <strong>${registration.student_name || 'votre enfant'}</strong> au programme
+             <strong>${registration.program_title || 'Programme Vacances'}</strong> n'a pas pu être retenue.</p>
+             <p>Pour toute question, n'hésitez pas à nous contacter.</p>`
+      });
+    }
+
+    res.json({ message: 'Statut mis à jour', registration: { ...registration.toObject(), id: registration._id } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Erreur serveur' });

@@ -83,7 +83,7 @@ const AdminDashboard = () => {
   const [services, setServices] = useState([]);
   const [showServiceForm, setShowServiceForm] = useState(false);
   const [editingService, setEditingService] = useState(null);
-  const emptyServiceForm = { title: '', description: '', icon: 'Briefcase', color: 'text-primary', order: 0, is_active: true };
+  const emptyServiceForm = { title: '', description: '', icon: 'Briefcase', color: 'text-primary', details: '', whatsapp: '', phone: '', email: '', telegram: '', link: '', order: 0, is_active: true };
   const [serviceForm, setServiceForm] = useState(emptyServiceForm);
 
   // Email state
@@ -431,6 +431,16 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleUpdateRegistrationStatus = async (id, status) => {
+    try {
+      await api.patch(`/vacation-programs/admin/registrations/${id}/status`, { status });
+      toast.success(status === 'confirmed' ? 'Inscription approuvée — élève notifié par email' : 'Inscription mise à jour');
+      fetchVacationRegistrations();
+    } catch (err) {
+      toast.error('Erreur lors de la mise à jour du statut');
+    }
+  };
+
   // Services fetch & CRUD
   const fetchServices = async () => {
     try {
@@ -468,6 +478,12 @@ const AdminDashboard = () => {
       description: service.description || '',
       icon: service.icon || 'Briefcase',
       color: service.color || 'text-primary',
+      details: service.details || '',
+      whatsapp: service.whatsapp || '',
+      phone: service.phone || '',
+      email: service.email || '',
+      telegram: service.telegram || '',
+      link: service.link || '',
       order: service.order || 0,
       is_active: service.is_active !== false
     });
@@ -2996,9 +3012,38 @@ const AdminDashboard = () => {
                 </div>
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Description</label>
-                <textarea className="w-full border rounded-md p-2 bg-background min-h-[80px]" value={serviceForm.description} onChange={e => setServiceForm({ ...serviceForm, description: e.target.value })} />
+                <label className="text-sm font-medium mb-1 block">Description courte</label>
+                <textarea className="w-full border rounded-md p-2 bg-background min-h-[60px]" value={serviceForm.description} onChange={e => setServiceForm({ ...serviceForm, description: e.target.value })} />
               </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Détails complets (affichés au clic sur le service)</label>
+                <textarea className="w-full border rounded-md p-2 bg-background min-h-[100px]" value={serviceForm.details} onChange={e => setServiceForm({ ...serviceForm, details: e.target.value })} placeholder="Description détaillée du service..." />
+              </div>
+
+              <p className="text-sm font-semibold pt-2">Contacts</p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">WhatsApp</label>
+                  <Input value={serviceForm.whatsapp} onChange={e => setServiceForm({ ...serviceForm, whatsapp: e.target.value })} placeholder="+229 XX XX XX XX" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Téléphone</label>
+                  <Input value={serviceForm.phone} onChange={e => setServiceForm({ ...serviceForm, phone: e.target.value })} placeholder="+229 XX XX XX XX" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Email</label>
+                  <Input type="email" value={serviceForm.email} onChange={e => setServiceForm({ ...serviceForm, email: e.target.value })} placeholder="contact@exemple.com" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Telegram</label>
+                  <Input value={serviceForm.telegram} onChange={e => setServiceForm({ ...serviceForm, telegram: e.target.value })} placeholder="@pseudo ou lien" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium mb-1 block">Lien externe (site, formulaire...)</label>
+                  <Input value={serviceForm.link} onChange={e => setServiceForm({ ...serviceForm, link: e.target.value })} placeholder="https://..." />
+                </div>
+              </div>
+
               <div className="flex gap-2">
                 <Button type="submit">{editingService ? 'Mettre à jour' : 'Créer'}</Button>
                 <Button type="button" variant="outline" onClick={() => { setShowServiceForm(false); setEditingService(null); }}>Annuler</Button>
@@ -3199,6 +3244,25 @@ const AdminDashboard = () => {
                   ) : (
                     <p className="text-muted-foreground italic">Aucune preuve de paiement fournie</p>
                   )}
+                  <div className="flex gap-2 pt-3 border-t">
+                    <Button
+                      size="sm"
+                      onClick={() => handleUpdateRegistrationStatus(reg.id, 'confirmed')}
+                      disabled={reg.status === 'confirmed'}
+                      className="gap-1"
+                    >
+                      <CheckCircle className="h-4 w-4" /> Approuver
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleUpdateRegistrationStatus(reg.id, 'cancelled')}
+                      disabled={reg.status === 'cancelled'}
+                      className="gap-1"
+                    >
+                      <XCircle className="h-4 w-4" /> Rejeter
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

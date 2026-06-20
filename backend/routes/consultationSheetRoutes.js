@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { User, Trainer, ConsultationSheet, TrainerStrategy } = require('../models');
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
+const { sendMail, notifyAdmins } = require('../utils/mailer');
 
 // ==================== TRAINER ROUTES ====================
 
@@ -92,7 +93,20 @@ router.post('/', authenticateToken, async (req, res) => {
     } else {
       sheet = await ConsultationSheet.create({ trainer_id: userId, ...sheetData });
     }
-    
+
+    // Notify admins that a trainer sheet was submitted
+    notifyAdmins({
+      subject: 'Nouvelle fiche formateur reçue',
+      title: 'Nouvelle fiche d\'inscription formateur',
+      html: `
+        <p>Un formateur a envoyé sa fiche d'inscription.</p>
+        <p><strong>Formateur :</strong> ${full_name}</p>
+        <p><strong>Email :</strong> ${email}</p>
+        <p><strong>Téléphone :</strong> ${phone || '-'}</p>
+        <p>Connectez-vous à votre tableau de bord pour la consulter et la valider.</p>
+      `
+    });
+
     res.status(201).json({
       message: 'Fiche d\'inscription envoyée avec succès à l\'administrateur',
       sheet
@@ -353,7 +367,30 @@ router.patch('/admin/:id/review', adminOnly, async (req, res) => {
         { upsert: true }
       );
     }
-    
+
+    // Notifier le formateur en cas d'approbation ou de rejet
+    if (status === 'approved' || status === 'rejected') {
+      const trainer = await User.findById(sheet.trainer_id);
+      const trainerEmail = sheet.email || trainer?.email;
+      if (trainerEmail) {
+        const approved = status === 'approved';
+        sendMail({
+          to: trainerEmail,
+          subject: approved ? 'Votre fiche formateur a été validée' : 'Votre fiche formateur a été examinée',
+          title: approved ? 'Fiche validée ✅' : 'Fiche non retenue',
+          html: approved
+            ? `<p>Bonjour ${sheet.full_name || trainer?.full_name || ''},</p>
+               <p>Votre fiche d'inscription formateur a été <strong>validée</strong> par l'administrateur. Votre compte est désormais vérifié.</p>
+               ${admin_notes ? `<p><strong>Note de l'administrateur :</strong> ${admin_notes}</p>` : ''}
+               <p>Bienvenue dans l'équipe LiveFx Academy !</p>`
+            : `<p>Bonjour ${sheet.full_name || trainer?.full_name || ''},</p>
+               <p>Votre fiche d'inscription formateur n'a pas été retenue pour le moment.</p>
+               ${admin_notes ? `<p><strong>Motif / note :</strong> ${admin_notes}</p>` : ''}
+               <p>N'hésitez pas à mettre à jour votre fiche et à la renvoyer.</p>`
+        });
+      }
+    }
+
     res.json({
       message: `Fiche ${status === 'approved' ? 'approuvée' : status === 'rejected' ? 'rejetée' : 'mise à jour'}`,
       sheet

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { StudentConsultation, User } = require('../models');
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
+const { sendMail, notifyAdmins } = require('../utils/mailer');
 
 // Middleware client only
 const clientOnly = [authenticateToken, requireRole(['client'])];
@@ -41,15 +42,30 @@ router.post('/', clientOnly, async (req, res) => {
     const userId = req.user.id;
     const consultationData = { ...req.body, user_id: userId };
 
+    const user = await User.findById(userId);
+    const notifyAdminsOfSubmission = () => notifyAdmins({
+      subject: 'Nouvelle fiche élève reçue',
+      title: 'Nouvelle fiche de consultation élève',
+      html: `
+        <p>Un élève a envoyé sa fiche de consultation.</p>
+        <p><strong>Élève :</strong> ${consultationData.full_name || user?.full_name || '-'}</p>
+        <p><strong>Email :</strong> ${consultationData.email || user?.email || '-'}</p>
+        <p><strong>Téléphone :</strong> ${consultationData.phone || user?.phone || '-'}</p>
+        <p>Connectez-vous à votre tableau de bord pour la consulter et la valider.</p>
+      `
+    });
+
     let consultation = await StudentConsultation.findOne({ user_id: userId, status: 'pending' });
 
     if (consultation) {
       Object.assign(consultation, consultationData);
       await consultation.save();
+      notifyAdminsOfSubmission();
       return res.json({ message: 'Fiche de consultation mise à jour', consultation });
     }
 
     consultation = await StudentConsultation.create(consultationData);
+    notifyAdminsOfSubmission();
     res.status(201).json({ message: 'Fiche de consultation envoyée avec succès', consultation });
   } catch (err) {
     console.error(err);
@@ -247,7 +263,26 @@ router.patch('/admin/:id/review', adminOnly, async (req, res) => {
     consultation.reviewed_at = new Date();
     consultation.reviewed_by = adminId;
     await consultation.save();
-    
+
+    // Notifier l'élève lorsque sa fiche est validée (examinée) ou qu'il a été contacté
+    if (status === 'reviewed' || status === 'contacted') {
+      const student = await User.findById(consultation.user_id);
+      const studentEmail = consultation.email || student?.email;
+      if (studentEmail) {
+        sendMail({
+          to: studentEmail,
+          subject: 'Votre fiche de consultation a été validée',
+          title: 'Fiche validée ✅',
+          html: `
+            <p>Bonjour ${consultation.full_name || student?.full_name || ''},</p>
+            <p>Votre fiche de consultation a été <strong>validée</strong> par notre équipe.</p>
+            ${admin_notes ? `<p><strong>Message de l'administrateur :</strong> ${admin_notes}</p>` : ''}
+            <p>${status === 'contacted' ? 'Nous vous avons contacté ou allons le faire très prochainement.' : 'Nous reviendrons vers vous très prochainement.'}</p>
+          `
+        });
+      }
+    }
+
     res.json({ message: 'Fiche mise à jour', consultation });
   } catch (err) {
     console.error(err);
