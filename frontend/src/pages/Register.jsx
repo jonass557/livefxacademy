@@ -6,10 +6,12 @@ import api from '../lib/api';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { PasswordInput } from '../components/ui/password-input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../components/ui/card';
 import { GraduationCap, User, CheckCircle } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { toast } from 'sonner';
+import { getErrorMessage } from '../lib/errors';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -35,7 +37,7 @@ const Register = () => {
       toast.success(t('register.successMessage'));
       navigate('/login');
     } catch (error) {
-      toast.error(t('register.errorMessage'));
+      toast.error(t('register.errorMessage'), { description: getErrorMessage(error, t) });
     } finally {
       setIsSubmitting(false);
     }
@@ -113,7 +115,7 @@ const Register = () => {
                 {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone.message}</p>}
               </div>
               <div>
-                <Input {...register('password')} placeholder={t('register.password')} type="password" />
+                <PasswordInput {...register('password')} placeholder={t('register.password')} />
                 {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>}
               </div>
             </div>

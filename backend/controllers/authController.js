@@ -16,6 +16,15 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+const resetPasswordSchema = z.object({
+  email: z.string().email(),
+  phone: z.string().min(4),
+  password: z.string().min(6),
+});
+
+// Garde uniquement les chiffres pour comparer deux numéros (gère espaces, +, indicatifs)
+const normalizePhone = (s) => (s || '').replace(/\D/g, '');
+
 exports.register = async (req, res) => {
   try {
     const { email, password, full_name, role, phone } = registerSchema.parse(req.body);
@@ -95,6 +104,34 @@ exports.login = async (req, res) => {
       }
     });
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Réinitialisation directe : on vérifie que l'email ET le téléphone correspondent
+// au même compte avant d'autoriser le changement de mot de passe.
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, phone, password } = resetPasswordSchema.parse(req.body);
+
+    const user = await User.findOne({ email });
+    const phoneInput = normalizePhone(phone);
+    if (!user || !phoneInput || normalizePhone(user.phone) !== phoneInput) {
+      return res.status(400).json({
+        message: "Aucun compte ne correspond à cet email et ce numéro de téléphone"
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password_hash = await bcrypt.hash(password, salt);
+    await user.save();
+
+    res.json({ message: 'Mot de passe mis à jour avec succès' });
+  } catch (err) {
+    if (err.name === 'ZodError') {
+      return res.status(400).json({ message: 'Données invalides' });
+    }
     console.error(err);
     res.status(500).json({ error: err.message });
   }

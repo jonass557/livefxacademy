@@ -166,6 +166,7 @@ const translations = {
       passwordTooShort: 'Mot de passe trop court (min 6)',
       successMessage: 'Compte créé avec succès ! Connectez-vous.',
       errorMessage: 'Erreur lors de l\'inscription',
+      userExists: 'Un compte existe déjà avec cet email',
     },
     // Login
     login: {
@@ -176,6 +177,20 @@ const translations = {
       noAccount: 'Pas de compte ?',
       registerHere: 'Inscrivez-vous ici',
       errorMessage: 'Erreur de connexion',
+      invalidCredentials: 'Email ou mot de passe incorrect',
+      forgotPassword: 'Mot de passe oublié ?',
+    },
+    // Mot de passe oublié
+    forgot: {
+      title: 'Réinitialiser le mot de passe',
+      subtitle: 'Saisissez votre email et votre téléphone pour définir un nouveau mot de passe.',
+      email: 'Email',
+      phone: 'Téléphone (enregistré sur le compte)',
+      newPassword: 'Nouveau mot de passe',
+      submit: 'Changer le mot de passe',
+      close: 'Fermer',
+      successMessage: 'Mot de passe changé avec succès ! Connectez-vous.',
+      errorMessage: 'Échec de la réinitialisation',
     },
     // Trading Info
     trading: {
@@ -250,6 +265,9 @@ const translations = {
       submit: 'Envoyer',
       loading: 'Chargement...',
       viewDetails: 'Voir détails',
+      networkError: 'Impossible de joindre le serveur. Vérifiez votre connexion internet.',
+      timeoutError: 'Le serveur met trop de temps à répondre. Réessayez dans un instant.',
+      unknownError: 'Une erreur inattendue est survenue.',
     },
   },
   en: {
@@ -415,6 +433,7 @@ const translations = {
       passwordTooShort: 'Password too short (min 6)',
       successMessage: 'Account created successfully! Please login.',
       errorMessage: 'Registration error',
+      userExists: 'An account already exists with this email',
     },
     // Login
     login: {
@@ -425,6 +444,20 @@ const translations = {
       noAccount: 'No account?',
       registerHere: 'Register here',
       errorMessage: 'Login error',
+      invalidCredentials: 'Incorrect email or password',
+      forgotPassword: 'Forgot password?',
+    },
+    // Forgot password
+    forgot: {
+      title: 'Reset password',
+      subtitle: 'Enter your email and phone number to set a new password.',
+      email: 'Email',
+      phone: 'Phone (registered on the account)',
+      newPassword: 'New password',
+      submit: 'Change password',
+      close: 'Close',
+      successMessage: 'Password changed successfully! Please login.',
+      errorMessage: 'Reset failed',
     },
     // Trading Info
     trading: {
@@ -499,6 +532,9 @@ const translations = {
       submit: 'Submit',
       loading: 'Loading...',
       viewDetails: 'View details',
+      networkError: 'Cannot reach the server. Please check your internet connection.',
+      timeoutError: 'The server is taking too long to respond. Please try again shortly.',
+      unknownError: 'An unexpected error occurred.',
     },
   },
 };

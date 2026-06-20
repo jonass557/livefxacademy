@@ -8,9 +8,12 @@ import api from '../lib/api';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { PasswordInput } from '../components/ui/password-input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../components/ui/card';
 import { TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { getErrorMessage } from '../lib/errors';
+import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -22,6 +25,7 @@ const Login = () => {
   const { t } = useLanguageStore();
   const setAuth = useAuthStore((state) => state.setAuth);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(loginSchema),
   });
@@ -33,7 +37,7 @@ const Login = () => {
       setAuth(res.data.user, res.data.accessToken);
       navigate('/dashboard');
     } catch (error) {
-      toast.error(t('login.errorMessage'));
+      toast.error(t('login.errorMessage'), { description: getErrorMessage(error, t) });
     } finally {
       setIsSubmitting(false);
     }
@@ -58,13 +62,22 @@ const Login = () => {
               {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email.message}</p>}
             </div>
             <div>
-              <Input {...register('password')} placeholder={t('login.password')} type="password" />
+              <PasswordInput {...register('password')} placeholder={t('login.password')} />
               {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>}
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => setShowForgot(true)}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {t('login.forgotPassword')}
+                </button>
+              </div>
             </div>
             <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
               {isSubmitting ? t('common.loading') : t('login.submit')}
             </Button>
-            
+
             <p className="text-center text-sm text-muted-foreground">
               {t('login.noAccount')}{' '}
               <Link to="/register" className="text-primary hover:underline font-medium">
@@ -74,6 +87,7 @@ const Login = () => {
           </form>
         </CardContent>
       </Card>
+      <ForgotPasswordModal open={showForgot} onClose={() => setShowForgot(false)} />
     </div>
   );
 };

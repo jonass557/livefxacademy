@@ -8,6 +8,9 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const api = axios.create({
   baseURL: `${API_URL}/api`,
   withCredentials: true,
+  // Évite un "chargement" infini si le serveur ne répond pas (ex: cold-start).
+  // Au-delà de 30s, l'erreur ECONNABORTED est levée et un message clair s'affiche.
+  timeout: 30000,
 });
 
 // Request interceptor - add token
