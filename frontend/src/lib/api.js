@@ -1,4 +1,5 @@
-import axios from 'axios';
+﻿import axios from 'axios';
+import * as authNs from '../store/authStore';
 // En production, définir VITE_API_URL (ex: https://livefx-backend.onrender.com)
 // En local, on retombe sur http://localhost:5000
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -29,7 +30,7 @@ const isRetryableError = (error) => {
 
 // Request interceptor - add token
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
+  const token = authNs.useAuthStore.getState().token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -64,7 +65,7 @@ api.interceptors.response.use(
       // Token expired or invalid - logout user
       const currentPath = window.location.pathname;
       if (currentPath !== '/login' && currentPath !== '/register' && currentPath !== '/') {
-        useAuthStore.getState().logout();
+        authNs.useAuthStore.getState().logout();
         window.location.href = '/login';
       }
     }
