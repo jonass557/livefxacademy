@@ -35,6 +35,7 @@ const Login = () => {
     try {
       const res = await api.post('/auth/login', data);
       setAuth(res.data.user, res.data.accessToken);
+      toast.success(t('login.successMessage'));
       navigate('/dashboard');
     } catch (error) {
       toast.error(t('login.errorMessage'), { description: getErrorMessage(error, t) });

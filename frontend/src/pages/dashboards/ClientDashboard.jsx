@@ -16,6 +16,7 @@ import { getServiceIcon } from '../../lib/serviceIcons';
 import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
 import ReactPlayer from 'react-player';
+import AnnouncementInteractions from '../../components/AnnouncementInteractions';
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
@@ -256,6 +257,7 @@ const ClientDashboard = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-sm">{video.description}</p>
+                <AnnouncementInteractions video={video} isAdmin={false} />
               </CardContent>
             </Card>
           ))}

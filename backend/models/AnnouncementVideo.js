@@ -23,6 +23,10 @@ const announcementVideoSchema = new mongoose.Schema({
   view_count: {
     type: Number,
     default: 0
+  },
+  share_count: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }

@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
+
+import AnnouncementInteractions from '../../components/AnnouncementInteractions';import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -2392,6 +2393,7 @@ const AdminDashboard = () => {
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
+                        <AnnouncementInteractions video={video} isAdmin={true} />
                       </>
                     )}
                   </div>

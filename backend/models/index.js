@@ -10,6 +10,8 @@ const TrainerStrategy = require('./TrainerStrategy');
 const BannerImage = require('./BannerImage');
 const ConsultationSheet = require('./ConsultationSheet');
 const AnnouncementVideo = require('./AnnouncementVideo');
+const AnnouncementLike = require('./AnnouncementLike');
+const AnnouncementComment = require('./AnnouncementComment');
 const VideoView = require('./VideoView');
 const StudentConsultation = require('./StudentConsultation');
 const EmailLog = require('./EmailLog');
@@ -28,6 +30,8 @@ module.exports = {
   BannerImage,
   ConsultationSheet,
   AnnouncementVideo,
+  AnnouncementLike,
+  AnnouncementComment,
   VideoView,
   StudentConsultation,
   EmailLog,
