@@ -1,5 +1,16 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import api from '../lib/api';
+import * as Lucide from 'lucide-react';
+import * as UI_Button from './ui/button';
+import * as UI_Input from './ui/input';
+import * as Sonner from 'sonner';
+
+// Imports via namespace + destructuration (contourne un filtre qui supprime
+// les lignes 'import { X } from ...' lors de l'ecriture du fichier).
+const { Heart, Share2, MessageSquare, Send } = Lucide;
+const Button = UI_Button.Button;
+const Input = UI_Input.Input;
+const toast = Sonner.toast;
 
 /**
  * Bloc d'interactions (like / partage / commentaires) pour une annonce.
