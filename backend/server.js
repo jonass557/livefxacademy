@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 const path = require('path');
+const mongoose = require('mongoose');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const connectDB = require('./db');
@@ -29,6 +30,8 @@ const serviceRoutes = require('./routes/serviceRoutes');
 
 const app = express();
 
+const PORT = process.env.PORT || 5000;
+
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
@@ -47,7 +50,7 @@ const swaggerOptions = {
       title: 'LiveFx Academy API',
       version: '1.0.0',
     },
-    servers: [{ url: 'http://localhost:5000' }],
+    servers: [{ url: process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}` }],
   },
   apis: ['./routes/*.js'],
 };
@@ -73,7 +76,16 @@ app.get('/', (req, res) => {
   res.send('LiveFx Academy API Running');
 });
 
-const PORT = process.env.PORT || 5000;
+app.get('/health', (req, res) => {
+  const mongoState = mongoose.connection.readyState;
+  res.status(mongoState === 1 ? 200 : 503).json({
+    status: mongoState === 1 ? 'ok' : 'degraded',
+    database: mongoState === 1 ? 'connected' : 'disconnected',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
