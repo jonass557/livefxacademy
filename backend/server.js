@@ -27,6 +27,7 @@ const announcementRoutes = require('./routes/announcementRoutes');
 const studentConsultationRoutes = require('./routes/studentConsultationRoutes');
 const emailRoutes = require('./routes/emailRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
+const backtestRoutes = require('./routes/backtestRoutes');
 
 const app = express();
 
@@ -71,6 +72,7 @@ app.use('/api/announcements', announcementRoutes);
 app.use('/api/student-consultations', studentConsultationRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/services', serviceRoutes);
+app.use('/api/backtests', backtestRoutes);
 
 app.get('/', (req, res) => {
   res.send('LiveFx Academy API Running');

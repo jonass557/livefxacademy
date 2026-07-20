@@ -17,6 +17,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
 import ReactPlayer from 'react-player';
 import AnnouncementInteractions from '../../components/AnnouncementInteractions';
+import Backtesting from '../Backtesting';
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
@@ -1021,6 +1022,7 @@ const ClientDashboard = () => {
       case 'contact': return renderContact();
       case 'consultation': return renderConsultation();
       case 'vacation': return renderVacation();
+      case 'backtesting': return <Backtesting />;
       default: return renderDashboard();
     }
   };
@@ -1035,6 +1037,7 @@ const ClientDashboard = () => {
     { id: 'contact', icon: MessageSquare, label: t('sidebar.contact') },
     { id: 'consultation', icon: ClipboardList, label: t('sidebar.consultationForm') },
     { id: 'vacation', icon: Palmtree, label: t('sidebar.vacationProgram') },
+    { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
   ];
 
   return (

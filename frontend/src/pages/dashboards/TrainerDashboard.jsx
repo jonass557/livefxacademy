@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/input';
 import { useAuthStore } from '../../store/authStore';
 import { toast } from 'sonner';
 import api from '../../lib/api';
+import Backtesting from '../Backtesting';
 import { 
   Plus, 
   Edit2, 
@@ -44,6 +45,7 @@ const TrainerDashboard = () => {
     { id: 'profile', icon: User, label: 'Mon Profil' },
     { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
     { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
+    { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
   ];
 
   return (
@@ -81,6 +83,7 @@ const TrainerDashboard = () => {
               {activeSection === 'profile' && <ProfileSection key={`profile-${refreshKey}`} />}
               {activeSection === 'registration' && <RegistrationDetails key={`registration-${refreshKey}`} />}
               {activeSection === 'strategies' && <StrategiesSection key={`strategies-${refreshKey}`} />}
+              {activeSection === 'backtesting' && <Backtesting key={`backtesting-${refreshKey}`} />}
             </div>
           )}
         </div>
