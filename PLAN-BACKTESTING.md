@@ -82,6 +82,25 @@ contrôles compacts.
 - [x] Design des dashboards : header en dégradé avec halos (esprit page
       d'accueil), cartes de navigation avec survol dégradé + élévation
 
+## Phase 6 — Simulateur de trading MANUEL ✅ (28/07/2026)
+
+Changement de philosophie : plus AUCUNE position automatique. Le replay sert
+au trader pour tester SA stratégie en prenant lui-même ses positions.
+
+- [x] Bouton « Lecture » renommé « Replay » ; ne lance plus le moteur de
+      backtest automatique — il rejoue simplement la période
+- [x] Le replay démarre EXACTEMENT à la date de début délimitée et s'arrête
+      automatiquement à la date de fin (position restante fermée au dernier prix)
+- [x] Boutons Buy / Sell pendant le replay : le trader ouvre et ferme ses
+      positions manuellement (marqueurs ▲/▼ + ligne d'entrée pointillée,
+      profit flottant en direct, solde/équité mis à jour, P&L en pips×lot
+      à 10 $/pip/lot)
+- [x] Solde initial 10 000 $ bien visible dans l'en-tête (carte Wallet)
+- [x] Stratégies/moteur auto retirés de la page (le backend reste disponible
+      pour l'historique existant)
+- [x] Outils d'analyse déplaçables : les overlays KLineCharts se déplacent
+      par glisser-déposer nativement (non verrouillés)
+
 ## Reste à faire
 
 - [ ] Vérifier le rendu sur téléphone
