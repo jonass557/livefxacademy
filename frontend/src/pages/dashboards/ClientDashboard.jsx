@@ -16,6 +16,7 @@ import { getServiceIcon } from '../../lib/serviceIcons';
 import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
 import ReactPlayer from 'react-player';
+import { cloudinaryVideoThumb } from '../../lib/video';
 import AnnouncementInteractions from '../../components/AnnouncementInteractions';
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
@@ -205,12 +206,12 @@ const ClientDashboard = () => {
               {videos.slice(0, 6).map((video) => (
                 <div key={video.id} className="border rounded-lg overflow-hidden">
                   <div className="aspect-video bg-black">
-                    <ReactPlayer 
-                      url={video.cloudinary_url} 
-                      width="100%" 
-                      height="100%" 
-                      controls 
-                      light={true}
+                    <ReactPlayer
+                      url={video.cloudinary_url}
+                      width="100%"
+                      height="100%"
+                      controls
+                      light={cloudinaryVideoThumb(video.cloudinary_url) || true}
                       onPlay={() => handleVideoView(video.id)}
                     />
                   </div>
@@ -244,12 +245,12 @@ const ClientDashboard = () => {
           {videos.map((video) => (
             <Card key={video.id} className="overflow-hidden">
               <div className="aspect-video bg-black">
-                <ReactPlayer 
-                  url={video.cloudinary_url} 
-                  width="100%" 
-                  height="100%" 
-                  controls 
-                  light={true}
+                <ReactPlayer
+                  url={video.cloudinary_url}
+                  width="100%"
+                  height="100%"
+                  controls
+                  light={cloudinaryVideoThumb(video.cloudinary_url) || true}
                   onPlay={() => handleVideoView(video.id)}
                 />
               </div>

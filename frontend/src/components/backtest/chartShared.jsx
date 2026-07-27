@@ -39,6 +39,9 @@ export const CHART_STYLES = {
       upWickColor: '#22c55e', downWickColor: '#ef4444',
     },
     priceMark: { last: { upColor: '#22c55e', downColor: '#ef4444' } },
+    // Le tooltip OHLC intégré se superposait à notre badge symbole/OHLC :
+    // désactivé (nos valeurs sont affichées dans l'entête du graphique).
+    tooltip: { showRule: 'none' },
   },
   xAxis: { axisLine: { color: 'rgba(148,163,184,0.3)' }, tickText: { color: '#9ca3af' } },
   yAxis: { axisLine: { color: 'rgba(148,163,184,0.3)' }, tickText: { color: '#9ca3af' } },

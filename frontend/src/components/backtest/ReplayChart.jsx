@@ -369,7 +369,7 @@ export default function ReplayChart({
 
       {/* ==================== GRAPHIQUE ==================== */}
       <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
-        <div className="pointer-events-none absolute left-2 top-1.5 z-10 leading-tight">
+        <div className="pointer-events-none absolute left-2 top-2 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-2 py-1 shadow-sm">
           <p className="text-xs font-semibold text-primary">
             {symbolName} <span className="text-foreground">{timeframe}</span>
           </p>

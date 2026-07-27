@@ -10,6 +10,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
 import AdminSidebar from '../../components/AdminSidebar';
 import { getServiceIcon, SERVICE_ICON_NAMES } from '../../lib/serviceIcons';
+import { cloudinaryVideoThumb } from '../../lib/video';
 
 const AdminDashboard = () => {
   const { user } = useAuthStore();
@@ -2336,8 +2337,10 @@ const AdminDashboard = () => {
               {announcements.map((video) => (
                 <div key={video.id} className="border rounded-lg overflow-hidden">
                   <div className="aspect-video bg-black relative">
-                    <video 
-                      src={video.cloudinary_url} 
+                    <video
+                      src={video.cloudinary_url}
+                      poster={cloudinaryVideoThumb(video.cloudinary_url) || undefined}
+                      preload="none"
                       className="w-full h-full object-cover"
                       controls
                     />

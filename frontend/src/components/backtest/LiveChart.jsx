@@ -146,7 +146,10 @@ export default function LiveChart({
       <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
         {/* Entête OHLC en surimpression, façon MT5 */}
         {last && (
-          <div className="pointer-events-none absolute left-2 top-1.5 z-10 leading-tight">
+          <div className="pointer-events-none absolute left-2 top-2 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-2 py-1 shadow-sm">
+            <p className="text-xs font-semibold text-primary">
+              {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
+            </p>
             <p className="text-[11px] tabular-nums text-muted-foreground">
               O {last.open.toFixed(digits)} H {last.high.toFixed(digits)} L {last.low.toFixed(digits)}{' '}
               <span className={last.close >= last.open ? 'text-emerald-500' : 'text-red-500'}>
