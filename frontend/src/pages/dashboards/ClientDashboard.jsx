@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { 
+import {
   Video, TrendingUp, GraduationCap, Link as LinkIcon,
   MessageSquare, Phone, Send, Facebook, ClipboardList,
   Palmtree, Briefcase, CheckCircle, ArrowRight, ArrowLeft, ExternalLink,
   User, MapPin, Clock, Target, BookOpen, Star, AlertCircle,
-  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X
+  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X, History
 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ import { useLanguageStore } from '../../store/languageStore';
 import ReactPlayer from 'react-player';
 import AnnouncementInteractions from '../../components/AnnouncementInteractions';
 import Backtesting from '../Backtesting';
+import BacktestHistory from '../../components/backtest/BacktestHistory';
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
@@ -1023,6 +1024,7 @@ const ClientDashboard = () => {
       case 'consultation': return renderConsultation();
       case 'vacation': return renderVacation();
       case 'backtesting': return <Backtesting />;
+      case 'backtest-history': return <BacktestHistory />;
       default: return renderDashboard();
     }
   };
@@ -1038,6 +1040,7 @@ const ClientDashboard = () => {
     { id: 'consultation', icon: ClipboardList, label: t('sidebar.consultationForm') },
     { id: 'vacation', icon: Palmtree, label: t('sidebar.vacationProgram') },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
+    { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
   ];
 
   return (
@@ -1046,9 +1049,15 @@ const ClientDashboard = () => {
         {/* Backtesting : pleine largeur pour maximiser l'espace du graphique */}
         <div className={`p-4 md:p-6 mx-auto ${activeSection === 'backtesting' ? 'max-w-none' : 'max-w-7xl'}`}>
           {/* Header */}
-          <div className="mb-4 md:mb-6">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dashboard.clientTitle')}</h1>
-            <p className="text-sm md:text-base text-muted-foreground">{t('dashboard.welcome')}, {user?.full_name}</p>
+          <div className="mb-4 md:mb-6 relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-purple-500/10 p-6 md:p-8">
+            <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
+            <div className="absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
+            <div className="relative">
+              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-primary">
+                {t('dashboard.clientTitle')}
+              </h1>
+              <p className="text-sm md:text-base text-muted-foreground mt-1">{t('dashboard.welcome')}, <span className="font-semibold text-foreground">{user?.full_name}</span></p>
+            </div>
           </div>
 
           {activeSection === 'dashboard' ? (
@@ -1061,12 +1070,13 @@ const ClientDashboard = () => {
                     <button
                       key={item.id}
                       onClick={() => setActiveSection(item.id)}
-                      className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border bg-card hover:bg-muted hover:shadow-md hover:-translate-y-0.5 transition-all text-center"
+                      className="group relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border bg-card overflow-hidden hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 transition-all duration-300 text-center"
                     >
-                      <div className="p-3 rounded-xl bg-primary/10">
+                      <div className="absolute inset-0 bg-gradient-to-br from-primary/0 via-transparent to-purple-500/0 group-hover:from-primary/10 group-hover:to-purple-500/10 transition-all duration-300" />
+                      <div className="relative p-3 rounded-xl bg-gradient-to-br from-primary/15 to-purple-500/10 group-hover:scale-110 transition-transform duration-300">
                         <Icon className="h-7 w-7 text-primary" />
                       </div>
-                      <span className="font-medium text-sm">{item.label}</span>
+                      <span className="relative font-medium text-sm">{item.label}</span>
                     </button>
                   );
                 })}

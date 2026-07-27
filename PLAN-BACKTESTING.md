@@ -64,6 +64,24 @@ contrôles compacts.
       marché — onglets par catégorie + choix de l'unité de temps (M1→D1)
 - [x] Sélection synchronisée avec le formulaire de backtest (paire/TF)
 
+## Phase 5 — Studio unifié + historique + design des dashboards ✅
+
+- [x] Vue d'ensemble immédiate : à l'ouverture, le graphique montre la période
+      délimitée (lignes verticales bleue = début, violette = fin, avec marge
+      de contexte de 10 %) avant tout clic sur Lecture
+- [x] Barre de réglages unique en haut : Paire (par catégorie Forex/Métaux/
+      Indices/Crypto), TF, Période (préréglages 1 mois → 1 an + dates libres),
+      Lot (0.01 → 5), Stratégie — tout en menus déroulants
+- [x] Solde fixe 10 000 $ ; bouton « Lecture » (dégradé) lance le backtest
+- [x] Cartes Configuration / Résultats / Historique supprimées de la page ;
+      les stats s'affichent en bandeau compact au-dessus du graphique
+- [x] Backend : `GET /api/backtests/candles` accepte `start_date`/`end_date`
+      pour l'aperçu de la période délimitée
+- [x] Bouton « Historique de backtest » sur les dashboards Client et
+      Formateur : composant `BacktestHistory` (consultation + suppression)
+- [x] Design des dashboards : header en dégradé avec halos (esprit page
+      d'accueil), cartes de navigation avec survol dégradé + élévation
+
 ## Reste à faire
 
 - [ ] Vérifier le rendu sur téléphone

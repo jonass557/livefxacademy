@@ -28,11 +28,15 @@ const fmtDateLong = (t) =>
 
 /**
  * Graphique en chandeliers japonais avec mode Replay façon TradingView :
+ * vue d'ensemble d'abord (période délimitée par des lignes verticales),
  * lecture bougie par bougie à vitesse réglable, date courante affichée,
  * marqueurs de trades au fil de l'eau, outils de dessin et indicateurs,
  * courbe d'équité synchronisée en dessous.
  */
-export default function ReplayChart({ candles, trades, equityCurve, symbolName, timeframe }) {
+export default function ReplayChart({
+  candles, trades, equityCurve, symbolName, timeframe,
+  periodBounds, loading = false, isPreview = false,
+}) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const timerRef = useRef(null);
@@ -108,6 +112,24 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
     exitPtrRef.current = 0;
   };
 
+  // Lignes verticales délimitant la période à backtester (vue d'ensemble).
+  const drawPeriodBounds = () => {
+    const chart = chartRef.current;
+    if (!chart || !periodBounds || !candles?.length) return;
+    chart.removeOverlay({ groupId: 'bounds' });
+    const first = candles[0].time, lastT = candles[candles.length - 1].time;
+    for (const [key, t] of [['start', periodBounds.start], ['end', periodBounds.end]]) {
+      if (t < first || t > lastT) continue;
+      chart.createOverlay({
+        name: 'verticalStraightLine',
+        groupId: 'bounds',
+        lock: true,
+        points: [{ timestamp: t * 1000 }],
+        styles: { line: { color: key === 'start' ? '#3b82f6' : '#a855f7', size: 1, style: 'dashed' } },
+      });
+    }
+  };
+
   // ---- Initialisation du graphique ----
   useEffect(() => {
     const el = containerRef.current;
@@ -120,6 +142,7 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
     chart.applyNewData(klineData);
     resetMarkers();
     advanceMarkers(Infinity); // vue complète : tous les marqueurs
+    drawPeriodBounds();
     indexRef.current = klineData.length - 1;
     setIndex(klineData.length - 1);
     setMode('full');
@@ -212,10 +235,18 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
     setIndex(i);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center rounded-xl border h-64 text-sm text-muted-foreground gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" /> Chargement du graphique…
+      </div>
+    );
+  }
+
   if (!candles?.length) {
     return (
-      <div className="flex items-center justify-center h-40 text-sm text-muted-foreground gap-2">
-        <Loader2 className="h-4 w-4 animate-spin" /> Chargement des bougies…
+      <div className="flex items-center justify-center rounded-xl border h-64 text-sm text-muted-foreground gap-2">
+        Aucune donnée pour cette période.
       </div>
     );
   }
@@ -236,7 +267,13 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
     <div className={wrapClass}>
       {/* ==================== BARRE DE CONTRÔLE REPLAY ==================== */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
-        {!inReplay ? (
+        {isPreview ? (
+          <span className="text-xs text-muted-foreground flex items-center gap-2">
+            <span className="inline-block h-2.5 w-0.5 bg-blue-500" /> début
+            <span className="inline-block h-2.5 w-0.5 bg-purple-500" /> fin
+            <span className="ml-1">Vue d'ensemble — période délimitée. Cliquez sur Lecture pour lancer le backtest.</span>
+          </span>
+        ) : !inReplay ? (
           <Button size="sm" onClick={enterReplay} className="gap-1.5">
             <Film className="h-4 w-4" /> Replay
           </Button>
@@ -334,8 +371,8 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
         <div ref={containerRef} className="w-full h-full" />
       </div>
 
-      {/* ==================== ÉQUITÉ SYNCHRONISÉE ==================== */}
-      {fullscreen ? (
+      {/* ==================== ÉQUITÉ SYNCHRONISÉE (absente en aperçu) ==================== */}
+      {!isPreview && equityCurve?.length > 0 && (fullscreen ? (
         <>
           <Button
             size="sm"
@@ -357,7 +394,7 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
           <p className="text-xs text-muted-foreground mb-2">Évolution du capital {inReplay ? '(synchronisée avec le replay)' : ''}</p>
           <ReplayEquityChart points={equityCurve} currentTime={inReplay ? currentTime : null} />
         </div>
-      )}
+      ))}
     </div>
   );
 }

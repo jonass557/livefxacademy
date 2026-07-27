@@ -7,12 +7,13 @@ import { useAuthStore } from '../../store/authStore';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 import Backtesting from '../Backtesting';
-import { 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  CheckCircle, 
-  Clock, 
+import BacktestHistory from '../../components/backtest/BacktestHistory';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  CheckCircle,
+  Clock,
   TrendingUp,
   User,
   Mail,
@@ -26,7 +27,8 @@ import {
   BarChart3,
   Send,
   FileText,
-  ArrowLeft
+  ArrowLeft,
+  History
 } from 'lucide-react';
 
 const TrainerDashboard = () => {
@@ -46,6 +48,7 @@ const TrainerDashboard = () => {
     { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
     { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
+    { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
   ];
 
   return (
@@ -55,6 +58,18 @@ const TrainerDashboard = () => {
         <div className={`p-4 md:p-6 mx-auto ${activeSection === 'backtesting' ? 'max-w-none' : 'max-w-7xl'}`}>
           {activeSection === 'dashboard' ? (
             <div className="space-y-8">
+              {/* Header */}
+              <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-purple-500/10 p-6 md:p-8">
+                <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
+                <div className="absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
+                <div className="relative">
+                  <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-primary">
+                    Espace Formateur
+                  </h1>
+                  <p className="text-sm md:text-base text-muted-foreground mt-1">Bienvenue, <span className="font-semibold text-foreground">{user?.full_name}</span></p>
+                </div>
+              </div>
+
               {/* Feature button grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {navItems.map(item => {
@@ -63,12 +78,13 @@ const TrainerDashboard = () => {
                     <button
                       key={item.id}
                       onClick={() => handleSectionChange(item.id)}
-                      className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl border bg-card hover:bg-muted hover:shadow-md hover:-translate-y-0.5 transition-all text-center"
+                      className="group relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border bg-card overflow-hidden hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 transition-all duration-300 text-center"
                     >
-                      <div className="p-3 rounded-xl bg-primary/10">
+                      <div className="absolute inset-0 bg-gradient-to-br from-primary/0 via-transparent to-purple-500/0 group-hover:from-primary/10 group-hover:to-purple-500/10 transition-all duration-300" />
+                      <div className="relative p-3 rounded-xl bg-gradient-to-br from-primary/15 to-purple-500/10 group-hover:scale-110 transition-transform duration-300">
                         <Icon className="h-7 w-7 text-primary" />
                       </div>
-                      <span className="font-medium text-sm">{item.label}</span>
+                      <span className="relative font-medium text-sm">{item.label}</span>
                     </button>
                   );
                 })}
@@ -85,6 +101,7 @@ const TrainerDashboard = () => {
               {activeSection === 'registration' && <RegistrationDetails key={`registration-${refreshKey}`} />}
               {activeSection === 'strategies' && <StrategiesSection key={`strategies-${refreshKey}`} />}
               {activeSection === 'backtesting' && <Backtesting key={`backtesting-${refreshKey}`} />}
+              {activeSection === 'backtest-history' && <BacktestHistory key={`backtest-history-${refreshKey}`} />}
             </div>
           )}
         </div>

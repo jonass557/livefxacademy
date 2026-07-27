@@ -141,10 +141,11 @@ exports.getBacktestCandles = async (req, res) => {
 };
 
 // Bougies récentes d'un marché (graphique en direct de la page Backtesting).
-// Query : provider?, symbol, timeframe, count? (défaut 300, max 1000).
+// Query : provider?, symbol, timeframe, count? (défaut 300, max 1000)
+//         ou start_date/end_date pour une période délimitée (aperçu avant replay).
 exports.getMarketCandles = async (req, res) => {
   try {
-    const { provider: providerName = 'deriv', symbol, timeframe = 'H1' } = req.query;
+    const { provider: providerName = 'deriv', symbol, timeframe = 'H1', start_date, end_date } = req.query;
     const count = Math.min(Math.max(Number(req.query.count) || 300, 1), 1000);
     if (!symbol) return res.status(400).json({ message: 'Le symbole est requis' });
     if (!isValidTimeframe(timeframe)) return res.status(400).json({ message: 'Unité de temps invalide' });
@@ -157,8 +158,20 @@ exports.getMarketCandles = async (req, res) => {
     if (!meta) return res.status(400).json({ message: 'Symbole non supporté : ' + symbol });
 
     const granularity = granularityOf(timeframe);
-    const end = Math.floor(Date.now() / 1000);
-    const start = end - count * granularity;
+    let start, end;
+    if (start_date && end_date) {
+      // Période explicite (aperçu de la zone à backtester).
+      start = Math.floor(new Date(start_date).getTime() / 1000);
+      end = Math.floor(new Date(end_date).getTime() / 1000);
+      if (!(start < end)) return res.status(400).json({ message: 'Période invalide' });
+      // Marge de contexte avant/après la période (10 % de part et d'autre).
+      const margin = Math.max(Math.floor((end - start) * 0.1), granularity * 10);
+      start -= margin;
+      end = Math.min(end + margin, Math.floor(Date.now() / 1000));
+    } else {
+      end = Math.floor(Date.now() / 1000);
+      start = end - count * granularity;
+    }
     const candles = await provider.fetchCandles({ symbol, granularity, start, end });
 
     res.json({ symbol, symbol_name: meta.name, timeframe, candles });

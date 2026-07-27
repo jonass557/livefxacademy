@@ -1,69 +1,159 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createChart, AreaSeries } from 'lightweight-charts';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Select } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table';
 import { toast } from 'sonner';
 import api from '../lib/api';
 import ReplayChart from '../components/backtest/ReplayChart';
-import LiveChart from '../components/backtest/LiveChart';
-import { Play, Loader2, History, Trash2, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { Dropdown } from '../components/backtest/chartShared';
+import {
+  Play, Loader2, BarChart3, ChevronDown, CalendarRange, Coins, LineChart,
+  TrendingUp, TrendingDown, X,
+} from 'lucide-react';
 
 // ---- Helpers d'affichage ----
-const fmtMoney = (n) => (n == null ? '—' : Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 2 }));
-const fmtPct = (n) => (n == null ? '—' : `${Number(n).toFixed(2)} %`);
-const fmtDate = (t) => new Date(t * 1000).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+export const fmtMoney = (n) => (n == null ? '—' : Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 2 }));
+export const fmtPct = (n) => (n == null ? '—' : `${Number(n).toFixed(2)} %`);
+export const fmtDate = (t) => new Date(t * 1000).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 const toInputDate = (d) => d.toISOString().slice(0, 10);
 
-const CLOSE_REASONS = { sl: 'Stop Loss', tp: 'Take Profit', trailing: 'Trailing', signal: 'Signal', end: 'Fin de période' };
+export const CLOSE_REASONS = { sl: 'Stop Loss', tp: 'Take Profit', trailing: 'Trailing', signal: 'Signal', end: 'Fin de période' };
 
-// Courbe d'équité (lightweight-charts v5).
-function EquityChart({ points }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!ref.current || !points?.length) return;
-    const chart = createChart(ref.current, {
-      height: 320,
-      layout: { background: { color: 'transparent' }, textColor: '#9ca3af' },
-      grid: { vertLines: { color: 'rgba(148,163,184,0.1)' }, horzLines: { color: 'rgba(148,163,184,0.1)' } },
-      timeScale: { timeVisible: true, secondsVisible: false },
-      autoSize: true,
-    });
-    const series = chart.addSeries(AreaSeries, {
-      lineColor: '#22c55e',
-      topColor: 'rgba(34,197,94,0.3)',
-      bottomColor: 'rgba(34,197,94,0.02)',
-      lineWidth: 2,
-    });
-    series.setData(points.map((p) => ({ time: p.t, value: p.equity })));
-    chart.timeScale().fitContent();
-    return () => chart.remove();
-  }, [points]);
-  return <div ref={ref} className="w-full" />;
-}
+const INITIAL_BALANCE = 10000; // solde fixe demandé
+const LOTS = [0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5];
+const CATEGORY_LABELS = { forex: 'Forex', metal: 'Métaux', indice: 'Indices', crypto: 'Crypto' };
 
-// Carte de statistique.
-function Stat({ label, value, accent }) {
+// Bouton de la barre de réglages (libellé + valeur + chevron).
+function PickerButton({ icon: Icon, label, value, onClick }) {
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-lg font-semibold ${accent || ''}`}>{value}</p>
-    </div>
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1.5 text-sm hover:bg-muted transition-colors"
+    >
+      {Icon && <Icon className="h-4 w-4 text-primary" />}
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-semibold">{value}</span>
+      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+    </button>
   );
 }
 
+// Sélecteur de paire par catégorie.
+function PairPicker({ symbols, symbol, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [cat, setCat] = useState(null);
+  const current = symbols.find((s) => s.symbol === symbol);
+  const categories = useMemo(() => {
+    const out = [];
+    for (const s of symbols) { const c = s.category || 'forex'; if (!out.includes(c)) out.push(c); }
+    return out;
+  }, [symbols]);
+  const activeCat = cat || current?.category || categories[0];
+  return (
+    <Dropdown
+      open={open} setOpen={setOpen} width="w-72"
+      trigger={<PickerButton icon={LineChart} label="Paire" value={current?.name || '—'} onClick={() => setOpen((o) => !o)} />}
+    >
+      <div className="p-2 space-y-2">
+        <div className="flex flex-wrap gap-1">
+          {categories.map((c) => (
+            <Button key={c} size="sm" variant={activeCat === c ? 'default' : 'ghost'} className="h-6 px-2 text-xs" onClick={() => setCat(c)}>
+              {CATEGORY_LABELS[c] || c}
+            </Button>
+          ))}
+        </div>
+        <div className="max-h-52 overflow-y-auto">
+          {symbols.filter((s) => (s.category || 'forex') === activeCat).map((s) => (
+            <button
+              key={s.symbol}
+              className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-muted ${s.symbol === symbol ? 'bg-muted font-medium' : ''}`}
+              onClick={() => { onSelect(s.symbol); setOpen(false); }}
+            >
+              {s.name}
+              {s.symbol === symbol && <span className="text-primary text-xs">●</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Dropdown>
+  );
+}
+
+// Sélecteur générique en grille (timeframes, lots, stratégies…).
+function GridPicker({ icon, label, value, options, onSelect, width = 'w-56' }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dropdown
+      open={open} setOpen={setOpen} width={width}
+      trigger={<PickerButton icon={icon} label={label} value={value} onClick={() => setOpen((o) => !o)} />}
+    >
+      <div className="p-2 flex flex-wrap gap-1">
+        {options.map((o) => (
+          <Button
+            key={o.key} size="sm" variant={o.active ? 'default' : 'outline'} className="h-7 px-2.5 text-xs"
+            onClick={() => { onSelect(o.key); setOpen(false); }}
+          >
+            {o.label}
+          </Button>
+        ))}
+      </div>
+    </Dropdown>
+  );
+}
+
+// Sélecteur de période (dates de début et de fin).
+function PeriodPicker({ startDate, endDate, onChange }) {
+  const [open, setOpen] = useState(false);
+  const label = `${new Date(startDate).toLocaleDateString('fr-FR')} → ${new Date(endDate).toLocaleDateString('fr-FR')}`;
+  const setPreset = (days) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 3600 * 1000);
+    onChange(toInputDate(start), toInputDate(end));
+  };
+  return (
+    <Dropdown
+      open={open} setOpen={setOpen} width="w-64"
+      trigger={<PickerButton icon={CalendarRange} label="Période" value={label} onClick={() => setOpen((o) => !o)} />}
+    >
+      <div className="p-2 space-y-2">
+        <div className="flex flex-wrap gap-1">
+          {[{ d: 30, l: '1 mois' }, { d: 90, l: '3 mois' }, { d: 180, l: '6 mois' }, { d: 365, l: '1 an' }].map((p) => (
+            <Button key={p.d} size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => setPreset(p.d)}>
+              {p.l}
+            </Button>
+          ))}
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs text-muted-foreground">Début</label>
+          <input
+            type="date" value={startDate} max={endDate}
+            onChange={(e) => onChange(e.target.value, endDate)}
+            className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+          />
+          <label className="text-xs text-muted-foreground">Fin</label>
+          <input
+            type="date" value={endDate} min={startDate} max={toInputDate(new Date())}
+            onChange={(e) => onChange(startDate, e.target.value)}
+            className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+          />
+        </div>
+      </div>
+    </Dropdown>
+  );
+}
+
+/**
+ * Studio de backtesting unifié : une barre de réglages en haut (paire par
+ * catégorie, timeframe, période délimitée sur le graphique, lot, stratégie),
+ * le graphique en vue d'ensemble dessous, et le bouton Lecture qui lance le
+ * backtest puis le replay. Solde fixe : 10 000 $.
+ */
 const Backtesting = () => {
   const [meta, setMeta] = useState(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
-  const [history, setHistory] = useState([]);
+  const [preview, setPreview] = useState(null);       // bougies de l'aperçu (période délimitée)
+  const [previewLoading, setPreviewLoading] = useState(false);
 
-  // ---- Formulaire ----
   const [form, setForm] = useState(() => {
     const end = new Date();
     const start = new Date(end.getTime() - 90 * 24 * 3600 * 1000);
@@ -75,38 +165,44 @@ const Backtesting = () => {
       end_date: toInputDate(end),
       template: 'ema_cross',
       parameters: { fast: 9, slow: 21 },
-      direction: 'both',
-      sl_pips: 50,
-      tp_pips: 100,
-      trailing_pips: 0,
-      initial_balance: 10000,
-      position_size_mode: 'lots',
       position_size: 0.1,
-      spread: 1,
-      commission: 0,
-      leverage: 100,
-      max_positions: 1,
     };
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const setParam = (k, v) => setForm((f) => ({ ...f, parameters: { ...f.parameters, [k]: Number(v) } }));
 
   const provider = useMemo(() => meta?.providers?.find((p) => p.name === form.provider), [meta, form.provider]);
+  const symbols = provider?.symbols || [];
+  const symbolName = symbols.find((s) => s.symbol === form.symbol)?.name;
   const template = useMemo(() => meta?.templates?.find((t) => t.key === form.template), [meta, form.template]);
 
   useEffect(() => {
     api.get('/backtests/meta').then((r) => setMeta(r.data)).catch(() => toast.error('Impossible de charger les métadonnées'));
-    loadHistory();
   }, []);
 
-  const loadHistory = () => api.get('/backtests').then((r) => setHistory(r.data)).catch(() => {});
+  // ---- Aperçu : charge les bougies de la période délimitée (avant Lecture) ----
+  useEffect(() => {
+    if (result) return; // un backtest est affiché, pas d'aperçu
+    let cancelled = false;
+    setPreviewLoading(true);
+    api.get('/backtests/candles', {
+      params: {
+        provider: form.provider, symbol: form.symbol, timeframe: form.timeframe,
+        start_date: form.start_date, end_date: form.end_date,
+      },
+    })
+      .then((r) => { if (!cancelled) setPreview(r.data.candles); })
+      .catch(() => { if (!cancelled) setPreview(null); })
+      .finally(() => { if (!cancelled) setPreviewLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.provider, form.symbol, form.timeframe, form.start_date, form.end_date, result]);
 
-  // Quand on change de template, recharger ses paramètres par défaut.
   const onTemplateChange = (key) => {
     const t = meta?.templates?.find((x) => x.key === key);
     setForm((f) => ({ ...f, template: key, parameters: { ...(t?.parameters || {}) } }));
   };
 
+  // ---- Lecture : lance le backtest puis affiche le replay ----
   const runBacktest = async () => {
     setRunning(true);
     try {
@@ -119,26 +215,16 @@ const Backtesting = () => {
         strategy: {
           template: form.template,
           parameters: form.parameters,
-          risk: {
-            direction: form.direction,
-            sl_pips: Number(form.sl_pips) || 0,
-            tp_pips: Number(form.tp_pips) || 0,
-            trailing_pips: Number(form.trailing_pips) || 0,
-          },
+          risk: { direction: 'both', sl_pips: 50, tp_pips: 100, trailing_pips: 0 },
         },
         config: {
-          initial_balance: Number(form.initial_balance),
-          position_size_mode: form.position_size_mode,
+          initial_balance: INITIAL_BALANCE,
+          position_size_mode: 'lots',
           position_size: Number(form.position_size),
-          spread: Number(form.spread) || 0,
-          commission: Number(form.commission) || 0,
-          leverage: Number(form.leverage) || 1,
-          max_positions: Number(form.max_positions) || 1,
-          sl_pips: Number(form.sl_pips) || 0,
+          spread: 1, commission: 0, leverage: 100, max_positions: 1, sl_pips: 50,
         },
       });
       setResult(data);
-      loadHistory();
       toast.success(`Backtest terminé — ${data.stats.total_trades} trades sur ${data.candles_count} bougies`);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erreur lors du backtest');
@@ -147,308 +233,87 @@ const Backtesting = () => {
     }
   };
 
-  const loadBacktest = async (id) => {
-    try {
-      const { data } = await api.get(`/backtests/${id}`);
-      setResult(data); // affiche stats/trades tout de suite
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      // Les bougies ne sont pas stockées en base : on les re-télécharge pour le graphique/replay.
-      try {
-        const { data: c } = await api.get(`/backtests/${id}/candles`);
-        setResult((r) => (r && r.id === data.id ? { ...r, candles: c.candles } : r));
-      } catch {
-        toast.error('Bougies indisponibles pour ce backtest (graphique désactivé)');
-      }
-    } catch { toast.error('Impossible de charger ce backtest'); }
-  };
-
-  const deleteBacktest = async (id) => {
-    try {
-      await api.delete(`/backtests/${id}`);
-      setHistory((h) => h.filter((b) => b.id !== id));
-      toast.success('Backtest supprimé');
-    } catch { toast.error('Suppression impossible'); }
-  };
+  const closeResult = () => setResult(null);
 
   const stats = result?.stats;
   const profitPositive = stats && stats.net_profit >= 0;
+  const periodBounds = useMemo(() => ({
+    start: Math.floor(new Date(form.start_date).getTime() / 1000),
+    end: Math.floor(new Date(form.end_date).getTime() / 1000),
+  }), [form.start_date, form.end_date]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Backtesting</h2>
-        <p className="text-muted-foreground text-sm">Testez vos stratégies sur des données historiques réelles (Forex via Deriv).</p>
+    <div className="space-y-3">
+      {/* ==================== EN-TÊTE ==================== */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <BarChart3 className="h-6 w-6 text-primary" /> Backtesting
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Délimitez la période, choisissez la paire, le timeframe et le lot, puis cliquez sur Lecture. Solde : {fmtMoney(INITIAL_BALANCE)} $.
+          </p>
+        </div>
+        {result && (
+          <Button variant="outline" size="sm" onClick={closeResult} className="gap-1.5">
+            <X className="h-4 w-4" /> Fermer le backtest
+          </Button>
+        )}
       </div>
 
-      {/* ==================== MARCHÉ EN DIRECT ==================== */}
-      <Card>
-        <CardContent className="p-2 md:p-3">
-          <LiveChart
-            provider={form.provider}
-            symbol={form.symbol}
-            timeframe={form.timeframe}
-            symbolName={provider?.symbols?.find((s) => s.symbol === form.symbol)?.name}
-            symbols={provider?.symbols || []}
-            timeframes={meta?.timeframes || []}
-            onSelectSymbol={(s) => set('symbol', s)}
-            onSelectTimeframe={(t) => set('timeframe', t)}
-          />
-        </CardContent>
-      </Card>
+      {/* ==================== BARRE DE RÉGLAGES ==================== */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/60 p-2">
+        <PairPicker symbols={symbols} symbol={form.symbol} onSelect={(s) => { set('symbol', s); setResult(null); }} />
+        <GridPicker
+          icon={BarChart3} label="TF" value={form.timeframe} width="w-52"
+          options={(meta?.timeframes || []).map((t) => ({ key: t.key, label: t.key, active: t.key === form.timeframe }))}
+          onSelect={(t) => { set('timeframe', t); setResult(null); }}
+        />
+        <PeriodPicker
+          startDate={form.start_date} endDate={form.end_date}
+          onChange={(s, e) => { setForm((f) => ({ ...f, start_date: s, end_date: e })); setResult(null); }}
+        />
+        <GridPicker
+          icon={Coins} label="Lot" value={form.position_size} width="w-52"
+          options={LOTS.map((l) => ({ key: l, label: String(l), active: l === Number(form.position_size) }))}
+          onSelect={(l) => set('position_size', l)}
+        />
+        <GridPicker
+          icon={LineChart} label="Stratégie" value={template?.label?.split(' ')[0] || form.template} width="w-64"
+          options={(meta?.templates || []).filter((t) => t.key !== 'custom').map((t) => ({ key: t.key, label: t.label, active: t.key === form.template }))}
+          onSelect={onTemplateChange}
+        />
+        <Button onClick={runBacktest} disabled={running || !meta} className="gap-2 ml-auto bg-gradient-to-r from-primary to-purple-500 hover:opacity-90">
+          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          {running ? 'Analyse en cours…' : 'Lecture'}
+        </Button>
+      </div>
 
-      {/* ==================== FORMULAIRE ==================== */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Configuration</CardTitle>
-          <CardDescription>Marché, période, stratégie et gestion du risque</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Marché */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="space-y-1.5">
-              <Label>Fournisseur</Label>
-              <Select value={form.provider} onChange={(e) => set('provider', e.target.value)}>
-                {(meta?.providers || []).map((p) => (
-                  <option key={p.name} value={p.name} disabled={!p.available}>{p.label}</option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Paire</Label>
-              <Select value={form.symbol} onChange={(e) => set('symbol', e.target.value)}>
-                {(provider?.symbols || []).map((s) => (
-                  <option key={s.symbol} value={s.symbol}>{s.name}</option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Unité de temps</Label>
-              <Select value={form.timeframe} onChange={(e) => set('timeframe', e.target.value)}>
-                {(meta?.timeframes || []).map((t) => (
-                  <option key={t.key} value={t.key}>{t.label}</option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Début</Label>
-              <Input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Fin</Label>
-              <Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} />
-            </div>
-          </div>
-
-          {/* Stratégie */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="space-y-1.5">
-              <Label>Stratégie</Label>
-              <Select value={form.template} onChange={(e) => onTemplateChange(e.target.value)}>
-                {(meta?.templates || []).filter((t) => t.key !== 'custom').map((t) => (
-                  <option key={t.key} value={t.key}>{t.label}</option>
-                ))}
-              </Select>
-            </div>
-            {Object.entries(template?.key === form.template ? form.parameters : {}).map(([k, v]) => (
-              <div key={k} className="space-y-1.5">
-                <Label className="capitalize">{k}</Label>
-                <Input type="number" value={v} onChange={(e) => setParam(k, e.target.value)} />
-              </div>
-            ))}
-            <div className="space-y-1.5">
-              <Label>Direction</Label>
-              <Select value={form.direction} onChange={(e) => set('direction', e.target.value)}>
-                <option value="both">Achat & Vente</option>
-                <option value="long">Achat uniquement</option>
-                <option value="short">Vente uniquement</option>
-              </Select>
-            </div>
-          </div>
-
-          {/* Risque + compte */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="space-y-1.5">
-              <Label>Stop Loss (pips)</Label>
-              <Input type="number" value={form.sl_pips} onChange={(e) => set('sl_pips', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Take Profit (pips)</Label>
-              <Input type="number" value={form.tp_pips} onChange={(e) => set('tp_pips', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Trailing Stop (pips)</Label>
-              <Input type="number" value={form.trailing_pips} onChange={(e) => set('trailing_pips', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Solde initial ($)</Label>
-              <Input type="number" value={form.initial_balance} onChange={(e) => set('initial_balance', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Levier</Label>
-              <Select value={form.leverage} onChange={(e) => set('leverage', e.target.value)}>
-                {[1, 10, 30, 50, 100, 200, 500].map((l) => <option key={l} value={l}>1:{l}</option>)}
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Mode de taille</Label>
-              <Select value={form.position_size_mode} onChange={(e) => set('position_size_mode', e.target.value)}>
-                <option value="lots">Lots fixes</option>
-                <option value="percent">% du capital (risque)</option>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>{form.position_size_mode === 'lots' ? 'Taille (lots)' : 'Risque (%)'}</Label>
-              <Input type="number" step="0.01" value={form.position_size} onChange={(e) => set('position_size', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Spread (pips)</Label>
-              <Input type="number" step="0.1" value={form.spread} onChange={(e) => set('spread', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Commission ($/lot)</Label>
-              <Input type="number" step="0.1" value={form.commission} onChange={(e) => set('commission', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Positions max</Label>
-              <Input type="number" min="1" value={form.max_positions} onChange={(e) => set('max_positions', e.target.value)} />
-            </div>
-          </div>
-
-          <Button onClick={runBacktest} disabled={running || !meta} className="gap-2">
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {running ? 'Backtest en cours…' : 'Lancer le backtest'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* ==================== RÉSULTATS ==================== */}
+      {/* ==================== STATS (après un run) ==================== */}
       {result && stats && (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  Résultats — {result.symbol_name} {result.timeframe}
-                  {profitPositive
-                    ? <Badge className="bg-green-600 text-white border-transparent gap-1"><TrendingUp className="h-3 w-3" /> +{fmtMoney(stats.net_profit)} $</Badge>
-                    : <Badge variant="destructive" className="gap-1"><TrendingDown className="h-3 w-3" /> {fmtMoney(stats.net_profit)} $</Badge>}
-                </CardTitle>
-                <CardDescription>
-                  {result.candles_count} bougies • {stats.total_trades} trades • {fmtPct(stats.total_return_pct)} de rendement
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
-              <Stat label="Solde final" value={`${fmtMoney(stats.final_balance)} $`} accent={profitPositive ? 'text-green-500' : 'text-red-500'} />
-              <Stat label="Profit net" value={`${fmtMoney(stats.net_profit)} $`} accent={profitPositive ? 'text-green-500' : 'text-red-500'} />
-              <Stat label="Taux de réussite" value={fmtPct(stats.win_rate)} />
-              <Stat label="Profit factor" value={stats.profit_factor == null ? '∞' : stats.profit_factor} />
-              <Stat label="Drawdown max" value={fmtPct(stats.max_drawdown_pct)} accent="text-orange-500" />
-              <Stat label="Espérance / trade" value={`${fmtMoney(stats.expectancy)} $`} />
-              <Stat label="Trades gagnants" value={stats.winning_trades} accent="text-green-500" />
-              <Stat label="Trades perdants" value={stats.losing_trades} accent="text-red-500" />
-              <Stat label="Gain moyen" value={`${fmtMoney(stats.avg_win)} $`} />
-              <Stat label="Perte moyenne" value={`${fmtMoney(stats.avg_loss)} $`} />
-              <Stat label="Meilleur trade" value={`${fmtMoney(stats.biggest_win)} $`} />
-              <Stat label="Pire trade" value={`${fmtMoney(stats.biggest_loss)} $`} />
-            </div>
-
-            <Tabs defaultValue="chart">
-              <TabsList>
-                <TabsTrigger value="chart">Graphique & Replay</TabsTrigger>
-                <TabsTrigger value="equity">Courbe d'équité</TabsTrigger>
-                <TabsTrigger value="trades">Trades ({result.trades?.length || 0})</TabsTrigger>
-              </TabsList>
-              <TabsContent value="chart">
-                <ReplayChart
-                  candles={result.candles}
-                  trades={result.trades}
-                  equityCurve={result.equity_curve}
-                  symbolName={result.symbol_name}
-                  timeframe={result.timeframe}
-                />
-              </TabsContent>
-              <TabsContent value="equity">
-                <EquityChart points={result.equity_curve} />
-              </TabsContent>
-              <TabsContent value="trades">
-                <div className="max-h-96 overflow-y-auto rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>#</TableHead>
-                        <TableHead>Sens</TableHead>
-                        <TableHead>Entrée</TableHead>
-                        <TableHead>Sortie</TableHead>
-                        <TableHead>Prix in</TableHead>
-                        <TableHead>Prix out</TableHead>
-                        <TableHead>Lots</TableHead>
-                        <TableHead>Pips</TableHead>
-                        <TableHead>Profit ($)</TableHead>
-                        <TableHead>Clôture</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(result.trades || []).map((t, i) => (
-                        <TableRow key={i}>
-                          <TableCell>{i + 1}</TableCell>
-                          <TableCell>
-                            <Badge variant={t.side === 'buy' ? 'default' : 'secondary'}>{t.side === 'buy' ? 'Achat' : 'Vente'}</Badge>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap">{fmtDate(t.entry_time)}</TableCell>
-                          <TableCell className="whitespace-nowrap">{fmtDate(t.exit_time)}</TableCell>
-                          <TableCell>{t.entry_price?.toFixed(5)}</TableCell>
-                          <TableCell>{t.exit_price?.toFixed(5)}</TableCell>
-                          <TableCell>{t.size}</TableCell>
-                          <TableCell className={t.pips >= 0 ? 'text-green-500' : 'text-red-500'}>{t.pips?.toFixed(1)}</TableCell>
-                          <TableCell className={t.profit >= 0 ? 'text-green-500 font-medium' : 'text-red-500 font-medium'}>{fmtMoney(t.profit)}</TableCell>
-                          <TableCell><span className="text-xs text-muted-foreground">{CLOSE_REASONS[t.close_reason] || t.close_reason}</span></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/60 p-2 text-sm">
+          {profitPositive
+            ? <Badge className="bg-green-600 text-white border-transparent gap-1"><TrendingUp className="h-3 w-3" /> +{fmtMoney(stats.net_profit)} $</Badge>
+            : <Badge variant="destructive" className="gap-1"><TrendingDown className="h-3 w-3" /> {fmtMoney(stats.net_profit)} $</Badge>}
+          <span className="text-muted-foreground">Solde final <b className="text-foreground">{fmtMoney(stats.final_balance)} $</b></span>
+          <span className="text-muted-foreground">Trades <b className="text-foreground">{stats.total_trades}</b></span>
+          <span className="text-muted-foreground">Réussite <b className="text-foreground">{fmtPct(stats.win_rate)}</b></span>
+          <span className="text-muted-foreground">Drawdown <b className="text-orange-500">{fmtPct(stats.max_drawdown_pct)}</b></span>
+          <span className="text-muted-foreground">Rendement <b className={profitPositive ? 'text-green-500' : 'text-red-500'}>{fmtPct(stats.total_return_pct)}</b></span>
+        </div>
       )}
 
-      {/* ==================== HISTORIQUE ==================== */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><History className="h-5 w-5" /> Historique</CardTitle>
-          <CardDescription>Vos 50 derniers backtests sauvegardés</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucun backtest sauvegardé pour le moment.</p>
-          ) : (
-            <div className="space-y-2">
-              {history.map((b) => (
-                <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-                  <button className="text-left flex-1 min-w-0" onClick={() => loadBacktest(b.id)}>
-                    <p className="font-medium text-sm truncate">{b.name || `${b.symbol_name} ${b.timeframe}`}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(b.created_at).toLocaleString('fr-FR')} • {b.stats?.total_trades ?? '—'} trades
-                    </p>
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm font-semibold ${(b.stats?.net_profit ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {(b.stats?.net_profit ?? 0) >= 0 ? '+' : ''}{fmtMoney(b.stats?.net_profit)} $
-                    </span>
-                    <Button variant="ghost" size="icon" onClick={() => deleteBacktest(b.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* ==================== VUE D'ENSEMBLE / REPLAY ==================== */}
+      <ReplayChart
+        candles={result ? result.candles : preview}
+        trades={result?.trades || []}
+        equityCurve={result?.equity_curve || []}
+        symbolName={result ? result.symbol_name : symbolName}
+        timeframe={result ? result.timeframe : form.timeframe}
+        periodBounds={periodBounds}
+        loading={previewLoading && !result}
+        isPreview={!result}
+      />
     </div>
   );
 };
