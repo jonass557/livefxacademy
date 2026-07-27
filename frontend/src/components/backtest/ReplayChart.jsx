@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import ReplayEquityChart from './ReplayEquityChart';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
-  DrawingToolbar, IndicatorButtons, useFullscreen,
+  DrawToolsMenu, IndicatorsMenu, useFullscreen,
 } from './chartShared';
 import {
   Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
@@ -275,6 +275,13 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
             {symbolName} • {timeframe} • {candles.length} bougies
           </span>
         )}
+        <DrawToolsMenu chartRef={chartRef} />
+        <IndicatorsMenu
+          chartRef={chartRef}
+          active={activeIndicators}
+          setActive={setActiveIndicators}
+          panesRef={indicatorPanesRef}
+        />
         <Button
           size="sm"
           variant="outline"
@@ -308,38 +315,23 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
         </div>
       )}
 
-      {/* ==================== GRAPHIQUE + OUTILS ==================== */}
-      <div className={`flex gap-1.5 ${fullscreen ? 'flex-1 min-h-0' : ''}`}>
-        {/* Toolbar de dessin façon TradingView */}
-        <DrawingToolbar chartRef={chartRef} />
-
-        <div className={`flex-1 min-w-0 flex flex-col gap-1.5 ${fullscreen ? 'min-h-0' : ''}`}>
-          {/* Boutons indicateurs */}
-          <IndicatorButtons
-            chartRef={chartRef}
-            active={activeIndicators}
-            setActive={setActiveIndicators}
-            panesRef={indicatorPanesRef}
-          />
-
-          {/* Graphique chandeliers + entête OHLC en surimpression (façon MT5) */}
-          <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
-            <div className="pointer-events-none absolute left-2 top-1.5 z-10 leading-tight">
-              <p className="text-xs font-semibold text-primary">
-                {symbolName} <span className="text-foreground">{timeframe}</span>
-              </p>
-              {cur && (
-                <p className="text-[11px] tabular-nums text-muted-foreground">
-                  O {cur.open.toFixed(digits)} H {cur.high.toFixed(digits)} L {cur.low.toFixed(digits)}{' '}
-                  <span className={cur.close >= cur.open ? 'text-emerald-500' : 'text-red-500'}>
-                    C {cur.close.toFixed(digits)}
-                  </span>
-                </p>
-              )}
-            </div>
-            <div ref={containerRef} className="w-full h-full" />
-          </div>
+      {/* ==================== GRAPHIQUE (pleine largeur, outils en menus) ==================== */}
+      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
+        {/* Entête symbole + OHLC en surimpression (façon MT5) */}
+        <div className="pointer-events-none absolute left-2 top-1.5 z-10 leading-tight">
+          <p className="text-xs font-semibold text-primary">
+            {symbolName} <span className="text-foreground">{timeframe}</span>
+          </p>
+          {cur && (
+            <p className="text-[11px] tabular-nums text-muted-foreground">
+              O {cur.open.toFixed(digits)} H {cur.high.toFixed(digits)} L {cur.low.toFixed(digits)}{' '}
+              <span className={cur.close >= cur.open ? 'text-emerald-500' : 'text-red-500'}>
+                C {cur.close.toFixed(digits)}
+              </span>
+            </p>
+          )}
         </div>
+        <div ref={containerRef} className="w-full h-full" />
       </div>
 
       {/* ==================== ÉQUITÉ SYNCHRONISÉE ==================== */}

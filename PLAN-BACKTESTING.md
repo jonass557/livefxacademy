@@ -51,7 +51,20 @@ contrôles compacts.
 - [x] `chart.resize()` au changement de conteneur (plein écran, indicateurs)
 - [x] Hook `useFullscreen` partagé dans `chartShared.jsx`
 
+## Phase 4 — Menus compacts + sélecteur de marché par catégorie ✅
+
+- [x] Backend : catalogue Deriv élargi et groupé par catégorie —
+      Forex (10 paires), Métaux (or, argent, platine, palladium),
+      Indices (S&P 500, Wall Street 30, US Tech 100, UK 100, Allemagne 40,
+      Japon 225), Crypto (BTC, ETH). Tous testés OK via ticks_history.
+- [x] Outils de dessin regroupés dans un menu « Outils » (la toolbar latérale
+      est supprimée → le graphique occupe toute la largeur)
+- [x] Indicateurs regroupés dans un menu « Indicateurs » avec cases cochables
+- [x] Entête du graphique : bouton `EUR/USD H1 ▾` ouvrant le sélecteur de
+      marché — onglets par catégorie + choix de l'unité de temps (M1→D1)
+- [x] Sélection synchronisée avec le formulaire de backtest (paire/TF)
+
 ## Reste à faire
 
-- [ ] Pousser la Phase 3 et vérifier le rendu sur téléphone
+- [ ] Vérifier le rendu sur téléphone
 - [ ] Nettoyage Render (service à supprimer côté dashboard Render)

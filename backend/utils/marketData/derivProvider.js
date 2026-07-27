@@ -14,18 +14,35 @@ const WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 const PER_REQUEST = 5000 // maximum de bougies par requête Deriv
 const SOCKET_TIMEOUT = 25000
 
-// Paires majeures exposées (pip = taille d'un point : 0.01 pour les paires JPY, sinon 0.0001).
+// Marchés exposés, groupés par catégorie (pip = taille d'un point).
+// Tous disponibles via ticks_history sans autorisation (app_id suffit).
 const SYMBOLS = [
-  { symbol: 'frxEURUSD', name: 'EUR/USD', pip: 0.0001 },
-  { symbol: 'frxGBPUSD', name: 'GBP/USD', pip: 0.0001 },
-  { symbol: 'frxUSDJPY', name: 'USD/JPY', pip: 0.01 },
-  { symbol: 'frxAUDUSD', name: 'AUD/USD', pip: 0.0001 },
-  { symbol: 'frxUSDCAD', name: 'USD/CAD', pip: 0.0001 },
-  { symbol: 'frxUSDCHF', name: 'USD/CHF', pip: 0.0001 },
-  { symbol: 'frxNZDUSD', name: 'NZD/USD', pip: 0.0001 },
-  { symbol: 'frxEURGBP', name: 'EUR/GBP', pip: 0.0001 },
-  { symbol: 'frxEURJPY', name: 'EUR/JPY', pip: 0.01 },
-  { symbol: 'frxGBPJPY', name: 'GBP/JPY', pip: 0.01 },
+  // --- Forex ---
+  { symbol: 'frxEURUSD', name: 'EUR/USD', pip: 0.0001, category: 'forex' },
+  { symbol: 'frxGBPUSD', name: 'GBP/USD', pip: 0.0001, category: 'forex' },
+  { symbol: 'frxUSDJPY', name: 'USD/JPY', pip: 0.01, category: 'forex' },
+  { symbol: 'frxAUDUSD', name: 'AUD/USD', pip: 0.0001, category: 'forex' },
+  { symbol: 'frxUSDCAD', name: 'USD/CAD', pip: 0.0001, category: 'forex' },
+  { symbol: 'frxUSDCHF', name: 'USD/CHF', pip: 0.0001, category: 'forex' },
+  { symbol: 'frxNZDUSD', name: 'NZD/USD', pip: 0.0001, category: 'forex' },
+  { symbol: 'frxEURGBP', name: 'EUR/GBP', pip: 0.0001, category: 'forex' },
+  { symbol: 'frxEURJPY', name: 'EUR/JPY', pip: 0.01, category: 'forex' },
+  { symbol: 'frxGBPJPY', name: 'GBP/JPY', pip: 0.01, category: 'forex' },
+  // --- Métaux ---
+  { symbol: 'frxXAUUSD', name: 'Or (XAU/USD)', pip: 0.1, category: 'metal' },
+  { symbol: 'frxXAGUSD', name: 'Argent (XAG/USD)', pip: 0.01, category: 'metal' },
+  { symbol: 'frxXPTUSD', name: 'Platine (XPT/USD)', pip: 0.1, category: 'metal' },
+  { symbol: 'frxXPDUSD', name: 'Palladium (XPD/USD)', pip: 0.1, category: 'metal' },
+  // --- Indices ---
+  { symbol: 'OTC_SPC', name: 'S&P 500 (US 500)', pip: 1, category: 'indice' },
+  { symbol: 'OTC_DJI', name: 'Wall Street 30', pip: 1, category: 'indice' },
+  { symbol: 'OTC_NDX', name: 'US Tech 100', pip: 1, category: 'indice' },
+  { symbol: 'OTC_FTSE', name: 'UK 100', pip: 1, category: 'indice' },
+  { symbol: 'OTC_GDAXI', name: 'Allemagne 40', pip: 1, category: 'indice' },
+  { symbol: 'OTC_N225', name: 'Japon 225', pip: 1, category: 'indice' },
+  // --- Crypto ---
+  { symbol: 'cryBTCUSD', name: 'Bitcoin (BTC/USD)', pip: 1, category: 'crypto' },
+  { symbol: 'cryETHUSD', name: 'Ethereum (ETH/USD)', pip: 0.1, category: 'crypto' },
 ]
 
 function listSymbols() { return SYMBOLS }

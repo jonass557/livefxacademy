@@ -188,6 +188,10 @@ const Backtesting = () => {
             symbol={form.symbol}
             timeframe={form.timeframe}
             symbolName={provider?.symbols?.find((s) => s.symbol === form.symbol)?.name}
+            symbols={provider?.symbols || []}
+            timeframes={meta?.timeframes || []}
+            onSelectSymbol={(s) => set('symbol', s)}
+            onSelectTimeframe={(t) => set('timeframe', t)}
           />
         </CardContent>
       </Card>

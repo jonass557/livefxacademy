@@ -5,17 +5,21 @@ import { Loader2, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
-  DrawingToolbar, IndicatorButtons, useFullscreen,
+  DrawToolsMenu, IndicatorsMenu, MarketPicker, useFullscreen,
 } from './chartShared';
 
 const REFRESH_MS = 15000; // rafraîchissement auto (quasi temps réel)
 
 /**
  * Graphique du marché en direct (chandeliers japonais KLineCharts) affiché
- * dès l'ouverture de la page Backtesting : suit la paire/timeframe choisies,
- * se met à jour automatiquement, avec outils de dessin et indicateurs.
+ * dès l'ouverture de la page Backtesting : sélecteur de marché par catégorie
+ * et d'unité de temps dans l'entête, menus Outils/Indicateurs, mise à jour
+ * automatique.
  */
-export default function LiveChart({ provider, symbol, timeframe, symbolName }) {
+export default function LiveChart({
+  provider, symbol, timeframe, symbolName,
+  symbols, timeframes, onSelectSymbol, onSelectTimeframe,
+}) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const timerRef = useRef(null);
@@ -102,17 +106,30 @@ export default function LiveChart({ provider, symbol, timeframe, symbolName }) {
 
   return (
     <div className={wrapClass}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-          </span>
-          {symbolName || symbol} • {timeframe} — Marché en direct
-        </p>
-        <span className="text-xs text-muted-foreground flex items-center gap-1 ml-auto">
+      {/* Barre unique : sélecteur de marché + menus + statut + plein écran */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="relative flex h-2 w-2 mr-0.5" title="Marché en direct">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+        </span>
+        <MarketPicker
+          symbols={symbols}
+          timeframes={timeframes}
+          symbol={symbol}
+          timeframe={timeframe}
+          onSelectSymbol={onSelectSymbol}
+          onSelectTimeframe={onSelectTimeframe}
+        />
+        <DrawToolsMenu chartRef={chartRef} />
+        <IndicatorsMenu
+          chartRef={chartRef}
+          active={activeIndicators}
+          setActive={setActiveIndicators}
+          panesRef={indicatorPanesRef}
+        />
+        <span className="text-[11px] text-muted-foreground flex items-center gap-1 ml-auto">
           <RefreshCw className="h-3 w-3" />
-          {lastUpdate ? `Mis à jour à ${lastUpdate.toLocaleTimeString('fr-FR')}` : '…'}
+          {lastUpdate ? lastUpdate.toLocaleTimeString('fr-FR') : '…'}
         </span>
         <Button
           size="sm"
@@ -125,43 +142,30 @@ export default function LiveChart({ provider, symbol, timeframe, symbolName }) {
         </Button>
       </div>
 
-      <div className={`flex gap-1.5 ${fullscreen ? 'flex-1 min-h-0' : ''}`}>
-        <DrawingToolbar chartRef={chartRef} />
-        <div className={`flex-1 min-w-0 flex flex-col gap-1.5 ${fullscreen ? 'min-h-0' : ''}`}>
-          <IndicatorButtons
-            chartRef={chartRef}
-            active={activeIndicators}
-            setActive={setActiveIndicators}
-            panesRef={indicatorPanesRef}
-          />
-          <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
-            {/* Entête symbole + OHLC en surimpression, façon MT5 */}
-            <div className="pointer-events-none absolute left-2 top-1.5 z-10 leading-tight">
-              <p className="text-xs font-semibold text-primary">
-                {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
-              </p>
-              {last && (
-                <p className="text-[11px] tabular-nums text-muted-foreground">
-                  O {last.open.toFixed(digits)} H {last.high.toFixed(digits)} L {last.low.toFixed(digits)}{' '}
-                  <span className={last.close >= last.open ? 'text-emerald-500' : 'text-red-500'}>
-                    C {last.close.toFixed(digits)}
-                  </span>
-                </p>
-              )}
-            </div>
-            <div ref={containerRef} className="w-full h-full" />
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {error && !loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
-                <p className="text-sm text-destructive">{error}</p>
-              </div>
-            )}
+      {/* Graphique pleine largeur (les outils sont dans les menus) */}
+      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
+        {/* Entête OHLC en surimpression, façon MT5 */}
+        {last && (
+          <div className="pointer-events-none absolute left-2 top-1.5 z-10 leading-tight">
+            <p className="text-[11px] tabular-nums text-muted-foreground">
+              O {last.open.toFixed(digits)} H {last.high.toFixed(digits)} L {last.low.toFixed(digits)}{' '}
+              <span className={last.close >= last.open ? 'text-emerald-500' : 'text-red-500'}>
+                C {last.close.toFixed(digits)}
+              </span>
+            </p>
           </div>
-        </div>
+        )}
+        <div ref={containerRef} className="w-full h-full" />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {error && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
       </div>
     </div>
   );
