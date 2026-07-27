@@ -182,7 +182,7 @@ const Backtesting = () => {
 
       {/* ==================== MARCHÉ EN DIRECT ==================== */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="p-2 md:p-3">
           <LiveChart
             provider={form.provider}
             symbol={form.symbol}

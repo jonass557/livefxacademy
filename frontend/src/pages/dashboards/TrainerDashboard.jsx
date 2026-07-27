@@ -51,7 +51,8 @@ const TrainerDashboard = () => {
   return (
     <div className="min-h-[calc(100vh-4rem)]">
       <main className="w-full">
-        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        {/* Backtesting : pleine largeur pour maximiser l'espace du graphique */}
+        <div className={`p-4 md:p-6 mx-auto ${activeSection === 'backtesting' ? 'max-w-none' : 'max-w-7xl'}`}>
           {activeSection === 'dashboard' ? (
             <div className="space-y-8">
               {/* Feature button grid */}

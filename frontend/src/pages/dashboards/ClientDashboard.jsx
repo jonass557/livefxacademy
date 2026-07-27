@@ -1043,7 +1043,8 @@ const ClientDashboard = () => {
   return (
     <div className="min-h-[calc(100vh-4rem)]">
       <main className="w-full">
-        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        {/* Backtesting : pleine largeur pour maximiser l'espace du graphique */}
+        <div className={`p-4 md:p-6 mx-auto ${activeSection === 'backtesting' ? 'max-w-none' : 'max-w-7xl'}`}>
           {/* Header */}
           <div className="mb-4 md:mb-6">
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dashboard.clientTitle')}</h1>
