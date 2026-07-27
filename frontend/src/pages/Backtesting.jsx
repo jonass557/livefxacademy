@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table';
 import { toast } from 'sonner';
 import api from '../lib/api';
+import ReplayChart from '../components/backtest/ReplayChart';
 import { Play, Loader2, History, Trash2, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
 
 // ---- Helpers d'affichage ----
@@ -148,8 +149,15 @@ const Backtesting = () => {
   const loadBacktest = async (id) => {
     try {
       const { data } = await api.get(`/backtests/${id}`);
-      setResult(data);
+      setResult(data); // affiche stats/trades tout de suite
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Les bougies ne sont pas stockées en base : on les re-télécharge pour le graphique/replay.
+      try {
+        const { data: c } = await api.get(`/backtests/${id}/candles`);
+        setResult((r) => (r && r.id === data.id ? { ...r, candles: c.candles } : r));
+      } catch {
+        toast.error('Bougies indisponibles pour ce backtest (graphique désactivé)');
+      }
     } catch { toast.error('Impossible de charger ce backtest'); }
   };
 
@@ -330,11 +338,21 @@ const Backtesting = () => {
               <Stat label="Pire trade" value={`${fmtMoney(stats.biggest_loss)} $`} />
             </div>
 
-            <Tabs defaultValue="equity">
+            <Tabs defaultValue="chart">
               <TabsList>
+                <TabsTrigger value="chart">Graphique & Replay</TabsTrigger>
                 <TabsTrigger value="equity">Courbe d'équité</TabsTrigger>
                 <TabsTrigger value="trades">Trades ({result.trades?.length || 0})</TabsTrigger>
               </TabsList>
+              <TabsContent value="chart">
+                <ReplayChart
+                  candles={result.candles}
+                  trades={result.trades}
+                  equityCurve={result.equity_curve}
+                  symbolName={result.symbol_name}
+                  timeframe={result.timeframe}
+                />
+              </TabsContent>
               <TabsContent value="equity">
                 <EquityChart points={result.equity_curve} />
               </TabsContent>

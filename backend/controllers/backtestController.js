@@ -104,10 +104,39 @@ exports.runBacktest = async (req, res) => {
       saved = await Backtest.create({ ...payload, user_id: req.user.id, name: name || `${meta.name} ${timeframe}` });
     }
 
-    res.json({ id: saved ? saved._id : null, truncated_trades: trades.length > MAX_SAVED_TRADES, ...payload });
+    // Les bougies sont renvoyées au client (graphique chandeliers + replay)
+    // mais ne sont PAS persistées en base (trop volumineux) — voir getBacktestCandles.
+    res.json({ id: saved ? saved._id : null, truncated_trades: trades.length > MAX_SAVED_TRADES, ...payload, candles });
   } catch (err) {
     console.error('Backtest error:', err);
     res.status(502).json({ message: err.message || 'Erreur lors du backtest' });
+  }
+};
+
+// Bougies OHLC d'un backtest sauvegardé : re-téléchargées depuis le fournisseur
+// (elles ne sont pas stockées en base). Utilisé par le mode Replay sur l'historique.
+exports.getBacktestCandles = async (req, res) => {
+  try {
+    const b = await Backtest.findOne({ _id: req.params.id, user_id: req.user.id })
+      .select('provider symbol timeframe start_date end_date');
+    if (!b) return res.status(404).json({ message: 'Backtest non trouvé' });
+
+    let provider;
+    try { provider = getProvider(b.provider); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+
+    const candles = await provider.fetchCandles({
+      symbol: b.symbol,
+      granularity: granularityOf(b.timeframe),
+      start: Math.floor(new Date(b.start_date).getTime() / 1000),
+      end: Math.floor(new Date(b.end_date).getTime() / 1000),
+    });
+    if (!candles.length) return res.status(422).json({ message: 'Aucune donnée disponible pour cette période' });
+
+    res.json({ candles });
+  } catch (err) {
+    console.error('Backtest candles error:', err);
+    res.status(502).json({ message: err.message || 'Erreur lors de la récupération des bougies' });
   }
 };
 

@@ -35,6 +35,15 @@ router.get('/', backtestController.listBacktests);
 
 /**
  * @swagger
+ * /api/backtests/:id/candles:
+ *   get:
+ *     summary: Bougies OHLC d'un backtest (re-téléchargées, pour le graphique/replay)
+ *     tags: [Backtests]
+ */
+router.get('/:id/candles', backtestController.getBacktestCandles);
+
+/**
+ * @swagger
  * /api/backtests/:id:
  *   get:
  *     summary: Détail complet d'un backtest
