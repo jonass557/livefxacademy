@@ -82,6 +82,20 @@ export function detectPriceDigits(candles) {
   return Math.min(d, 6);
 }
 
+// Plein écran : Échap pour sortir, scroll du body bloqué pendant l'affichage.
+export function useFullscreen() {
+  const [fullscreen, setFullscreen] = React.useState(false);
+  React.useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreen(false); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [fullscreen]);
+  return [fullscreen, setFullscreen];
+}
+
 // Toolbar verticale d'outils de dessin (colonne gauche, façon TradingView).
 export function DrawingToolbar({ chartRef }) {
   return (

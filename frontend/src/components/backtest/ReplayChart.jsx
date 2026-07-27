@@ -4,9 +4,12 @@ import { Button } from '../ui/button';
 import ReplayEquityChart from './ReplayEquityChart';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
-  DrawingToolbar, IndicatorButtons,
+  DrawingToolbar, IndicatorButtons, useFullscreen,
 } from './chartShared';
-import { Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2 } from 'lucide-react';
+import {
+  Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
+  Maximize2, Minimize2, ChevronDown, ChevronUp,
+} from 'lucide-react';
 
 // ---- Constantes ----
 const INITIAL_CONTEXT = 30;   // bougies affichées au démarrage du replay
@@ -43,6 +46,8 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
   const [speed, setSpeed] = useState(5);
   const [index, setIndex] = useState(0);          // index de la bougie courante
   const [activeIndicators, setActiveIndicators] = useState({});
+  const [fullscreen, setFullscreen] = useFullscreen();
+  const [showPanels, setShowPanels] = useState(false); // équité/outils replié en plein écran
 
   // ---- Données converties pour KLineCharts (timestamp en ms) ----
   const klineData = useMemo(
@@ -129,6 +134,12 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [klineData]);
 
+  // Recalcule la taille du canvas quand le conteneur change (plein écran, panneaux).
+  useEffect(() => {
+    const t = setTimeout(() => chartRef.current?.resize(), 60);
+    return () => clearTimeout(t);
+  }, [fullscreen, showPanels, activeIndicators]);
+
   // ---- Boucle du replay ----
   useEffect(() => {
     if (!playing) return;
@@ -212,9 +223,17 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
   const currentTime = candles[index]?.time;
   const inReplay = mode === 'replay';
   const progressPct = klineData.length > 1 ? Math.round((index / (klineData.length - 1)) * 100) : 100;
+  const cur = candles[index];
+  const digits = priceDigits;
+
+  // Plein écran : occupe tout l'écran comme MT5 mobile ; sinon grande hauteur responsive.
+  const wrapClass = fullscreen
+    ? 'fixed inset-0 z-50 flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
+    : 'space-y-3';
+  const chartHeight = fullscreen ? undefined : 'clamp(420px, 62vh, 760px)';
 
   return (
-    <div className="space-y-3">
+    <div className={wrapClass}>
       {/* ==================== BARRE DE CONTRÔLE REPLAY ==================== */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
         {!inReplay ? (
@@ -256,13 +275,22 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
             {symbolName} • {timeframe} • {candles.length} bougies
           </span>
         )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setFullscreen((f) => !f)}
+          className="gap-1.5"
+          title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}
+        >
+          {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </Button>
       </div>
 
       {/* Date courante + progression (replay) */}
       {inReplay && (
-        <div className="rounded-lg border bg-card p-3 space-y-2">
+        <div className={`rounded-lg border bg-card ${fullscreen ? 'px-2 py-1 space-y-1' : 'p-3 space-y-2'}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-base font-semibold tabular-nums">
+            <p className={`font-semibold tabular-nums ${fullscreen ? 'text-sm' : 'text-base'}`}>
               📅 {currentTime ? fmtDateLong(currentTime) : '—'}
             </p>
             <span className="text-xs text-muted-foreground tabular-nums">
@@ -281,11 +309,11 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
       )}
 
       {/* ==================== GRAPHIQUE + OUTILS ==================== */}
-      <div className="flex gap-2">
+      <div className={`flex gap-1.5 ${fullscreen ? 'flex-1 min-h-0' : ''}`}>
         {/* Toolbar de dessin façon TradingView */}
         <DrawingToolbar chartRef={chartRef} />
 
-        <div className="flex-1 min-w-0 space-y-2">
+        <div className={`flex-1 min-w-0 flex flex-col gap-1.5 ${fullscreen ? 'min-h-0' : ''}`}>
           {/* Boutons indicateurs */}
           <IndicatorButtons
             chartRef={chartRef}
@@ -294,16 +322,50 @@ export default function ReplayChart({ candles, trades, equityCurve, symbolName, 
             panesRef={indicatorPanesRef}
           />
 
-          {/* Graphique chandeliers */}
-          <div ref={containerRef} className="w-full rounded-lg border" style={{ height: 420 }} />
+          {/* Graphique chandeliers + entête OHLC en surimpression (façon MT5) */}
+          <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
+            <div className="pointer-events-none absolute left-2 top-1.5 z-10 leading-tight">
+              <p className="text-xs font-semibold text-primary">
+                {symbolName} <span className="text-foreground">{timeframe}</span>
+              </p>
+              {cur && (
+                <p className="text-[11px] tabular-nums text-muted-foreground">
+                  O {cur.open.toFixed(digits)} H {cur.high.toFixed(digits)} L {cur.low.toFixed(digits)}{' '}
+                  <span className={cur.close >= cur.open ? 'text-emerald-500' : 'text-red-500'}>
+                    C {cur.close.toFixed(digits)}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div ref={containerRef} className="w-full h-full" />
+          </div>
         </div>
       </div>
 
       {/* ==================== ÉQUITÉ SYNCHRONISÉE ==================== */}
-      <div className="rounded-lg border bg-card p-3">
-        <p className="text-xs text-muted-foreground mb-2">Évolution du capital {inReplay ? '(synchronisée avec le replay)' : ''}</p>
-        <ReplayEquityChart points={equityCurve} currentTime={inReplay ? currentTime : null} />
-      </div>
+      {fullscreen ? (
+        <>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowPanels((s) => !s)}
+            className="h-6 gap-1 self-center text-xs text-muted-foreground"
+          >
+            {showPanels ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+            Capital
+          </Button>
+          {showPanels && (
+            <div className="rounded-lg border bg-card p-2">
+              <ReplayEquityChart points={equityCurve} currentTime={inReplay ? currentTime : null} />
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="rounded-lg border bg-card p-3">
+          <p className="text-xs text-muted-foreground mb-2">Évolution du capital {inReplay ? '(synchronisée avec le replay)' : ''}</p>
+          <ReplayEquityChart points={equityCurve} currentTime={inReplay ? currentTime : null} />
+        </div>
+      )}
     </div>
   );
 }
