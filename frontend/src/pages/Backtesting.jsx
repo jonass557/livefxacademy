@@ -11,6 +11,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '.
 import { toast } from 'sonner';
 import api from '../lib/api';
 import ReplayChart from '../components/backtest/ReplayChart';
+import LiveChart from '../components/backtest/LiveChart';
 import { Play, Loader2, History, Trash2, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
 
 // ---- Helpers d'affichage ----
@@ -178,6 +179,18 @@ const Backtesting = () => {
         <h2 className="text-2xl font-bold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Backtesting</h2>
         <p className="text-muted-foreground text-sm">Testez vos stratégies sur des données historiques réelles (Forex via Deriv).</p>
       </div>
+
+      {/* ==================== MARCHÉ EN DIRECT ==================== */}
+      <Card>
+        <CardContent className="pt-6">
+          <LiveChart
+            provider={form.provider}
+            symbol={form.symbol}
+            timeframe={form.timeframe}
+            symbolName={provider?.symbols?.find((s) => s.symbol === form.symbol)?.name}
+          />
+        </CardContent>
+      </Card>
 
       {/* ==================== FORMULAIRE ==================== */}
       <Card>

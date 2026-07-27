@@ -140,6 +140,34 @@ exports.getBacktestCandles = async (req, res) => {
   }
 };
 
+// Bougies récentes d'un marché (graphique en direct de la page Backtesting).
+// Query : provider?, symbol, timeframe, count? (défaut 300, max 1000).
+exports.getMarketCandles = async (req, res) => {
+  try {
+    const { provider: providerName = 'deriv', symbol, timeframe = 'H1' } = req.query;
+    const count = Math.min(Math.max(Number(req.query.count) || 300, 1), 1000);
+    if (!symbol) return res.status(400).json({ message: 'Le symbole est requis' });
+    if (!isValidTimeframe(timeframe)) return res.status(400).json({ message: 'Unité de temps invalide' });
+
+    let provider;
+    try { provider = getProvider(providerName); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+
+    const meta = provider.getSymbolMeta(symbol);
+    if (!meta) return res.status(400).json({ message: 'Symbole non supporté : ' + symbol });
+
+    const granularity = granularityOf(timeframe);
+    const end = Math.floor(Date.now() / 1000);
+    const start = end - count * granularity;
+    const candles = await provider.fetchCandles({ symbol, granularity, start, end });
+
+    res.json({ symbol, symbol_name: meta.name, timeframe, candles });
+  } catch (err) {
+    console.error('Market candles error:', err);
+    res.status(502).json({ message: err.message || 'Erreur lors de la récupération des données de marché' });
+  }
+};
+
 // Historique des backtests de l'utilisateur (sans les gros champs).
 exports.listBacktests = async (req, res) => {
   try {
