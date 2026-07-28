@@ -101,7 +101,23 @@ au trader pour tester SA stratégie en prenant lui-même ses positions.
 - [x] Outils d'analyse déplaçables : les overlays KLineCharts se déplacent
       par glisser-déposer nativement (non verrouillés)
 
+## Phase 7 — Rendu mobile (responsive) ✅ (28/07/2026)
+
+- [x] Breakpoint Tailwind `xs` (480 px) ajouté à `tailwind.config.js`
+- [x] Barre de réglages : grille 2 colonnes sur mobile (période sur toute la
+      largeur), boutons pleine largeur avec valeur tronquée ; barre en ligne
+      dès `sm`
+- [x] Dropdowns plafonnés à `max-w-[calc(100vw-1.5rem)]` (plus de débordement)
+- [x] Barre de contrôle du replay compactée : libellés Pause/Reprendre,
+      Outils, Indicateurs et « Vue complète » masqués sous `xs`/`sm`,
+      vitesses resserrées
+- [x] Panneau trading : boutons Buy/Sell icône seule sous 480 px, ligne
+      Position masquée sur mobile, « Trades fermés » → « Trades »
+- [x] Badge symbole/OHLC réduit sur mobile (live + replay)
+- [x] En-tête de page et carte Solde initial redimensionnés sur mobile
+- [x] Plein écran passé en `z-[60]` : au-dessus du bouton menu flottant du
+      sidebar mobile (`z-50`)
+
 ## Reste à faire
 
-- [ ] Vérifier le rendu sur téléphone
 - [ ] Nettoyage Render (service à supprimer côté dashboard Render)

@@ -16,16 +16,18 @@ const LOTS = [0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5];
 const CATEGORY_LABELS = { forex: 'Forex', metal: 'Métaux', indice: 'Indices', crypto: 'Crypto' };
 
 // Bouton de la barre de réglages (libellé + valeur + chevron).
+// Sur mobile il occupe toute la largeur de sa cellule de grille ; la valeur est
+// tronquée pour que les périodes longues ne débordent pas de l'écran.
 function PickerButton({ icon: Icon, label, value, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1.5 text-sm hover:bg-muted transition-colors"
+      className="flex w-full min-w-0 items-center gap-1.5 rounded-lg border bg-card px-2.5 py-2 text-sm hover:bg-muted transition-colors sm:w-auto sm:py-1.5"
     >
-      {Icon && <Icon className="h-4 w-4 text-primary" />}
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="font-semibold">{value}</span>
-      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+      {Icon && <Icon className="h-4 w-4 shrink-0 text-primary" />}
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-left font-semibold sm:flex-none">{value}</span>
+      <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
     </button>
   );
 }
@@ -196,37 +198,41 @@ const Backtesting = () => {
   return (
     <div className="space-y-3">
       {/* ==================== EN-TÊTE ==================== */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 text-primary" /> Backtesting
+          <h2 className="text-xl font-bold flex items-center gap-2 sm:text-2xl">
+            <BarChart3 className="h-5 w-5 text-primary sm:h-6 sm:w-6" /> Backtesting
           </h2>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-xs sm:text-sm">
             Délimitez la période, choisissez la paire, le timeframe et le lot, puis cliquez sur Replay et prenez vos positions Buy/Sell.
           </p>
         </div>
         {/* Solde initial bien visible */}
-        <div className="flex items-center gap-2 rounded-xl border bg-gradient-to-r from-primary/10 to-purple-500/10 px-4 py-2">
-          <Wallet className="h-5 w-5 text-primary" />
+        <div className="flex items-center gap-2 rounded-xl border bg-gradient-to-r from-primary/10 to-purple-500/10 px-3 py-1.5 sm:px-4 sm:py-2">
+          <Wallet className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
           <div className="leading-tight">
-            <p className="text-[11px] uppercase text-muted-foreground">Solde initial</p>
-            <p className="text-lg font-bold tabular-nums">{fmtMoney(INITIAL_BALANCE)} $</p>
+            <p className="text-[10px] uppercase text-muted-foreground sm:text-[11px]">Solde initial</p>
+            <p className="text-base font-bold tabular-nums sm:text-lg">{fmtMoney(INITIAL_BALANCE)} $</p>
           </div>
         </div>
       </div>
 
       {/* ==================== BARRE DE RÉGLAGES ==================== */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/60 p-2">
+      {/* Mobile : grille 2 colonnes (la période prend toute la largeur) ;
+          à partir de sm on retrouve la barre sur une seule ligne. */}
+      <div className="grid grid-cols-2 gap-2 rounded-xl border bg-card/60 p-2 sm:flex sm:flex-wrap sm:items-center">
         <PairPicker symbols={symbols} symbol={form.symbol} onSelect={(s) => set('symbol', s)} />
         <GridPicker
           icon={BarChart3} label="TF" value={form.timeframe} width="w-52"
           options={(meta?.timeframes || []).map((t) => ({ key: t.key, label: t.key, active: t.key === form.timeframe }))}
           onSelect={(t) => set('timeframe', t)}
         />
-        <PeriodPicker
-          startDate={form.start_date} endDate={form.end_date}
-          onChange={(s, e) => setForm((f) => ({ ...f, start_date: s, end_date: e }))}
-        />
+        <div className="col-span-2 sm:col-auto">
+          <PeriodPicker
+            startDate={form.start_date} endDate={form.end_date}
+            onChange={(s, e) => setForm((f) => ({ ...f, start_date: s, end_date: e }))}
+          />
+        </div>
         <GridPicker
           icon={Coins} label="Lot" value={form.position_size} width="w-52"
           options={LOTS.map((l) => ({ key: l, label: String(l), active: l === Number(form.position_size) }))}
@@ -235,7 +241,7 @@ const Backtesting = () => {
         <Button
           onClick={() => setReplaySignal((n) => n + 1)}
           disabled={loading || !candles?.length}
-          className="gap-2 ml-auto bg-gradient-to-r from-primary to-purple-500 hover:opacity-90"
+          className="gap-2 bg-gradient-to-r from-primary to-purple-500 hover:opacity-90 sm:ml-auto"
         >
           <Film className="h-4 w-4" /> Replay
         </Button>

@@ -99,15 +99,16 @@ export default function LiveChart({
     return () => clearTimeout(t);
   }, [fullscreen, activeIndicators]);
 
+  // z-[60] : au-dessus du bouton menu flottant du sidebar mobile (z-50).
   const wrapClass = fullscreen
-    ? 'fixed inset-0 z-50 flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
+    ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
     : 'space-y-2';
   const chartHeight = fullscreen ? undefined : 'clamp(420px, 62vh, 760px)';
 
   return (
     <div className={wrapClass}>
       {/* Barre unique : sélecteur de marché + menus + statut + plein écran */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
         <span className="relative flex h-2 w-2 mr-0.5" title="Marché en direct">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
@@ -127,7 +128,7 @@ export default function LiveChart({
           setActive={setActiveIndicators}
           panesRef={indicatorPanesRef}
         />
-        <span className="text-[11px] text-muted-foreground flex items-center gap-1 ml-auto">
+        <span className="text-[11px] text-muted-foreground hidden xs:flex items-center gap-1 ml-auto">
           <RefreshCw className="h-3 w-3" />
           {lastUpdate ? lastUpdate.toLocaleTimeString('fr-FR') : '…'}
         </span>
@@ -135,7 +136,7 @@ export default function LiveChart({
           size="sm"
           variant="outline"
           onClick={() => setFullscreen((f) => !f)}
-          className="h-7 px-2"
+          className="h-7 px-2 ml-auto xs:ml-0"
           title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}
         >
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -146,11 +147,11 @@ export default function LiveChart({
       <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
         {/* Entête OHLC en surimpression, façon MT5 */}
         {last && (
-          <div className="pointer-events-none absolute left-2 top-2 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-2 py-1 shadow-sm">
-            <p className="text-xs font-semibold text-primary">
+          <div className="pointer-events-none absolute left-1 top-1 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
+            <p className="text-[10px] font-semibold text-primary sm:text-xs">
               {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
             </p>
-            <p className="text-[11px] tabular-nums text-muted-foreground">
+            <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px]">
               O {last.open.toFixed(digits)} H {last.high.toFixed(digits)} L {last.low.toFixed(digits)}{' '}
               <span className={last.close >= last.open ? 'text-emerald-500' : 'text-red-500'}>
                 C {last.close.toFixed(digits)}
