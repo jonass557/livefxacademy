@@ -100,6 +100,7 @@ export function useFullscreen() {
 }
 
 // Menu déroulant générique avec fermeture au clic extérieur.
+// `max-w` empêche le panneau de dépasser l'écran sur téléphone.
 export function Dropdown({ trigger, open, setOpen, children, align = 'left', width = 'w-56' }) {
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -112,7 +113,7 @@ export function Dropdown({ trigger, open, setOpen, children, align = 'left', wid
     <div ref={ref} className="relative">
       {trigger}
       {open && (
-        <div className={`absolute top-full mt-1 z-30 rounded-lg border bg-popover text-popover-foreground shadow-lg ${width} ${align === 'right' ? 'right-0' : 'left-0'}`}>
+        <div className={`absolute top-full mt-1 z-30 max-w-[calc(100vw-1.5rem)] rounded-lg border bg-popover text-popover-foreground shadow-lg ${width} ${align === 'right' ? 'right-0' : 'left-0'}`}>
           {children}
         </div>
       )}
@@ -121,6 +122,7 @@ export function Dropdown({ trigger, open, setOpen, children, align = 'left', wid
 }
 
 // Menu « Outils » : outils de dessin regroupés (remplace la toolbar latérale).
+// Sur mobile le bouton et le label sont compactés.
 export function DrawToolsMenu({ chartRef }) {
   const [open, setOpen] = React.useState(false);
   return (
@@ -129,7 +131,7 @@ export function DrawToolsMenu({ chartRef }) {
       setOpen={setOpen}
       trigger={
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setOpen((o) => !o)}>
-          <Pencil className="h-3.5 w-3.5" /> Outils <ChevronDown className="h-3 w-3" />
+          <Pencil className="h-3.5 w-3.5" /> <span className="hidden xs:inline">Outils</span> <ChevronDown className="h-3 w-3" />
         </Button>
       }
     >
@@ -156,6 +158,7 @@ export function DrawToolsMenu({ chartRef }) {
 }
 
 // Menu « Indicateurs » : activation/désactivation par cases cochables.
+// Sur mobile le bouton et le label sont compactés.
 export function IndicatorsMenu({ chartRef, active, setActive, panesRef }) {
   const [open, setOpen] = React.useState(false);
   const toggle = (name) => {
@@ -193,7 +196,7 @@ export function IndicatorsMenu({ chartRef, active, setActive, panesRef }) {
       width="w-44"
       trigger={
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setOpen((o) => !o)}>
-          <FunctionSquare className="h-3.5 w-3.5" /> Indicateurs{count ? ` (${count})` : ''} <ChevronDown className="h-3 w-3" />
+          <FunctionSquare className="h-3.5 w-3.5" /> <span className="hidden xs:inline">Indicateurs</span>{count ? ` (${count})` : ''} <ChevronDown className="h-3 w-3" />
         </Button>
       }
     >

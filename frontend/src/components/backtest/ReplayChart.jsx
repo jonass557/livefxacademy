@@ -272,31 +272,32 @@ export default function ReplayChart({
   const progressPct = Math.round(((Math.min(Math.max(index, startIdx), endIdx) - startIdx) / spanTotal) * 100);
   const digits = priceDigits;
 
+  // z-[60] : au-dessus du bouton menu flottant du sidebar mobile (z-50).
   const wrapClass = fullscreen
-    ? 'fixed inset-0 z-50 flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
+    ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
     : 'space-y-3';
   const chartHeight = fullscreen ? undefined : 'clamp(420px, 62vh, 760px)';
 
   return (
     <div className={wrapClass}>
       {/* ==================== BARRE DE CONTRÔLE ==================== */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2">
         {!inReplay ? (
           <>
             <Button size="sm" onClick={enterReplay} className="gap-1.5">
               <Film className="h-4 w-4" /> Replay
             </Button>
-            <span className="text-xs text-muted-foreground flex items-center gap-2">
+            <span className="hidden text-xs text-muted-foreground xs:flex items-center gap-2">
               <span className="inline-block h-2.5 w-0.5 bg-blue-500" /> début
               <span className="inline-block h-2.5 w-0.5 bg-purple-500" /> fin
-              <span className="hidden sm:inline">— le replay démarre à la date de début et s'arrête à la date de fin.</span>
+              <span className="hidden lg:inline">— le replay démarre à la date de début et s'arrête à la date de fin.</span>
             </span>
           </>
         ) : (
           <>
-            <Button size="sm" variant={playing ? 'secondary' : 'default'} onClick={() => setPlaying((p) => !p)} className="gap-1.5">
+            <Button size="sm" variant={playing ? 'secondary' : 'default'} onClick={() => setPlaying((p) => !p)} className="gap-1">
               {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              {playing ? 'Pause' : 'Reprendre'}
+              <span className="hidden xs:inline">{playing ? 'Pause' : 'Reprendre'}</span>
             </Button>
             <Button size="sm" variant="outline" onClick={stepForward} title="Bougie suivante">
               <SkipForward className="h-4 w-4" />
@@ -304,19 +305,19 @@ export default function ReplayChart({
             <Button size="sm" variant="outline" onClick={enterReplay} title="Recommencer (remet le solde à zéro)">
               <RotateCcw className="h-4 w-4" />
             </Button>
-            <div className="flex items-center gap-1 ml-1">
+            <div className="flex items-center gap-0.5 sm:gap-1 ml-1">
               {SPEEDS.map((s) => (
-                <Button key={s.key} size="sm" variant={speed === s.key ? 'default' : 'ghost'} className="px-2 h-7 text-xs" onClick={() => setSpeed(s.key)}>
+                <Button key={s.key} size="sm" variant={speed === s.key ? 'default' : 'ghost'} className="px-1.5 h-7 text-xs sm:px-2" onClick={() => setSpeed(s.key)}>
                   {s.label}
                 </Button>
               ))}
             </div>
-            <Button size="sm" variant="ghost" onClick={exitReplay} className="gap-1.5">
+            <Button size="sm" variant="ghost" onClick={exitReplay} className="gap-1 hidden sm:flex">
               <Eye className="h-4 w-4" /> Vue complète
             </Button>
           </>
         )}
-        <span className="text-xs text-muted-foreground ml-auto hidden md:inline">
+        <span className="text-xs text-muted-foreground ml-auto hidden lg:inline">
           {symbolName} • {timeframe}
         </span>
         <DrawToolsMenu chartRef={chartRef} />
@@ -328,36 +329,36 @@ export default function ReplayChart({
 
       {/* ==================== TRADING MANUEL + DATE (replay) ==================== */}
       {inReplay && (
-        <div className={`rounded-lg border bg-card ${fullscreen ? 'px-2 py-1 space-y-1' : 'p-3 space-y-2'}`}>
+        <div className={`rounded-lg border bg-card ${fullscreen ? 'px-2 py-1 space-y-1' : 'p-2 space-y-2 sm:p-3'}`}>
           <div className="flex flex-wrap items-center gap-2">
-            <p className={`font-semibold tabular-nums ${fullscreen ? 'text-sm' : 'text-base'}`}>
+            <p className={`font-semibold tabular-nums ${fullscreen ? 'text-sm' : 'text-sm sm:text-base'}`}>
               📅 {cur ? fmtDateLong(cur.time) : '—'}
             </p>
             <span className="text-xs text-muted-foreground tabular-nums">({progressPct} %)</span>
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-1.5 ml-auto sm:gap-2">
               {!position ? (
                 <>
-                  <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => openPosition('buy')}>
-                    <ArrowUpCircle className="h-4 w-4" /> Buy
+                  <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700 text-white px-2 sm:px-3" onClick={() => openPosition('buy')}>
+                    <ArrowUpCircle className="h-4 w-4" /> <span className="hidden xs:inline">Buy</span>
                   </Button>
-                  <Button size="sm" className="gap-1 bg-red-600 hover:bg-red-700 text-white" onClick={() => openPosition('sell')}>
-                    <ArrowDownCircle className="h-4 w-4" /> Sell
+                  <Button size="sm" className="gap-1 bg-red-600 hover:bg-red-700 text-white px-2 sm:px-3" onClick={() => openPosition('sell')}>
+                    <ArrowDownCircle className="h-4 w-4" /> <span className="hidden xs:inline">Sell</span>
                   </Button>
                 </>
               ) : (
                 <Button size="sm" variant="outline" className="gap-1" onClick={() => cur && closePosition(cur.close, cur.time)}>
                   <XCircle className="h-4 w-4" />
-                  Fermer {position.side === 'buy' ? 'Buy' : 'Sell'}
+                  <span className="hidden xs:inline">Fermer</span> {position.side === 'buy' ? 'Buy' : 'Sell'}
                   <span className={floating >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt$(floating)}</span>
                 </Button>
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:gap-x-4">
             <span>Solde <b className="text-foreground tabular-nums">{balance.toFixed(2)} $</b></span>
             <span>Équité <b className={`tabular-nums ${equity >= initialBalance ? 'text-green-500' : 'text-red-500'}`}>{equity.toFixed(2)} $</b></span>
-            {position && <span>Position <b className={position.side === 'buy' ? 'text-green-500' : 'text-red-500'}>{position.side.toUpperCase()} {lot}</b> @ {position.entryPrice.toFixed(digits)}</span>}
-            <span>Trades fermés <b className="text-foreground">{closedTrades}</b></span>
+            {position && <span className="hidden sm:inline">Position <b className={position.side === 'buy' ? 'text-green-500' : 'text-red-500'}>{position.side.toUpperCase()} {lot}</b> @ {position.entryPrice.toFixed(digits)}</span>}
+            <span>Trades <b className="text-foreground">{closedTrades}</b></span>
           </div>
           <input
             type="range" min={startIdx} max={endIdx} value={Math.min(Math.max(index, startIdx), endIdx)}
@@ -369,12 +370,12 @@ export default function ReplayChart({
 
       {/* ==================== GRAPHIQUE ==================== */}
       <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
-        <div className="pointer-events-none absolute left-2 top-2 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-2 py-1 shadow-sm">
-          <p className="text-xs font-semibold text-primary">
+        <div className="pointer-events-none absolute left-1 top-1 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
+          <p className="text-[10px] font-semibold text-primary sm:text-xs">
             {symbolName} <span className="text-foreground">{timeframe}</span>
           </p>
           {cur && (
-            <p className="text-[11px] tabular-nums text-muted-foreground">
+            <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px]">
               O {cur.open.toFixed(digits)} H {cur.high.toFixed(digits)} L {cur.low.toFixed(digits)}{' '}
               <span className={cur.close >= cur.open ? 'text-emerald-500' : 'text-red-500'}>C {cur.close.toFixed(digits)}</span>
             </p>
