@@ -20,6 +20,7 @@ import { cloudinaryVideoThumb } from '../../lib/video';
 import AnnouncementInteractions from '../../components/AnnouncementInteractions';
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
+import EconomicCalendar from '../EconomicCalendar';
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
@@ -1024,6 +1025,7 @@ const ClientDashboard = () => {
       case 'contact': return renderContact();
       case 'consultation': return renderConsultation();
       case 'vacation': return renderVacation();
+      case 'economics': return <EconomicCalendar />;
       case 'backtesting': return <Backtesting />;
       case 'backtest-history': return <BacktestHistory />;
       default: return renderDashboard();
@@ -1033,6 +1035,7 @@ const ClientDashboard = () => {
   // Feature buttons shown on the main page (replaces the sidebar)
   const navItems = [
     { id: 'announcements', icon: Video, label: t('sidebar.announcements') },
+    { id: 'economics', icon: Calendar, label: 'Annonces éco' },
     { id: 'services', icon: Briefcase, label: t('sidebar.services') },
     { id: 'trading', icon: TrendingUp, label: t('sidebar.tradingInfo') },
     { id: 'academy', icon: GraduationCap, label: t('sidebar.academy') },

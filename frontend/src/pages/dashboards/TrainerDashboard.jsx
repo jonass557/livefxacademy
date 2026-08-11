@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import api from '../../lib/api';
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
+import EconomicCalendar from '../EconomicCalendar';
 import {
   Plus,
   Edit2,
@@ -28,7 +29,8 @@ import {
   Send,
   FileText,
   ArrowLeft,
-  History
+  History,
+  Calendar
 } from 'lucide-react';
 
 const TrainerDashboard = () => {
@@ -47,6 +49,7 @@ const TrainerDashboard = () => {
     { id: 'profile', icon: User, label: 'Mon Profil' },
     { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
     { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
+    { id: 'economics', icon: Calendar, label: 'Annonces éco' },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
     { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
   ];
@@ -100,6 +103,7 @@ const TrainerDashboard = () => {
               {activeSection === 'profile' && <ProfileSection key={`profile-${refreshKey}`} />}
               {activeSection === 'registration' && <RegistrationDetails key={`registration-${refreshKey}`} />}
               {activeSection === 'strategies' && <StrategiesSection key={`strategies-${refreshKey}`} />}
+              {activeSection === 'economics' && <EconomicCalendar key={`economics-${refreshKey}`} />}
               {activeSection === 'backtesting' && <Backtesting key={`backtesting-${refreshKey}`} />}
               {activeSection === 'backtest-history' && <BacktestHistory key={`backtest-history-${refreshKey}`} />}
             </div>

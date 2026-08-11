@@ -17,6 +17,8 @@ const StudentConsultation = require('./StudentConsultation');
 const EmailLog = require('./EmailLog');
 const Service = require('./Service');
 const Backtest = require('./Backtest');
+const EconomicAnalysis = require('./EconomicAnalysis');
+const EconomicNotification = require('./EconomicNotification');
 
 module.exports = {
   User,

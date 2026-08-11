@@ -41,6 +41,7 @@ const AdminSidebar = ({ activeSection, setActiveSection, collapsed, setCollapsed
     { id: 'vacation-programs', icon: Palmtree, label: 'Programmes Vacances' },
     { id: 'services', icon: Briefcase, label: 'Services' },
     { id: 'announcements', icon: Video, label: 'Vidéos Annonces' },
+    { id: 'economics', icon: TrendingUp, label: 'Annonces éco' },
     { id: 'banners', icon: Image, label: t('sidebar.banners') },
     { id: 'emails', icon: Send, label: 'Envoyer Emails' },
     { id: 'statistics', icon: TrendingUp, label: 'Bilan Statistique' },

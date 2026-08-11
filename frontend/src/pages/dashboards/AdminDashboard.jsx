@@ -9,6 +9,7 @@ import api from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
 import AdminSidebar from '../../components/AdminSidebar';
+import EconomicCalendar from '../EconomicCalendar';
 import { getServiceIcon, SERVICE_ICON_NAMES } from '../../lib/serviceIcons';
 import { cloudinaryVideoThumb } from '../../lib/video';
 
@@ -3430,6 +3431,8 @@ const AdminDashboard = () => {
         return renderServicesAdmin();
       case 'announcements':
         return renderAnnouncements();
+      case 'economics':
+        return <EconomicCalendar />;
       case 'banners':
         return renderBanners();
       case 'emails':

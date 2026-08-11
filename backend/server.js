@@ -28,6 +28,8 @@ const studentConsultationRoutes = require('./routes/studentConsultationRoutes');
 const emailRoutes = require('./routes/emailRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const backtestRoutes = require('./routes/backtestRoutes');
+const economicRoutes = require('./routes/economicRoutes');
+const economicScheduler = require('./utils/economicCalendar/scheduler');
 
 const app = express();
 
@@ -73,6 +75,7 @@ app.use('/api/student-consultations', studentConsultationRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/backtests', backtestRoutes);
+app.use('/api/economics', economicRoutes);
 
 app.get('/', (req, res) => {
   res.send('LiveFx Academy API Running');
@@ -90,4 +93,7 @@ app.get('/health', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  // Démarre le scheduler des notifications « annonces économiques »
+  // (crée les documents EconomicNotification aux paliers T-60/30/15/5/0 min).
+  economicScheduler.start();
 });
