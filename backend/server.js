@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 const path = require('path');
+const http = require('http');
 const mongoose = require('mongoose');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
@@ -29,7 +30,13 @@ const emailRoutes = require('./routes/emailRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const backtestRoutes = require('./routes/backtestRoutes');
 const economicRoutes = require('./routes/economicRoutes');
+const demoRoutes = require('./routes/demoRoutes');
 const economicScheduler = require('./utils/economicCalendar/scheduler');
+// Trading Demo : hub de cotations temps réel, serveur WS, moteur de surveillance
+const liveFeed = require('./utils/marketData/liveFeed');
+const marketSocket = require('./realtime/marketSocket');
+const demoWatcher = require('./utils/tradingDemo/watcher');
+const { Instrument } = require('./models');
 
 const app = express();
 
@@ -76,6 +83,7 @@ app.use('/api/emails', emailRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/backtests', backtestRoutes);
 app.use('/api/economics', economicRoutes);
+app.use('/api/demo', demoRoutes);
 
 app.get('/', (req, res) => {
   res.send('LiveFx Academy API Running');
@@ -91,9 +99,26 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+// Serveur HTTP explicite pour pouvoir attacher le serveur WebSocket (marché temps réel).
+const server = http.createServer(app);
+
+// Serveur WebSocket des cotations temps réel (/ws/market).
+marketSocket.attach(server);
+
+server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   // Démarre le scheduler des notifications « annonces économiques »
   // (crée les documents EconomicNotification aux paliers T-60/30/15/5/0 min).
   economicScheduler.start();
+
+  // Trading Demo : charge les instruments dans le hub de cotations puis démarre
+  // la surveillance serveur (SL/TP + pending orders), même sans client connecté.
+  try {
+    const instruments = await Instrument.find({ enabled: true });
+    liveFeed.init(instruments);
+    demoWatcher.start();
+    console.log(`[trading-demo] ${instruments.length} instruments chargés dans le hub temps réel`);
+  } catch (err) {
+    console.error('[trading-demo] init différée (instruments non chargés) :', err.message);
+  }
 });

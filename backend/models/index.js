@@ -19,6 +19,13 @@ const Service = require('./Service');
 const Backtest = require('./Backtest');
 const EconomicAnalysis = require('./EconomicAnalysis');
 const EconomicNotification = require('./EconomicNotification');
+// Module Trading Demo (comptes/ordres/positions 100 % virtuels)
+const DemoAccount = require('./DemoAccount');
+const Instrument = require('./Instrument');
+const Position = require('./Position');
+const PendingOrder = require('./PendingOrder');
+const Trade = require('./Trade');
+const Watchlist = require('./Watchlist');
 
 module.exports = {
   User,
@@ -39,5 +46,13 @@ module.exports = {
   StudentConsultation,
   EmailLog,
   Service,
-  Backtest
+  Backtest,
+  EconomicAnalysis,
+  EconomicNotification,
+  DemoAccount,
+  Instrument,
+  Position,
+  PendingOrder,
+  Trade,
+  Watchlist
 };

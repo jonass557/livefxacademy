@@ -7,7 +7,7 @@ import {
   MessageSquare, Phone, Send, Facebook, ClipboardList,
   Palmtree, Briefcase, CheckCircle, ArrowRight, ArrowLeft, ExternalLink,
   User, MapPin, Clock, Target, BookOpen, Star, AlertCircle,
-  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X, History
+  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X, History, LineChart
 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import AnnouncementInteractions from '../../components/AnnouncementInteractions'
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
+import TradingDemo from '../TradingDemo';
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
@@ -1026,6 +1027,7 @@ const ClientDashboard = () => {
       case 'consultation': return renderConsultation();
       case 'vacation': return renderVacation();
       case 'economics': return <EconomicCalendar />;
+      case 'trading-demo': return <TradingDemo />;
       case 'backtesting': return <Backtesting />;
       case 'backtest-history': return <BacktestHistory />;
       default: return renderDashboard();
@@ -1044,6 +1046,7 @@ const ClientDashboard = () => {
     { id: 'consultation', icon: ClipboardList, label: t('sidebar.consultationForm') },
     { id: 'vacation', icon: Palmtree, label: t('sidebar.vacationProgram') },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
+    { id: 'trading-demo', icon: LineChart, label: 'Trading Demo' },
     { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
   ];
 

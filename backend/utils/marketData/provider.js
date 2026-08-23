@@ -12,7 +12,9 @@
 // Cette couche d'abstraction permet d'ajouter un nouveau fournisseur (Binance,
 // MT5, etc.) sans toucher au moteur de backtest ni aux contrôleurs.
 
-// Unités de temps supportées (mappées vers la granularité Deriv en secondes).
+// Unités de temps supportées (mappées vers la granularité en secondes).
+// NB : Deriv plafonne à D1. Le Trading Demo gère W1/MN séparément (candleService)
+// pour ne pas exposer ces unités au module Backtesting qui s'appuie sur Deriv.
 const TIMEFRAMES = [
   { key: 'M1', label: '1 minute', granularity: 60 },
   { key: 'M5', label: '5 minutes', granularity: 300 },
