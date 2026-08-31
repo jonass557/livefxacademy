@@ -1,0 +1,12 @@
+# Routing SPA (React Router) sur Apache/LiteSpeed.
+# Sans ça : recharger /login, /dashboard... renvoie une 404 serveur
+# ("The requested resource could not be found on this server").
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  # Ne pas réécrire les fichiers/dossiers réels (assets, images, index.html...)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  # Tout le reste est géré côté client par React Router
+  RewriteRule . /index.html [L]
+</IfModule>
