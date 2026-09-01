@@ -156,7 +156,11 @@ exports.openMarket = async (req, res) => {
     const instrument = await Instrument.findOne({ symbol, enabled: true });
     if (!instrument) return res.status(404).json({ message: 'Instrument introuvable ou désactivé' });
 
-    watcher.ensure(symbol); // garantit le flux de prix pour SL/TP à venir
+    watcher.ensure(symbol); // ouvre le flux de prix (exécution + SL/TP à venir)
+    // Laisse arriver la 1re cotation si le symbole vient d'être abonné (ex. WebSocket
+    // client déconnecté, ou symbole hors paires de conversion) : évite un faux
+    // « Prix indisponible pour cet instrument » à froid.
+    await liveFeed.waitForQuote(symbol, 4000);
     const position = await withAccountLock(account._id, () =>
       engine.openMarketPosition({
         account, instrument, side,
@@ -181,6 +185,8 @@ exports.closePosition = async (req, res) => {
     if (!instrument) return res.status(404).json({ message: 'Instrument introuvable' });
 
     const { volume = null } = req.body || {};
+    watcher.ensure(position.symbol); // réchauffe le flux si nécessaire avant de lire le prix
+    await liveFeed.waitForQuote(position.symbol, 4000);
     const result = await withAccountLock(account._id, () =>
       engine.closePosition({ account, instrument, position, volume: volume == null ? null : Number(volume), reason: 'MANUAL' })
     );
@@ -227,7 +233,8 @@ exports.createPending = async (req, res) => {
 
     engine.validateVolume(instrument, volume);
 
-    const quote = liveFeed.getQuote(symbol);
+    watcher.ensure(symbol); // ouvre le flux amont si le symbole n'était pas suivi
+    const quote = await liveFeed.waitForQuote(symbol, 4000);
     if (!quote) return res.status(400).json({ message: 'Prix indisponible pour placer cet ordre' });
     const entry = Number(entry_price);
     const ref = quote.mid;
@@ -260,7 +267,6 @@ exports.createPending = async (req, res) => {
       take_profit: take_profit == null ? null : Number(take_profit),
       status: 'PENDING',
     });
-    watcher.ensure(symbol); // surveillance immédiate du niveau
     res.status(201).json({ order: publicOrder(order) });
   } catch (err) {
     res.status(400).json({ message: err.message || "Impossible de créer l'ordre" });

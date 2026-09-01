@@ -28,6 +28,7 @@ class LiveFeed extends EventEmitter {
 
     this.deriv = { ws: null, ready: false, subs: new Set(), psToSym: new Map(), subId: new Map(), backoff: 1000, timer: null, ping: null };
     this.binance = { ws: null, ready: false, subs: new Set(), psToSym: new Map(), backoff: 1000, timer: null };
+    this._derivErrSeen = new Set(); // (symbole:code) déjà logués, anti-spam
   }
 
   // Alimente le hub avec les instruments (au démarrage / après seed).
@@ -45,6 +46,30 @@ class LiveFeed extends EventEmitter {
 
   getQuote(symbol) { return this.quotes.get(symbol) || null; }
   getAllQuotes() { return Array.from(this.quotes.values()); }
+
+  // Attend la 1re cotation d'un symbole après abonnement. Nécessaire car subscribe()
+  // ouvre le flux amont mais le 1er tick arrive en différé (100 ms–2 s) : lire le cache
+  // immédiatement renverrait null → faux « prix indisponible » à froid. Résout tout de
+  // suite si la cotation est déjà en cache ; sinon écoute l'événement 'quote' jusqu'au
+  // timeout, puis retente le cache une dernière fois (null si aucun flux n'est possible).
+  waitForQuote(symbol, timeoutMs = 2500) {
+    const cached = this.getQuote(symbol);
+    if (cached) return Promise.resolve(cached);
+    if (!this.meta.has(symbol)) return Promise.resolve(null); // pas de provider → aucun tick à attendre
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (q) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        this.removeListener('quote', onQuote);
+        resolve(q || this.getQuote(symbol));
+      };
+      const onQuote = (q) => { if (q && q.symbol === symbol) finish(q); };
+      const timer = setTimeout(() => finish(null), timeoutMs);
+      this.on('quote', onQuote);
+    });
+  }
 
   // Enregistre un intérêt pour un symbole (ouvre l'abonnement amont au 1er abonné).
   subscribe(symbol) {
@@ -113,6 +138,17 @@ class LiveFeed extends EventEmitter {
     });
     ws.on('message', (raw) => {
       let msg; try { msg = JSON.parse(raw.toString()); } catch (_) { return; }
+      if (msg.error) {
+        // Rend visibles les refus Deriv (InvalidSymbol, MarketIsClosed, …) qui, sinon,
+        // se traduisent silencieusement par un « prix indisponible » à l'ouverture.
+        const sym = msg.echo_req && (msg.echo_req.ticks || msg.echo_req.forget);
+        const key = `${sym || '?'}:${msg.error.code}`;
+        if (!this._derivErrSeen.has(key)) {
+          this._derivErrSeen.add(key);
+          console.warn(`[liveFeed] Deriv refuse ${sym || '?'} → ${msg.error.code}: ${msg.error.message}`);
+        }
+        return;
+      }
       if (msg.msg_type === 'tick' && msg.tick) {
         const t = msg.tick;
         const sym = this.deriv.psToSym.get(t.symbol);
