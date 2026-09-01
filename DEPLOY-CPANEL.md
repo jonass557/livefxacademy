@@ -1,4 +1,4 @@
-# Déploiement LiveFx Academy sur cPanel (GPTServers)
+# Déploiement LivefxTrading sur cPanel (GPTServers)
 
 Domaine : **livefx-trading.com** (acheté chez LWS, serveurs DNS pointés vers GPTServers, propagation + AutoSSL faits).
 Hébergement : cPanel mutualisé « Cas A » (un seul compte, LiveFx ajouté en **Addon Domain** à côté d'un premier site — dossiers séparés, aucun conflit).

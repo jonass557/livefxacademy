@@ -273,8 +273,8 @@ const Home = () => {
           <h3 className="text-2xl font-bold mb-8">{t('home.stayConnected')}</h3>
           <div className="flex justify-center gap-6 mb-8">
              <SocialButton label="WhatsApp" href="https://wa.me/VOTRE_NUMERO" icon="whatsapp" />
-             <SocialButton label="Telegram" href="https://t.me/livefxacademy" icon="telegram" />
-             <SocialButton label="Facebook" href="https://facebook.com/livefxacademy" icon="facebook" />
+             <SocialButton label="Telegram" href="https://t.me/livefxtrading" icon="telegram" />
+             <SocialButton label="Facebook" href="https://facebook.com/livefxtrading" icon="facebook" />
           </div>
           <p className="text-sm text-muted-foreground">
             {t('home.copyright')}

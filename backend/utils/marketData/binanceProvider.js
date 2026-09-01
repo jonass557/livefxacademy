@@ -43,7 +43,7 @@ async function fetchCandles({ symbol, granularity, start, end }) {
   for (let guard = 0; guard < Math.ceil(MAX_CANDLES / PER_REQUEST) + 2; guard++) {
     const url = `${REST_BASE}/api/v3/klines?symbol=${symbol}&interval=${interval}` +
       `&startTime=${cursor}&endTime=${endMs}&limit=${PER_REQUEST}`
-    const res = await fetch(url, { headers: { 'User-Agent': 'LiveFxAcademy/1.0' } })
+    const res = await fetch(url, { headers: { 'User-Agent': 'LivefxTrading/1.0' } })
     if (!res.ok) {
       if (byTime.size) break // on garde ce qu'on a
       throw new Error(`Binance: échec klines (${res.status})`)

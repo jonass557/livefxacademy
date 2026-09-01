@@ -1,4 +1,4 @@
-# LiveFx Academy Platform
+# LivefxTrading Platform
 
 Application complète d'académie de trading (React + Node.js + PostgreSQL).
 
@@ -82,4 +82,4 @@ Tout est hébergé sur **cPanel (GPTServers)** — guide détaillé : [`DEPLOY-C
 
 ---
 
-*Développé par Cascade pour LiveFx Academy.*
+*Développé par Cascade pour LivefxTrading.*

@@ -569,7 +569,7 @@ const RegistrationDetails = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Ma Fiche d'Inscription</h1>
-        <p className="text-muted-foreground">Complétez votre fiche pour devenir formateur certifié LiveFx Academy</p>
+        <p className="text-muted-foreground">Complétez votre fiche pour devenir formateur certifié LivefxTrading</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -861,7 +861,7 @@ const RegistrationDetails = () => {
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Pourquoi souhaitez-vous rejoindre LiveFx Academy ?</label>
+              <label className="text-sm font-medium mb-2 block">Pourquoi souhaitez-vous rejoindre LivefxTrading ?</label>
               <textarea 
                 {...register('motivation')} 
                 className="w-full border rounded-md p-3 bg-background min-h-[100px]"

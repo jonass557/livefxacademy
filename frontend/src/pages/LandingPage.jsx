@@ -309,8 +309,8 @@ const LandingPage = () => {
               </h2>
               <p className="text-lg text-muted-foreground">
                 {language === 'fr'
-                  ? 'LiveFx Academy vous offre une formation complète et professionnelle pour devenir un trader rentable et autonome.'
-                  : 'LiveFx Academy offers you complete and professional training to become a profitable and autonomous trader.'
+                  ? 'LivefxTrading vous offre une formation complète et professionnelle pour devenir un trader rentable et autonome.'
+                  : 'LivefxTrading offers you complete and professional training to become a profitable and autonomous trader.'
                 }
               </p>
               <div className="space-y-3">
@@ -345,7 +345,7 @@ const LandingPage = () => {
                   <div className="inline-flex p-4 rounded-full bg-primary/10">
                     <GraduationCap className="h-16 w-16 text-primary" />
                   </div>
-                  <h3 className="text-2xl font-bold">LiveFx Academy</h3>
+                  <h3 className="text-2xl font-bold">LivefxTrading</h3>
                   <p className="text-muted-foreground">
                     {language === 'fr'
                       ? 'Votre partenaire pour réussir dans le trading Forex'
@@ -406,7 +406,7 @@ const LandingPage = () => {
           </h3>
           <div className="flex justify-center gap-6 mb-8">
             <a 
-              href="https://facebook.com/livefxacademy" 
+              href="https://facebook.com/livefxtrading" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
@@ -416,7 +416,7 @@ const LandingPage = () => {
             </a>
           </div>
           <p className="text-sm text-muted-foreground">
-            © 2024 LiveFx Academy. {language === 'fr' ? 'Tous droits réservés. Le trading comporte des risques.' : 'All rights reserved. Trading involves risks.'}
+            © 2024 LivefxTrading. {language === 'fr' ? 'Tous droits réservés. Le trading comporte des risques.' : 'All rights reserved. Trading involves risks.'}
           </p>
         </div>
       </footer>

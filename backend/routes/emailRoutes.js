@@ -117,21 +117,21 @@ router.post('/send', adminOnly, async (req, res) => {
     for (const recipient of emailList) {
       try {
         await transporter.sendMail({
-          from: `"LiveFx Academy" <${process.env.SMTP_USER}>`,
+          from: `"LivefxTrading" <${process.env.SMTP_USER}>`,
           to: recipient.email,
           subject: subject,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 20px; border-radius: 10px 10px 0 0;">
-                <h1 style="color: white; margin: 0; text-align: center;">LiveFx Academy</h1>
+                <h1 style="color: white; margin: 0; text-align: center;">LivefxTrading</h1>
               </div>
               <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; border-top: none;">
                 <p style="color: #374151; font-size: 16px;">Bonjour ${recipient.full_name || 'cher membre'},</p>
                 <div style="color: #374151; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${message}</div>
                 <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
                 <p style="color: #6b7280; font-size: 12px; text-align: center;">
-                  Cet email vous a été envoyé par l'équipe LiveFx Academy.<br/>
-                  <a href="https://livefxacademy.com" style="color: #6366f1;">Visiter notre site</a>
+                  Cet email vous a été envoyé par l'équipe LivefxTrading.<br/>
+                  <a href="https://livefx-trading.com" style="color: #6366f1;">Visiter notre site</a>
                 </p>
               </div>
             </div>
@@ -203,8 +203,8 @@ router.get('/templates', adminOnly, async (req, res) => {
     {
       id: 1,
       name: 'Bienvenue',
-      subject: 'Bienvenue chez LiveFx Academy !',
-      message: `Nous sommes ravis de vous accueillir au sein de LiveFx Academy !
+      subject: 'Bienvenue chez LivefxTrading !',
+      message: `Nous sommes ravis de vous accueillir au sein de LivefxTrading !
 
 Votre parcours vers l'excellence en trading commence maintenant. Voici quelques ressources pour bien démarrer :
 
@@ -215,7 +215,7 @@ Votre parcours vers l'excellence en trading commence maintenant. Voici quelques 
 N'hésitez pas à nous contacter si vous avez des questions.
 
 À très bientôt !
-L'équipe LiveFx Academy`
+L'équipe LivefxTrading`
     },
     {
       id: 2,
@@ -228,7 +228,7 @@ Une nouvelle formation est maintenant disponible dans votre espace membre.
 Connectez-vous dès maintenant pour découvrir ce nouveau contenu et continuer votre progression.
 
 Bonne formation !
-L'équipe LiveFx Academy`
+L'équipe LivefxTrading`
     },
     {
       id: 3,
@@ -244,7 +244,7 @@ Détails de la session :
 • Lien : [À compléter]
 
 À très bientôt !
-L'équipe LiveFx Academy`
+L'équipe LivefxTrading`
     },
     {
       id: 4,
@@ -262,7 +262,7 @@ Au programme :
 
 Places limitées ! Inscrivez-vous dès maintenant.
 
-L'équipe LiveFx Academy`
+L'équipe LivefxTrading`
     }
   ];
   

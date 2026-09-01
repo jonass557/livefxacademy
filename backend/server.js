@@ -57,7 +57,7 @@ const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'LiveFx Academy API',
+      title: 'LivefxTrading API',
       version: '1.0.0',
     },
     servers: [{ url: process.env.API_PUBLIC_URL || (process.env.NODE_ENV === 'production' ? 'https://api.livefx-trading.com' : `http://localhost:${PORT}`) }],
@@ -86,7 +86,7 @@ app.use('/api/economics', economicRoutes);
 app.use('/api/demo', demoRoutes);
 
 app.get('/', (req, res) => {
-  res.send('LiveFx Academy API Running');
+  res.send('LivefxTrading API Running');
 });
 
 app.get('/health', (req, res) => {

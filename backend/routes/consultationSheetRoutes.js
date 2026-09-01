@@ -382,7 +382,7 @@ router.patch('/admin/:id/review', adminOnly, async (req, res) => {
             ? `<p>Bonjour ${sheet.full_name || trainer?.full_name || ''},</p>
                <p>Votre fiche d'inscription formateur a été <strong>validée</strong> par l'administrateur. Votre compte est désormais vérifié.</p>
                ${admin_notes ? `<p><strong>Note de l'administrateur :</strong> ${admin_notes}</p>` : ''}
-               <p>Bienvenue dans l'équipe LiveFx Academy !</p>`
+               <p>Bienvenue dans l'équipe LivefxTrading !</p>`
             : `<p>Bonjour ${sheet.full_name || trainer?.full_name || ''},</p>
                <p>Votre fiche d'inscription formateur n'a pas été retenue pour le moment.</p>
                ${admin_notes ? `<p><strong>Motif / note :</strong> ${admin_notes}</p>` : ''}

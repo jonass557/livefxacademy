@@ -54,7 +54,7 @@ const Login = () => {
             </div>
           </div>
           <CardTitle className="text-2xl">{t('login.title')}</CardTitle>
-          <CardDescription>LiveFx Academy</CardDescription>
+          <CardDescription>LivefxTrading</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

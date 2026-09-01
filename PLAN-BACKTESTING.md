@@ -1,4 +1,4 @@
-# Plan — Module Backtesting (LiveFx Academy)
+# Plan — Module Backtesting (LivefxTrading)
 
 Suivi du chantier Backtesting du dashboard élève.
 Données de marché : API publique Deriv (WebSocket), `DERIV_APP_ID` optionnel
@@ -94,6 +94,7 @@ au trader pour tester SA stratégie en prenant lui-même ses positions.
 - [x] Boutons Buy / Sell pendant le replay : le trader ouvre et ferme ses
       positions manuellement (marqueurs ▲/▼ + ligne d'entrée pointillée,
       profit flottant en direct, solde/équité mis à jour, P&L en pips×lot
+     
       à 10 $/pip/lot)
 - [x] Solde initial 10 000 $ bien visible dans l'en-tête (carte Wallet)
 - [x] Stratégies/moteur auto retirés de la page (le backend reste disponible

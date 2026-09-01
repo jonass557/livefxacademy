@@ -4,6 +4,13 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Forcer HTTPS. Sans cette redirection, ouvrir le site en http:// (ex. quand on
+  # tape "livefx-trading.com" sans préfixe) reste en HTTP et le navigateur affiche
+  # « Not secure ». On redirige tout le trafic HTTP vers HTTPS en 301.
+  RewriteCond %{HTTPS} off
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
   # Ne pas réécrire les fichiers/dossiers réels (assets, images, index.html...)
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

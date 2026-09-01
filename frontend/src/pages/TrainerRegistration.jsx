@@ -276,7 +276,7 @@ const TrainerRegistration = () => {
                   />
                   <label className="text-sm">
                     J'accepte les <a href="#" className="text-primary underline">conditions d'utilisation</a> et 
-                    la <a href="#" className="text-primary underline">politique de confidentialité</a> de LiveFx Academy.
+                    la <a href="#" className="text-primary underline">politique de confidentialité</a> de LivefxTrading.
                   </label>
                 </div>
                 {errors.terms_accepted && <p className="text-red-500 text-sm">{errors.terms_accepted.message}</p>}

@@ -92,7 +92,7 @@ const TradingInfo = () => {
         <div className="bg-muted p-6 rounded-xl space-y-4">
           <h3 className="text-xl font-bold">Inscrivez-vous maintenant</h3>
           <p className="text-muted-foreground">
-            Rejoignez LiveFx Academy et accédez à nos formations, nos webinaires et notre communauté de traders.
+            Rejoignez LivefxTrading et accédez à nos formations, nos webinaires et notre communauté de traders.
           </p>
           <Link to="/register">
             <Button variant="outline" className="w-full gap-2">

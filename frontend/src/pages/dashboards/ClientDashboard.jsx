@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import {
@@ -28,7 +28,15 @@ const ClientDashboard = () => {
   const { t } = useLanguageStore();
   const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
-  const [activeSection, setActiveSection] = useState('dashboard');
+  // La navigation entre les fonctions du tableau de bord passe par l'URL
+  // (?section=...) et non un simple state : le bouton « Précédent » du
+  // navigateur revient alors à l'accueil du tableau de bord au lieu de quitter
+  // l'espace membre (ce qui renvoyait vers /login et donnait l'impression
+  // d'être déconnecté).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeSection = searchParams.get('section') || 'dashboard';
+  const setActiveSection = (id) =>
+    setSearchParams(id && id !== 'dashboard' ? { section: id } : {});
   const [loading, setLoading] = useState(true);
   
   // Consultation form state
@@ -439,7 +447,7 @@ const ClientDashboard = () => {
             <div className="inline-flex p-4 rounded-full bg-primary/10">
               <GraduationCap className="h-16 w-16 text-primary" />
             </div>
-            <h3 className="text-2xl font-bold">LiveFx Academy</h3>
+            <h3 className="text-2xl font-bold">LivefxTrading</h3>
             <p className="text-muted-foreground max-w-lg mx-auto">
               {t('client.academyDesc')}
             </p>
@@ -550,7 +558,7 @@ const ClientDashboard = () => {
             </div>
             <h3 className="text-xl font-bold">{t('client.telegram')}</h3>
             <p className="text-muted-foreground">Rejoignez notre canal</p>
-            <a href="https://t.me/livefxacademy" target="_blank" rel="noopener noreferrer">
+            <a href="https://t.me/livefxtrading" target="_blank" rel="noopener noreferrer">
               <Button className="w-full gap-2 bg-blue-500 hover:bg-blue-600">
                 Ouvrir Telegram <ExternalLink className="h-4 w-4" />
               </Button>
@@ -565,7 +573,7 @@ const ClientDashboard = () => {
             </div>
             <h3 className="text-xl font-bold">{t('client.facebook')}</h3>
             <p className="text-muted-foreground">Suivez notre page</p>
-            <a href="https://facebook.com/livefxacademy" target="_blank" rel="noopener noreferrer">
+            <a href="https://facebook.com/livefxtrading" target="_blank" rel="noopener noreferrer">
               <Button className="w-full gap-2 bg-blue-600 hover:bg-blue-700">
                 Ouvrir Facebook <ExternalLink className="h-4 w-4" />
               </Button>
@@ -901,7 +909,7 @@ const ClientDashboard = () => {
                 value={consultationForm.feedback}
                 onChange={handleConsultationChange}
                 className="w-full border rounded-md px-3 py-2 bg-background min-h-[80px]"
-                placeholder="Partagez votre expérience avec LiveFx Academy..."
+                placeholder="Partagez votre expérience avec LivefxTrading..."
               />
             </div>
             <div>
@@ -1046,7 +1054,7 @@ const ClientDashboard = () => {
     { id: 'consultation', icon: ClipboardList, label: t('sidebar.consultationForm') },
     { id: 'vacation', icon: Palmtree, label: t('sidebar.vacationProgram') },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
-    { id: 'trading-demo', icon: LineChart, label: 'Trading Demo' },
+    { id: 'trading-demo', icon: LineChart, label: 'Graphique' },
     { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
   ];
 

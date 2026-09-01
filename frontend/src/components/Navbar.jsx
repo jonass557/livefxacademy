@@ -25,7 +25,7 @@ const Navbar = () => {
         <Link to="/" className="flex items-center space-x-2">
           <img 
             src={logoUrl} 
-            alt="LiveFx Academy" 
+            alt="LivefxTrading" 
             className="h-10 w-auto object-contain"
             onError={(e) => {
               e.target.style.display = 'none';
@@ -36,7 +36,7 @@ const Navbar = () => {
             <TrendingUp className="h-6 w-6" />
           </div>
           <span className="hidden font-bold text-xl sm:inline-block">
-            Live<span className="text-primary">Fx</span> <span className="text-green-500">Academy</span>
+            Livefx<span className="text-primary">Trading</span>
           </span>
         </Link>
         

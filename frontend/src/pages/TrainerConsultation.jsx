@@ -250,7 +250,7 @@ const TrainerConsultation = () => {
 
             {/* Motivation */}
             <div>
-              <label className="text-sm font-medium mb-1 block">Pourquoi voulez-vous rejoindre LiveFx Academy ? *</label>
+              <label className="text-sm font-medium mb-1 block">Pourquoi voulez-vous rejoindre LivefxTrading ? *</label>
               <textarea 
                 {...register('why_join')} 
                 className="w-full border rounded-md p-2 bg-background min-h-[100px]"

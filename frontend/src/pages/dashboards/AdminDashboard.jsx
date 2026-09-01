@@ -1205,7 +1205,7 @@ const AdminDashboard = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="prose dark:prose-invert max-w-none">
-        <h4>{t('emailGuide.subtitle')} (ex: contact@livefxacademy.com)</h4>
+        <h4>{t('emailGuide.subtitle')} (ex: contact@livefx-trading.com)</h4>
         <ol className="space-y-2">
           <li>{t('emailGuide.step1')}</li>
           <li>{t('emailGuide.step2')}</li>
@@ -2603,7 +2603,7 @@ const AdminDashboard = () => {
             <div>
               <h3 className="font-semibold text-lg">Pourquoi un email professionnel ?</h3>
               <p className="text-muted-foreground mt-1">
-                Un email comme <strong>contact@livefxacademy.com</strong> renforce la crédibilité 
+                Un email comme <strong>contact@livefx-trading.com</strong> renforce la crédibilité 
                 de votre académie et améliore la délivrabilité de vos messages.
               </p>
             </div>
@@ -2699,19 +2699,19 @@ const AdminDashboard = () => {
             <ul className="space-y-2 text-sm">
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4" />
-                <strong>contact@livefxacademy.com</strong> - Principal
+                <strong>contact@livefx-trading.com</strong> - Principal
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4" />
-                <strong>support@livefxacademy.com</strong> - Support
+                <strong>support@livefx-trading.com</strong> - Support
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4" />
-                <strong>formation@livefxacademy.com</strong> - Formations
+                <strong>formation@livefx-trading.com</strong> - Formations
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4" />
-                <strong>noreply@livefxacademy.com</strong> - Automatiques
+                <strong>noreply@livefx-trading.com</strong> - Automatiques
               </li>
             </ul>
           </CardContent>
@@ -2729,9 +2729,9 @@ const AdminDashboard = () => {
           <div className="bg-muted/50 p-4 rounded-lg font-mono text-sm space-y-1">
             <p>SMTP_HOST=smtp.gmail.com</p>
             <p>SMTP_PORT=587</p>
-            <p>SMTP_USER=contact@livefxacademy.com</p>
+            <p>SMTP_USER=contact@livefx-trading.com</p>
             <p>SMTP_PASS=votre_mot_de_passe_app</p>
-            <p>FROM_EMAIL=contact@livefxacademy.com</p>
+            <p>FROM_EMAIL=contact@livefx-trading.com</p>
           </div>
         </CardContent>
       </Card>

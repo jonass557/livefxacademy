@@ -42,7 +42,7 @@ async function fetchFeed(feed) {
   }
 
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'LiveFxAcademy/1.0 (economic-calendar)' },
+    headers: { 'User-Agent': 'LivefxTrading/1.0 (economic-calendar)' },
   });
   if (!res.ok) {
     // En cas d'échec réseau, on renvoie le cache périmé s'il existe.
