@@ -60,7 +60,7 @@ const swaggerOptions = {
       title: 'LiveFx Academy API',
       version: '1.0.0',
     },
-    servers: [{ url: process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}` }],
+    servers: [{ url: process.env.API_PUBLIC_URL || (process.env.NODE_ENV === 'production' ? 'https://api.livefx-trading.com' : `http://localhost:${PORT}`) }],
   },
   apis: ['./routes/*.js'],
 };

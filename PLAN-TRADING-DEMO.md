@@ -75,7 +75,7 @@ manuelle/partielle, marge insuffisante.
 | Base | **MongoDB via Mongoose 8** (PAS de Prisma, PAS de SQL) |
 | Auth | JWT (`jsonwebtoken`), bcrypt, validation `zod` |
 | Temps réel | **Aucun WS exposé** — le « live » actuel est du **polling** (backtesting : 15 s) |
-| Déploiement | Backend Railway (`/health`, `/api-docs`), Frontend Vercel, MongoDB Atlas |
+| Déploiement | Backend Node.js cPanel + Frontend statique cPanel (`/health`, `/api-docs`), MongoDB Atlas |
 
 Dépendances déjà présentes et réutilisables : **`ws` 8.21 (backend)** — permet un serveur
 WebSocket sans nouvelle dépendance ; **`klinecharts`** — graphique du terminal ;
@@ -191,7 +191,7 @@ pour Position/PendingOrder ; contrôle d'appartenance systématique
    `WebSocketServer` (`ws`, déjà installé) sur un chemin dédié (ex. `/ws/market`).
    - **Auth WS** : le token JWT ne peut pas passer par l'intercepteur Axios → le transmettre en query (`?token=`) ou premier message, vérifié avec `jwt.verify`.
    - Fan-out : un seul abonnement Deriv par symbole côté serveur, ré-émis à tous les clients abonnés (anti-abonnements multiples). Nettoyage à la déconnexion.
-   - Railway supporte les WebSockets (même port HTTP).
+   - cPanel/Passenger : le WebSocket passe par le sous-domaine `api` (à valider en prod, cf. DEPLOY-CPANEL.md).
 5. **Clés/API** : rester 100 % serveur (déjà le cas — le front ne reçoit jamais `DERIV_APP_ID`/clés).
 6. **Synthetic** : préparer la catégorie + un provider dédié optionnel, **sans inventer de prix** (désactivé tant qu'aucun provider réel n'est branché).
 

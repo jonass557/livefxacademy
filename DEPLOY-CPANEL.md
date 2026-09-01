@@ -16,7 +16,7 @@ Hébergement : cPanel mutualisé « Cas A » (un seul compte, LiveFx ajouté en 
 - Base de données    → MongoDB Atlas (externe, `0.0.0.0/0` autorisé)
 - Uploads            → Cloudinary (externe)
 
-> ⚠️ **Points sensibles du mutualisé** : le WebSocket `/ws/market` (module démo/cotations temps réel) et les tâches de fond 24/7 (`economicScheduler`, `demoWatcher`) peuvent être instables/coupés quand l'app est mise en veille. À vérifier après déploiement ; sinon garder le backend sur Railway.
+> ⚠️ **Points sensibles du mutualisé** : le WebSocket `/ws/market` (module démo/cotations temps réel) et les tâches de fond 24/7 (`economicScheduler`, `demoWatcher`) peuvent être instables/coupés quand Passenger met l'app en veille après inactivité. À vérifier après déploiement (voir §8) ; si instable, mettre en place un ping keep-alive (cron) vers `/health` ou demander à l'hébergeur un process Node persistant.
 
 ---
 
@@ -42,7 +42,7 @@ git clone https://github.com/jonass557/livefxacademy.git
 ```
 
 ## ÉTAPE 4 — Variables d'environnement backend
-Créer `~/repos/livefxacademy/backend/.env` (valeurs reprises du backend Railway) :
+Créer `~/repos/livefxacademy/backend/.env` :
 ```env
 NODE_ENV=production
 # NE PAS définir PORT (géré par Passenger)

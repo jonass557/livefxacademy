@@ -2,8 +2,8 @@
 // pour produire des analyses fondamentales structurées et répondre au chatbot.
 //
 // - Modèle : `claude-opus-4-8` (surchargé par ANTHROPIC_MODEL).
-// - Clé : ANTHROPIC_API_KEY (à définir dans les variables d'environnement /
-//   Railway). Si absente, le module renvoie `configured=false` et les
+// - Clé : ANTHROPIC_API_KEY (à définir dans les variables d'environnement du
+//   backend). Si absente, le module renvoie `configured=false` et les
 //   contrôleurs répondent proprement sans planter.
 // - Sorties structurées via `output_config.format` (json_schema) : Claude est
 //   contraint de répondre selon le schéma, donc `JSON.parse` est sûr.

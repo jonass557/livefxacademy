@@ -56,20 +56,11 @@ Application complète d'académie de trading (React + Node.js + PostgreSQL).
 
 ## 🌍 Déploiement (Production)
 
-### Backend (Render ou Railway)
-1. Poussez votre code sur GitHub.
-2. Créez un nouveau "Web Service" sur Render/Railway.
-3. Connectez votre repo GitHub.
-4. Variables d'environnement : Copiez le contenu de votre `.env`.
-5. Commande de build : `npm install`
-6. Commande de start : `node server.js`
+Tout est hébergé sur **cPanel (GPTServers)** — guide détaillé : [`DEPLOY-CPANEL.md`](./DEPLOY-CPANEL.md).
 
-### Frontend (Vercel)
-1. Importez votre repo sur Vercel.
-2. Root Directory : `frontend`
-3. Build Command : `npm run build`
-4. Output Directory : `dist`
-5. Variables d'env : Ajoutez `VITE_API_URL` pointant vers l'URL de votre backend déployé.
+- **Frontend** — `https://livefx-trading.com` (build Vite statique). **Déploiement automatique** via GitHub Actions (`.github/workflows/deploy.yml`) à chaque push touchant `frontend/**` : build avec `VITE_API_URL=https://api.livefx-trading.com` puis upload FTP vers cPanel.
+- **Backend** — `https://api.livefx-trading.com` (application Node.js, Setup Node.js App / Passenger). **Mise à jour manuelle** : sur le serveur, `git pull` puis *Run NPM Install* (si `package.json` a changé) puis *Restart*.
+- **Base de données** : MongoDB Atlas (externe, `0.0.0.0/0` autorisé). **Uploads** : Cloudinary (externe).
 
 ---
 
