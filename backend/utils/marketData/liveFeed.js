@@ -15,7 +15,9 @@ const EventEmitter = require('events');
 const WebSocket = require('ws');
 
 const DERIV_URL = `wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '1089'}`;
-const BINANCE_URL = 'wss://stream.binance.com:9443/ws';
+// Port 443 (et NON 9443, souvent bloqué en sortie sur l'hébergement mutualisé cPanel ;
+// Binance sert le même flux sur les deux ports). Surchargeable via BINANCE_WS_URL.
+const BINANCE_URL = process.env.BINANCE_WS_URL || 'wss://stream.binance.com:443/ws';
 const MAX_BACKOFF = 30000;
 
 class LiveFeed extends EventEmitter {
