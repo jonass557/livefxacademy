@@ -3,10 +3,11 @@
 // implémenter l'interface de provider.js puis l'enregistrer ci-dessous.
 const deriv = require('./derivProvider')
 const binance = require('./binanceProvider')
+const yahoo = require('./yahooProvider')
 const mt5 = require('./mt5Provider')
 const { TIMEFRAMES } = require('./provider')
 
-const PROVIDERS = { deriv, binance, mt5 }
+const PROVIDERS = { deriv, binance, yahoo, mt5 }
 
 function getProvider(name) {
   const p = PROVIDERS[name]

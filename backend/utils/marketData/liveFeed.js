@@ -31,6 +31,9 @@ class LiveFeed extends EventEmitter {
     this.deriv = { ws: null, ready: false, subs: new Set(), psToSym: new Map(), subId: new Map(), backoff: 1000, timer: null, ping: null };
     this.binance = { ws: null, ready: false, subs: new Set(), psToSym: new Map(), backoff: 1000, timer: null };
     this._derivErrSeen = new Set(); // (symbole:code) déjà logués, anti-spam
+    // Yahoo : pas de WS public → polling REST. subs = provider_symbol -> demoSymbol.
+    this.yahoo = { subs: new Map(), timer: null, busy: false, interval: Number(process.env.MARKET_POLL_MS) || 3000, pauseUntil: 0 };
+    this._yahooErrSeen = new Set();
   }
 
   // Alimente le hub avec les instruments (au démarrage / après seed).
@@ -81,6 +84,7 @@ class LiveFeed extends EventEmitter {
     this.refs.set(symbol, n);
     if (n === 1) {
       if (meta.provider === 'binance') this._binanceSub(meta.ps, symbol);
+      else if (meta.provider === 'yahoo') this._yahooSub(meta.ps, symbol);
       else this._derivSub(meta.ps, symbol);
     }
     return true;
@@ -94,6 +98,7 @@ class LiveFeed extends EventEmitter {
       const meta = this.meta.get(symbol);
       if (meta) {
         if (meta.provider === 'binance') this._binanceUnsub(meta.ps, symbol);
+        else if (meta.provider === 'yahoo') this._yahooUnsub(meta.ps);
         else this._derivUnsub(meta.ps, symbol);
       }
     } else {
@@ -223,6 +228,66 @@ class LiveFeed extends EventEmitter {
     };
     ws.on('close', down);
     ws.on('error', down);
+  }
+
+  // ---------------- Yahoo Finance (polling REST, sans clé) ----------------
+  // Pas de WebSocket public fiable → on interroge l'endpoint chart V8 par symbole
+  // abonné, toutes les `interval` ms. On diffuse le VRAI dernier prix marché
+  // (regularMarketPrice) ; le bid/ask reste dérivé du spread configuré (_setQuote).
+  _yahooSub(ps, symbol) {
+    this.yahoo.subs.set(ps, symbol);
+    this._ensureYahooPoll();
+    this._yahooFetchOne(ps, symbol); // 1er prix immédiat (latence minimale à l'ouverture)
+  }
+  _yahooUnsub(ps) {
+    this.yahoo.subs.delete(ps);
+    if (this.yahoo.subs.size === 0 && this.yahoo.timer) {
+      clearInterval(this.yahoo.timer);
+      this.yahoo.timer = null;
+    }
+  }
+  _ensureYahooPoll() {
+    if (this.yahoo.timer) return;
+    this.yahoo.timer = setInterval(() => this._yahooPoll(), this.yahoo.interval);
+  }
+  async _yahooPoll() {
+    if (this.yahoo.busy) return;                                       // pas de chevauchement de cycles
+    if (this.yahoo.pauseUntil && Date.now() < this.yahoo.pauseUntil) return; // backoff après un 429
+    const entries = Array.from(this.yahoo.subs.entries());
+    if (!entries.length) return;
+    this.yahoo.busy = true;
+    try {
+      const CONC = 6; // concurrence bornée pour ne pas marteler Yahoo
+      for (let i = 0; i < entries.length; i += CONC) {
+        await Promise.all(entries.slice(i, i + CONC).map(([ps, sym]) => this._yahooFetchOne(ps, sym)));
+      }
+    } finally {
+      this.yahoo.busy = false;
+    }
+  }
+  async _yahooFetchOne(ps, symbol) {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ps)}?interval=1m&range=1d`;
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (res.status === 429) { this.yahoo.pauseUntil = Date.now() + 30000; this._yahooLog(ps, '429 (pause 30 s)'); return; }
+      if (!res.ok) { this._yahooLog(ps, `HTTP ${res.status}`); return; }
+      const j = await res.json();
+      const m = j && j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta;
+      const price = m && Number(m.regularMarketPrice);
+      if (!(price > 0)) return;
+      const prev = this.quotes.get(symbol);
+      if (prev && prev.mid === price) return;   // inchangé (ex. marché fermé) → pas de ré-émission
+      const ts = m.regularMarketTime ? Number(m.regularMarketTime) * 1000 : Date.now();
+      this._setQuote(symbol, price, ts);
+    } catch (e) {
+      this._yahooLog(ps, e.message);
+    }
+  }
+  _yahooLog(ps, msg) {
+    const key = `${ps}:${msg}`;
+    if (this._yahooErrSeen.has(key)) return;
+    this._yahooErrSeen.add(key);
+    console.warn(`[liveFeed] Yahoo ${ps} → ${msg}`);
   }
 }
 

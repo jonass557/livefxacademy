@@ -2,7 +2,7 @@
 // Usage : node seed-instruments.js
 //
 // Mapping des symboles fournisseur :
-//  - FOREX / METALS / INDICES : Deriv (frx*, OTC_*), prix live via WS, sans clé.
+//  - FOREX / METALS / INDICES : Yahoo Finance (EURUSD=X, GC=F futures, ^GSPC…), prix live via polling REST, sans clé.
 //  - CRYPTO : Binance public (bookTicker → bid/ask réels), sans clé.
 //  - SYNTHETIC : catégorie préparée mais DÉSACTIVÉE (enabled=false, provider_symbol=null)
 //    → aucun prix inventé tant qu'un fournisseur réel n'est pas branché.
@@ -22,23 +22,23 @@ const fx = (symbol, name, quote) => {
     tick_value: (jpy ? 0.001 : 0.00001) * 100000, // valeur d'un tick pour 1 lot, en devise quote
     min_volume: 0.01, max_volume: 100, volume_step: 0.01,
     spread_pips: 1.5,
-    provider: 'deriv', provider_symbol: 'frx' + symbol,
+    provider: 'yahoo', provider_symbol: symbol + '=X',
   };
 };
 
-const metal = (symbol, name, pip, digits, contract) => ({
+const metal = (symbol, name, pip, digits, contract, ys) => ({
   symbol, name, category: 'METALS', quote_currency: 'USD',
   contract_size: contract, pip_size: pip, tick_size: pip / 10, digits,
   tick_value: (pip / 10) * contract,
   min_volume: 0.01, max_volume: 50, volume_step: 0.01, spread_pips: 3,
-  provider: 'deriv', provider_symbol: 'frx' + symbol,
+  provider: 'yahoo', provider_symbol: ys,
 });
 
 const index = (symbol, name, quote, providerSymbol) => ({
   symbol, name, category: 'INDICES', quote_currency: quote,
   contract_size: 1, pip_size: 1, tick_size: 0.01, digits: 2, tick_value: 0.01,
   min_volume: 0.01, max_volume: 50, volume_step: 0.01, spread_pips: 2,
-  provider: 'deriv', provider_symbol: providerSymbol,
+  provider: 'yahoo', provider_symbol: providerSymbol,
 });
 
 const crypto = (symbol, name, digits, binanceSymbol) => ({
@@ -92,20 +92,20 @@ const INSTRUMENTS = [
   crypto('DOGEUSD', 'Dogecoin', 5, 'DOGEUSDT'),
   crypto('LTCUSD', 'Litecoin', 2, 'LTCUSDT'),
 
-  // --- METALS (4) ---
-  metal('XAUUSD', 'Or / Dollar US', 0.1, 2, 100),
-  metal('XAGUSD', 'Argent / Dollar US', 0.01, 3, 5000),
-  metal('XPTUSD', 'Platine / Dollar US', 0.1, 2, 100),
-  metal('XPDUSD', 'Palladium / Dollar US', 0.1, 2, 100),
+  // --- METALS (4) — Yahoo futures ---
+  metal('XAUUSD', 'Or / Dollar US', 0.1, 2, 100, 'GC=F'),
+  metal('XAGUSD', 'Argent / Dollar US', 0.01, 3, 5000, 'SI=F'),
+  metal('XPTUSD', 'Platine / Dollar US', 0.1, 2, 100, 'PL=F'),
+  metal('XPDUSD', 'Palladium / Dollar US', 0.1, 2, 100, 'PA=F'),
 
-  // --- INDICES (7) ---
-  index('US30', 'Wall Street 30', 'USD', 'OTC_DJI'),
-  index('NAS100', 'US Tech 100', 'USD', 'OTC_NDX'),
-  index('SPX500', 'US 500', 'USD', 'OTC_SPC'),
-  index('GER40', 'Allemagne 40', 'EUR', 'OTC_GDAXI'),
-  index('UK100', 'UK 100', 'GBP', 'OTC_FTSE'),
-  index('FRA40', 'France 40', 'EUR', 'OTC_FCHI'),
-  index('JP225', 'Japon 225', 'JPY', 'OTC_N225'),
+  // --- INDICES (7) — Yahoo (^symbole) ---
+  index('US30', 'Wall Street 30', 'USD', '^DJI'),
+  index('NAS100', 'US Tech 100', 'USD', '^NDX'),
+  index('SPX500', 'US 500', 'USD', '^GSPC'),
+  index('GER40', 'Allemagne 40', 'EUR', '^GDAXI'),
+  index('UK100', 'UK 100', 'GBP', '^FTSE'),
+  index('FRA40', 'France 40', 'EUR', '^FCHI'),
+  index('JP225', 'Japon 225', 'JPY', '^N225'),
 
   // --- SYNTHETIC (désactivés : architecture prête, aucun prix inventé) ---
   synth('VOL75', 'Volatility 75 Index'),
