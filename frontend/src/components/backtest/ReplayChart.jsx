@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { init, dispose } from 'klinecharts';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
+import './chart-landscape.css';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
-  DrawToolsMenu, IndicatorsMenu, useFullscreen,
+  DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen,
 } from './chartShared';
 import {
   Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
@@ -281,7 +282,7 @@ export default function ReplayChart({
   return (
     <div className={wrapClass}>
       {/* ==================== BARRE DE CONTRÔLE ==================== */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2" data-chart-toolbar data-replay-controls>
         {!inReplay ? (
           <>
             <Button size="sm" onClick={enterReplay} className="gap-1.5">
@@ -369,7 +370,8 @@ export default function ReplayChart({
       )}
 
       {/* ==================== GRAPHIQUE ==================== */}
-      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
+      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
+        <ChartWatermark />
         <div className="pointer-events-none absolute left-1 top-1 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
           <p className="text-[10px] font-semibold text-primary sm:text-xs">
             {symbolName} <span className="text-foreground">{timeframe}</span>

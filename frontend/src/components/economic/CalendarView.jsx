@@ -58,11 +58,11 @@ export default function CalendarView({ aiEnabled = true }) {
     }
   };
 
-  // Recharge quand la période/devise/importance changent (filtres serveur).
+  // Recharge quand la période/devise/importance/type changent (filtres serveur).
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, currency, impact]);
+  }, [range, currency, impact, eventType]);
 
   // Recherche texte côté client.
   const filtered = useMemo(() => {
@@ -105,7 +105,7 @@ export default function CalendarView({ aiEnabled = true }) {
             </Button>
           </div>
 
-          {/* Devise / importance / recherche */}
+          {/* Devise / importance / type / recherche */}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="flex items-center gap-2 flex-1">
               <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -124,6 +124,14 @@ export default function CalendarView({ aiEnabled = true }) {
               >
                 <option value="">Toute importance</option>
                 {IMPACTS.map((i) => <option key={i} value={i}>{IMPACT_LABEL[i]}</option>)}
+              </select>
+              <select
+                value={eventType}
+                onChange={(e) => setEventType(e.target.value)}
+                className="w-full border rounded-md px-2 py-2 bg-background text-sm"
+              >
+                <option value="">Tous types</option>
+                {eventTypes.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t] || t}</option>)}
               </select>
             </div>
             <div className="relative flex-1">
@@ -162,29 +170,44 @@ export default function CalendarView({ aiEnabled = true }) {
                 <span className="text-xs font-normal">({dayEvents.length})</span>
               </h3>
               <div className="space-y-2">
-                {dayEvents.map((ev) => (
-                  <button
-                    key={ev.id}
-                    onClick={() => setSelected(ev)}
-                    className="w-full text-left group flex items-center gap-3 rounded-lg border bg-card p-3 hover:border-primary/40 hover:shadow-sm transition-all"
-                  >
-                    <div className="w-14 flex-shrink-0 text-sm font-semibold tabular-nums">
-                      {new Date(ev.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                    <Pill className="bg-primary/10 text-primary border-primary/20 flex-shrink-0">{ev.currency}</Pill>
-                    <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
-                      ev.impact === 'High' ? 'bg-red-500' : ev.impact === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
-                    }`} title={IMPACT_LABEL[ev.impact]} />
-                    <span className="flex-1 text-sm font-medium truncate">{ev.title}</span>
-                    <div className="hidden md:flex items-center gap-3 text-xs text-muted-foreground flex-shrink-0">
-                      <span>préc. <strong className="text-foreground">{ev.previous || '—'}</strong></span>
-                      <span>prév. <strong className="text-foreground">{ev.forecast || '—'}</strong></span>
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <Sparkles className="h-3.5 w-3.5" /> Analyser <ChevronRight className="h-3.5 w-3.5" />
-                    </span>
-                  </button>
-                ))}
+                {dayEvents.map((ev) => {
+                  const hasActual = ev.actual != null && ev.actual !== '';
+                  const hasForecast = ev.forecast != null && ev.forecast !== '';
+                  let actualColor = '';
+                  if (hasActual && hasForecast) {
+                    const act = parseFloat(String(ev.actual).replace(/[^0-9.-]/g, ''));
+                    const fore = parseFloat(String(ev.forecast).replace(/[^0-9.-]/g, ''));
+                    if (!isNaN(act) && !isNaN(fore)) {
+                      actualColor = act > fore ? 'text-green-600' : act < fore ? 'text-red-600' : '';
+                    }
+                  }
+                  return (
+                    <button
+                      key={ev.id}
+                      onClick={() => setSelected(ev)}
+                      className="w-full text-left group flex items-center gap-3 rounded-lg border bg-card p-3 hover:border-primary/40 hover:shadow-sm transition-all"
+                    >
+                      <div className="w-14 flex-shrink-0 text-sm font-semibold tabular-nums">
+                        {new Date(ev.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      {ev.flag && <span className="text-lg flex-shrink-0" title={ev.country_name}>{ev.flag}</span>}
+                      <Pill className="bg-primary/10 text-primary border-primary/20 flex-shrink-0">{ev.currency}</Pill>
+                      <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
+                        ev.impact === 'High' ? 'bg-red-500' : ev.impact === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
+                      }`} title={IMPACT_LABEL[ev.impact]} />
+                      <span className="flex-1 text-sm font-medium truncate">{ev.title}</span>
+                      <div className="hidden md:flex items-center gap-3 text-xs text-muted-foreground flex-shrink-0">
+                        <span>préc. <strong className="text-foreground">{ev.previous || '—'}</strong></span>
+                        <span>prév. <strong className="text-foreground">{ev.forecast || '—'}</strong></span>
+                        {hasActual && <span>publié <strong className={actualColor || 'text-foreground'}>{ev.actual}</strong></span>}
+                        {ev.revised && <span className="hidden lg:inline">rév. <strong className="text-foreground">{ev.revised}</strong></span>}
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <Sparkles className="h-3.5 w-3.5" /> Analyser <ChevronRight className="h-3.5 w-3.5" />
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}

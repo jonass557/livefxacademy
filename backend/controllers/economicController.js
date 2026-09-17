@@ -13,12 +13,12 @@ const AI_UNAVAILABLE = {
     "L'analyse IA n'est pas disponible : la clé ANTHROPIC_API_KEY n'est pas configurée sur le serveur.",
 };
 
-// GET /api/economics/calendar?range=thisweek&currency=&impact=&country=&from=&to=
+// GET /api/economics/calendar?range=thisweek&currency=&impact=&country=&country_name=&event_type=&from=&to=
 exports.getCalendar = async (req, res) => {
   try {
-    const { range = 'thisweek', currency, impact, country, from, to } = req.query;
+    const { range = 'thisweek', currency, impact, country, country_name, event_type, from, to } = req.query;
     let events = await calendar.getCalendar(range);
-    events = calendar.filterEvents(events, { currency, impact, country, from, to });
+    events = calendar.filterEvents(events, { currency, impact, country, country_name, event_type, from, to });
     res.json({ range, count: events.length, events });
   } catch (err) {
     console.error('getCalendar:', err.message);
@@ -31,11 +31,20 @@ exports.getMeta = async (req, res) => {
   try {
     const events = await calendar.getCalendar('all');
     const currencies = [...new Set(events.map((e) => e.currency).filter(Boolean))].sort();
+    const countries = [...new Set(events.map((e) => e.country_name).filter(Boolean))].sort();
+    const event_types = [...new Set(events.map((e) => e.event_type).filter(Boolean))].sort();
+    const providers = [...new Set(events.map((e) => e.provider).filter(Boolean))];
+    const enriched_by = [...new Set(events.map((e) => e.enriched_by).filter(Boolean))];
+
     res.json({
       currencies,
+      countries,
+      event_types,
       impacts: ['High', 'Medium', 'Low', 'Holiday'],
       ranges: ['lastweek', 'thisweek', 'nextweek', 'all'],
       central_banks: ['Fed', 'BCE', 'BoE', 'BoJ', 'BoC', 'BNS', 'RBA', 'RBNZ', 'PBoC'],
+      providers,
+      enriched_fields: enriched_by.length > 0 ? ['actual', 'revised', 'source'] : [],
       ai_enabled: ai.isConfigured(),
     });
   } catch (err) {

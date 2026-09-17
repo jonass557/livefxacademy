@@ -18,16 +18,21 @@ import { useAuthStore } from './store/authStore';
 function AppLayout({ children }) {
   const location = useLocation();
   const { user } = useAuthStore();
-  
+
   const isDashboard = location.pathname.startsWith('/dashboard');
   const isAdmin = user?.role === 'admin';
   const isTrainer = user?.role === 'trainer';
-  
+
+  // Sections graphiques : pas de navbar pour maximiser l'espace.
+  const searchParams = new URLSearchParams(location.search);
+  const section = searchParams.get('section');
+  const isChartSection = section === 'trading-demo' || section === 'backtesting';
+
   // Admin, Trainer and Client dashboard have their own full-width layout with sidebar
   if (isDashboard && (isAdmin || isTrainer || user?.role === 'client')) {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        <Navbar />
+        {!isChartSection && <Navbar />}
         {children}
       </div>
     );

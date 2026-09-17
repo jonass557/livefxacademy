@@ -287,3 +287,18 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
     </Dropdown>
   );
 }
+
+// Filigrane logo au pied du graphique (comme TradingView).
+// En bas à gauche, semi-transparent, non cliquable.
+export function ChartWatermark() {
+  return (
+    <div className="absolute bottom-2 left-2 pointer-events-none z-10 opacity-40">
+      <img
+        src="/logo.png"
+        alt=""
+        className="h-6 w-auto sm:h-7"
+        style={{ filter: 'grayscale(0.3)' }}
+      />
+    </div>
+  );
+}

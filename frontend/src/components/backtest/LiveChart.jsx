@@ -3,9 +3,10 @@ import { init, dispose } from 'klinecharts';
 import api from '../../lib/api';
 import { Loader2, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '../ui/button';
+import './chart-landscape.css';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
-  DrawToolsMenu, IndicatorsMenu, MarketPicker, useFullscreen,
+  DrawToolsMenu, IndicatorsMenu, MarketPicker, ChartWatermark, useFullscreen,
 } from './chartShared';
 
 const REFRESH_MS = 15000; // rafraîchissement auto (quasi temps réel)
@@ -108,7 +109,7 @@ export default function LiveChart({
   return (
     <div className={wrapClass}>
       {/* Barre unique : sélecteur de marché + menus + statut + plein écran */}
-      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
+      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5" data-chart-toolbar>
         <span className="relative flex h-2 w-2 mr-0.5" title="Marché en direct">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
@@ -144,7 +145,8 @@ export default function LiveChart({
       </div>
 
       {/* Graphique pleine largeur (les outils sont dans les menus) */}
-      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
+      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
+        <ChartWatermark />
         {/* Entête OHLC en surimpression, façon MT5 */}
         {last && (
           <div className="pointer-events-none absolute left-1 top-1 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">

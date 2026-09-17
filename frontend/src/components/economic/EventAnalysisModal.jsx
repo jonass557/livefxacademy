@@ -11,7 +11,7 @@ import { Input } from '../ui/input';
 import { Loader2, Sparkles, Clock, BookOpen, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
-import { Pill, IMPACT_STYLE, IMPACT_LABEL, FundamentalAnalysis, PostReleaseAnalysis } from './shared';
+import { Pill, IMPACT_STYLE, IMPACT_LABEL, FundamentalAnalysis, PostReleaseAnalysis, EventDataBlock } from './shared';
 
 const TABS = [
   { id: 'pre', label: 'Avant', icon: Clock },
@@ -27,6 +27,11 @@ export default function EventAnalysisModal({ event, open, onOpenChange, aiEnable
   const [actual, setActual] = useState('');
 
   if (!event) return null;
+
+  // Préremplir le champ actual si l'événement en possède un (fourni par le fournisseur).
+  React.useEffect(() => {
+    if (event?.actual && !actual) setActual(String(event.actual));
+  }, [event]);
 
   const runAnalysis = async (type) => {
     if (!aiEnabled) {
@@ -123,6 +128,8 @@ export default function EventAnalysisModal({ event, open, onOpenChange, aiEnable
             L'analyse IA n'est pas disponible : la clé <code>ANTHROPIC_API_KEY</code> n'est pas configurée sur le serveur.
           </div>
         )}
+
+        <EventDataBlock event={event} />
 
         <Tabs value={tab} onValueChange={setTab} className="mt-2">
           <TabsList className="w-full">

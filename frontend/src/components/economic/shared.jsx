@@ -133,6 +133,90 @@ export function AssetTable({ assets = [] }) {
   );
 }
 
+// Bloc de données d'annonce (date, pays, type, valeurs, source) — pour EventAnalysisModal.
+export function EventDataBlock({ event }) {
+  if (!event) return null;
+  const eventDate = new Date(event.date);
+  const hasActual = event.actual != null && event.actual !== '';
+  const hasForecast = event.forecast != null && event.forecast !== '';
+
+  // Code couleur actual vs forecast (meilleur/pire/conforme).
+  let actualColor = '';
+  if (hasActual && hasForecast) {
+    const act = parseFloat(String(event.actual).replace(/[^0-9.-]/g, ''));
+    const fore = parseFloat(String(event.forecast).replace(/[^0-9.-]/g, ''));
+    if (!isNaN(act) && !isNaN(fore)) {
+      // Heuristique simple : actual > forecast = positif pour la croissance/emploi,
+      // négatif pour l'inflation/chômage. On colore vert si actual > forecast.
+      actualColor = act > fore ? 'text-green-600 font-semibold' : act < fore ? 'text-red-600 font-semibold' : 'font-semibold';
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-4 space-y-3 text-sm">
+      <h4 className="font-semibold text-foreground/90">📋 Données de l'annonce</h4>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
+        <div>
+          <span className="text-muted-foreground">🗓️ Date & heure</span>
+          <p className="font-medium">{eventDate.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+        </div>
+        {event.flag && event.country_name && (
+          <div>
+            <span className="text-muted-foreground">🇺🇸 Pays</span>
+            <p className="font-medium">{event.flag} {event.country_name}</p>
+          </div>
+        )}
+        <div>
+          <span className="text-muted-foreground">💱 Devise</span>
+          <p className="font-medium">{event.currency}</p>
+        </div>
+        {event.event_type && event.event_type !== 'other' && (
+          <div>
+            <span className="text-muted-foreground">📌 Type</span>
+            <p className="font-medium capitalize">{event.event_type.replace('_', ' ')}</p>
+          </div>
+        )}
+        <div>
+          <span className="text-muted-foreground">🔴 Importance</span>
+          <p className="font-medium">{IMPACT_LABEL[event.impact] || event.impact}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">📊 Précédent</span>
+          <p className="font-medium">{event.previous || '—'}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">🔮 Prévision</span>
+          <p className="font-medium">{event.forecast || '—'}</p>
+        </div>
+        {hasActual && (
+          <div>
+            <span className="text-muted-foreground">✅ Publié</span>
+            <p className={actualColor || 'font-medium'}>{event.actual}</p>
+          </div>
+        )}
+        {event.revised && (
+          <div>
+            <span className="text-muted-foreground">🔄 Révisé</span>
+            <p className="font-medium">{event.revised}</p>
+          </div>
+        )}
+      </div>
+      {event.source_name && (
+        <div className="pt-2 border-t">
+          <span className="text-muted-foreground text-xs">🏛️ Source officielle : </span>
+          {event.source_url ? (
+            <a href={event.source_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">
+              {event.source_name}
+            </a>
+          ) : (
+            <span className="text-xs">{event.source_name}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Liste des scénarios (haussier / baissier / neutre).
 export function ScenarioList({ scenarios = [] }) {
   if (!scenarios.length) return null;

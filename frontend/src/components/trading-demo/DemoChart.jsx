@@ -6,9 +6,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { init, dispose } from 'klinecharts';
 import { Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '../ui/button';
+import '../backtest/chart-landscape.css';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
-  DrawToolsMenu, IndicatorsMenu, useFullscreen,
+  DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 
@@ -99,7 +100,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
 
   return (
     <div className={wrapClass}>
-      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
+      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5" data-chart-toolbar>
         <span className="text-xs font-semibold text-primary mr-1">{symbolName || symbol}</span>
         {/* Sélecteur d'unité de temps */}
         <div className="flex flex-wrap gap-0.5">
@@ -119,7 +120,8 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>
       </div>
-      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }}>
+      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
+        <ChartWatermark />
         <div ref={containerRef} className="w-full h-full" />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/60">

@@ -1058,22 +1058,26 @@ const ClientDashboard = () => {
     { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
   ];
 
+  const isChartSection = activeSection === 'trading-demo' || activeSection === 'backtesting';
+
   return (
     <div className="min-h-[calc(100vh-4rem)]">
       <main className="w-full">
-        {/* Backtesting : pleine largeur pour maximiser l'espace du graphique */}
-        <div className={`p-4 md:p-6 mx-auto ${activeSection === 'backtesting' ? 'max-w-none' : 'max-w-7xl'}`}>
-          {/* Header */}
-          <div className="mb-4 md:mb-6 relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-purple-500/10 p-6 md:p-8">
-            <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
-            <div className="absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
-            <div className="relative">
-              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-primary">
-                {t('dashboard.clientTitle')}
-              </h1>
-              <p className="text-sm md:text-base text-muted-foreground mt-1">{t('dashboard.welcome')}, <span className="font-semibold text-foreground">{user?.full_name}</span></p>
+        {/* Graphiques : pleine largeur sans padding pour maximiser l'espace */}
+        <div className={isChartSection ? '' : 'p-4 md:p-6 mx-auto max-w-7xl'}>
+          {/* Header : masqué sur les sections graphiques */}
+          {!isChartSection && (
+            <div className="mb-4 md:mb-6 relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-purple-500/10 p-6 md:p-8">
+              <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
+              <div className="absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
+              <div className="relative">
+                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-primary">
+                  {t('dashboard.clientTitle')}
+                </h1>
+                <p className="text-sm md:text-base text-muted-foreground mt-1">{t('dashboard.welcome')}, <span className="font-semibold text-foreground">{user?.full_name}</span></p>
+              </div>
             </div>
-          </div>
+          )}
 
           {activeSection === 'dashboard' ? (
             <div className="space-y-8">
@@ -1101,11 +1105,26 @@ const ClientDashboard = () => {
               {renderDashboard()}
             </div>
           ) : (
-            <div className="space-y-4">
-              <Button variant="ghost" className="gap-2" onClick={() => setActiveSection('dashboard')}>
-                <ArrowLeft className="h-4 w-4" /> Retour
-              </Button>
-              {renderContent()}
+            <div className={isChartSection ? 'relative' : 'space-y-4'}>
+              {isChartSection ? (
+                <>
+                  {/* Bouton retour discret superposé en haut à gauche pour les graphiques */}
+                  <button
+                    onClick={() => setActiveSection('dashboard')}
+                    className="fixed top-4 left-4 z-50 flex items-center gap-1 rounded-lg bg-background/90 backdrop-blur border px-3 py-1.5 text-sm hover:bg-accent transition-colors shadow-lg"
+                  >
+                    <ArrowLeft className="h-4 w-4" /> Retour
+                  </button>
+                  {renderContent()}
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" className="gap-2" onClick={() => setActiveSection('dashboard')}>
+                    <ArrowLeft className="h-4 w-4" /> Retour
+                  </Button>
+                  {renderContent()}
+                </>
+              )}
             </div>
           )}
         </div>

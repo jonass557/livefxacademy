@@ -1,0 +1,45 @@
+/* Mode paysage optimisé pour les graphiques (backtesting + trading démo).
+   Appliqué uniquement quand l'appareil est en orientation landscape et que
+   l'écran est assez petit (mobile/tablette tournée). */
+
+@media (orientation: landscape) and (max-height: 600px) {
+  /* Graphiques : hauteur maximale pour utiliser tout l'espace vertical disponible */
+  [data-chart-container] {
+    height: calc(100vh - 120px) !important;
+    min-height: 300px !important;
+  }
+
+  /* Barre d'outils : compacte, pas de wrap */
+  [data-chart-toolbar] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+  [data-chart-toolbar]::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  /* Panneaux latéraux (watchlist, positions) : réduits ou cachés en paysage */
+  [data-trading-panel] {
+    max-height: calc(100vh - 140px);
+  }
+
+  /* Replay controls : plus compacts */
+  [data-replay-controls] {
+    padding: 0.375rem !important;
+    gap: 0.375rem !important;
+  }
+
+  /* Filigrane : plus petit en paysage mobile */
+  [data-chart-container] img[alt=""] {
+    height: 1.25rem;
+  }
+}
+
+/* Mode portrait : hauteur normale */
+@media (orientation: portrait) {
+  [data-chart-container] {
+    /* Conserve la hauteur définie en JS (clamp) */
+  }
+}
