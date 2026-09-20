@@ -106,3 +106,25 @@ source <venv-activate> ; cd frontend && npm ci && VITE_API_URL=https://api.livef
 cp -r dist/. ~/livefx-trading.com/
 # backend : Run NPM Install (si package.json a changé) puis Restart dans cPanel
 ```
+
+## Déploiement automatique GitHub Actions
+
+Le frontend est déployé par `.github/workflows/deploy.yml` lorsqu'un commit `main` modifie `frontend/**`. Le workflow peut aussi être lancé avec **Actions → Deploy frontend to cPanel → Run workflow**.
+
+Secrets GitHub requis :
+
+- `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` : identifiants FTPS cPanel.
+- `FTP_SERVER_DIR` (recommandé) : chemin du Document Root vu depuis la racine du compte FTP. Laisser vide uniquement si le compte FTP est déjà limité au Document Root ; dans ce cas le workflow utilise `./`.
+
+Le chemin de `FTP_SERVER_DIR` doit être confirmé dans cPanel avant le premier lancement. Ne pas activer de nettoyage distant tant que le chemin n'a pas été vérifié.
+
+Le backend est déployé par `.github/workflows/backend-deploy.yml` sur les changements `backend/**` ou manuellement. Créer un Environment GitHub nommé `production` et y ajouter :
+
+- `CPANEL_SSH_HOST`
+- `CPANEL_SSH_USERNAME`
+- `CPANEL_SSH_KEY`
+- `CPANEL_SSH_PORT` (optionnel, défaut `22`)
+
+La clé doit permettre au serveur d'accéder au dépôt GitHub via `origin`. Le job s'arrête si le répertoire applicatif contient des modifications, utilise uniquement un fast-forward, ne modifie jamais `backend/.env`, installe les dépendances seulement si les manifests changent, puis redémarre Passenger via `backend/tmp/restart.txt`. Vérifier que cette méthode est supportée par l'application Node.js cPanel avant d'activer le workflow.
+
+Après un déploiement, vérifier le SHA affiché par le job, `/health`, le frontend, une route SPA après actualisation et les logs Passenger. En cas de problème, utiliser le workflow frontend précédent pour revenir au dernier build connu, et faire un revert Git relu pour le backend plutôt qu'un reset destructif du serveur.

@@ -10,6 +10,9 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-cpanel
   cancel-in-progress: true
@@ -30,7 +33,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm install --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
 
       - name: Build (inject API URL)
         working-directory: frontend
@@ -46,4 +49,4 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./frontend/dist/
-          server-dir: ./
+          server-dir: ${{ secrets.FTP_SERVER_DIR || './' }}
