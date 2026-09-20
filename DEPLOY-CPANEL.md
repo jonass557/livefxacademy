@@ -123,8 +123,9 @@ Le backend est déployé par `.github/workflows/backend-deploy.yml` sur les chan
 - `CPANEL_SSH_HOST`
 - `CPANEL_SSH_USERNAME`
 - `CPANEL_SSH_KEY`
+- `CPANEL_SSH_KNOWN_HOSTS` (empreinte fournie par `ssh-keyscan`, sans désactiver la vérification SSH)
 - `CPANEL_SSH_PORT` (optionnel, défaut `22`)
 
-La clé doit permettre au serveur d'accéder au dépôt GitHub via `origin`. Le job s'arrête si le répertoire applicatif contient des modifications, utilise uniquement un fast-forward, ne modifie jamais `backend/.env`, installe les dépendances seulement si les manifests changent, puis redémarre Passenger via `backend/tmp/restart.txt`. Vérifier que cette méthode est supportée par l'application Node.js cPanel avant d'activer le workflow.
+Générer la valeur `CPANEL_SSH_KNOWN_HOSTS` depuis un poste de confiance avec `ssh-keyscan -p PORT HOST`, puis vérifier l'empreinte avec GPTServers avant de l'enregistrer. La clé doit permettre au serveur d'accéder au dépôt GitHub via `origin`. Le job s'arrête si le répertoire applicatif contient des modifications, utilise uniquement un fast-forward, ne modifie jamais `backend/.env`, installe les dépendances seulement si les manifests changent, puis redémarre Passenger via `backend/tmp/restart.txt`. Vérifier que cette méthode est supportée par l'application Node.js cPanel avant d'activer le workflow.
 
 Après un déploiement, vérifier le SHA affiché par le job, `/health`, le frontend, une route SPA après actualisation et les logs Passenger. En cas de problème, utiliser le workflow frontend précédent pour revenir au dernier build connu, et faire un revert Git relu pour le backend plutôt qu'un reset destructif du serveur.
