@@ -43,6 +43,7 @@ const AdminSidebar = ({ activeSection, setActiveSection, collapsed, setCollapsed
     { id: 'announcements', icon: Video, label: 'Vidéos Annonces' },
     { id: 'economics', icon: TrendingUp, label: 'Annonces éco' },
     { id: 'banners', icon: Image, label: t('sidebar.banners') },
+    { id: 'branding', icon: Settings, label: 'Branding' },
     { id: 'emails', icon: Send, label: 'Envoyer Emails' },
     { id: 'statistics', icon: TrendingUp, label: 'Bilan Statistique' },
     { id: 'email-guide', icon: Mail, label: t('sidebar.emailGuide') },

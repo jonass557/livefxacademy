@@ -171,8 +171,15 @@ export default function ReplayChart({
   }, [klineData]);
 
   useEffect(() => {
-    const t = setTimeout(() => chartRef.current?.resize(), 60);
-    return () => clearTimeout(t);
+    const resize = () => chartRef.current?.resize();
+    const timer = setTimeout(resize, 60);
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', resize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('orientationchange', resize);
+    };
   }, [fullscreen, activeIndicators]);
 
   // ---- Démarrage du replay : exactement à la date de début ----

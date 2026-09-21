@@ -8,6 +8,7 @@ const VacationProgram = require('./VacationProgram');
 const VacationRegistration = require('./VacationRegistration');
 const TrainerStrategy = require('./TrainerStrategy');
 const BannerImage = require('./BannerImage');
+const BrandingSettings = require('./BrandingSettings');
 const ConsultationSheet = require('./ConsultationSheet');
 const AnnouncementVideo = require('./AnnouncementVideo');
 const AnnouncementLike = require('./AnnouncementLike');
@@ -38,6 +39,7 @@ module.exports = {
   VacationRegistration,
   TrainerStrategy,
   BannerImage,
+  BrandingSettings,
   ConsultationSheet,
   AnnouncementVideo,
   AnnouncementLike,

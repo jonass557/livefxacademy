@@ -21,6 +21,18 @@ const RANGES = [
   { id: 'all', label: 'Tout' },
 ];
 const IMPACTS = ['High', 'Medium', 'Low'];
+const EVENT_TYPE_LABELS = {
+  employment: 'Emploi',
+  inflation: 'Inflation',
+  interest_rate: "Taux d'intérêt",
+  growth: 'Croissance',
+  trade: 'Commerce',
+  retail: 'Ventes / consommation',
+  production: 'Production',
+  housing: 'Logement',
+  sentiment: 'Confiance / sentiment',
+  other: 'Autre',
+};
 
 // Clé de jour (ex: "lundi 12 août") pour regrouper.
 const dayKey = (iso) =>
@@ -36,6 +48,8 @@ export default function CalendarView({ aiEnabled = true }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null);
   const [currencies, setCurrencies] = useState([]);
+  const [eventType, setEventType] = useState('');
+  const [eventTypes, setEventTypes] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -44,13 +58,17 @@ export default function CalendarView({ aiEnabled = true }) {
       const params = { range };
       if (currency) params.currency = currency;
       if (impact) params.impact = impact;
+      if (eventType) params.event_type = eventType;
       const { data } = await api.get('/economics/calendar', { params });
-      setEvents(data.events || []);
-      // Alimente la liste des devises depuis les données si vide.
-      setCurrencies((prev) => {
-        if (prev.length) return prev;
-        return [...new Set((data.events || []).map((e) => e.currency).filter(Boolean))].sort();
-      });
+      const nextEvents = Array.isArray(data.events) ? data.events : [];
+      setEvents(nextEvents);
+      // Les réponses du backend sont { range, count, events }.
+      setCurrencies((prev) => prev.length
+        ? prev
+        : [...new Set(nextEvents.map((e) => e.currency).filter(Boolean))].sort());
+      setEventTypes((prev) => prev.length
+        ? prev
+        : [...new Set(nextEvents.map((e) => e.event_type).filter(Boolean))].sort());
     } catch (err) {
       setError(err.response?.data?.message || 'Impossible de charger le calendrier économique.');
     } finally {
@@ -68,7 +86,7 @@ export default function CalendarView({ aiEnabled = true }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return events;
-    return events.filter((e) => e.title.toLowerCase().includes(q) || (e.currency || '').toLowerCase().includes(q));
+    return events.filter((e) => (e.title || '').toLowerCase().includes(q) || (e.currency || '').toLowerCase().includes(q));
   }, [events, query]);
 
   // Regroupe par jour en conservant l'ordre chronologique.
@@ -153,7 +171,14 @@ export default function CalendarView({ aiEnabled = true }) {
           <Loader2 className="h-5 w-5 animate-spin" /> Chargement du calendrier…
         </div>
       ) : error ? (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">{error}</CardContent></Card>
+        <Card>
+          <CardContent className="py-12 text-center space-y-4">
+            <p className="text-destructive">{error}</p>
+            <Button variant="outline" onClick={load} className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Réessayer
+            </Button>
+          </CardContent>
+        </Card>
       ) : groups.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">

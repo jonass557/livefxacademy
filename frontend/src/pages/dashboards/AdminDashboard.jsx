@@ -17,7 +17,9 @@ const AdminDashboard = () => {
   const { user } = useAuthStore();
   const { t } = useLanguageStore();
   const [banners, setBanners] = useState([]);
+  const [branding, setBranding] = useState({ navbar_logo_url: '', chart_logo_url: '' });
   const [uploading, setUploading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(null);
   const [prospects, setProspects] = useState([]);
   const [stats, setStats] = useState(null);
   const [selectedProspect, setSelectedProspect] = useState(null);
@@ -105,6 +107,15 @@ const AdminDashboard = () => {
       setBanners(res.data);
     } catch (err) {
       console.error("Error fetching banners", err);
+    }
+  };
+
+  const fetchBranding = async () => {
+    try {
+      const res = await api.get('/branding');
+      setBranding({ navbar_logo_url: res.data?.navbar_logo_url || '', chart_logo_url: res.data?.chart_logo_url || '' });
+    } catch (err) {
+      console.error("Error fetching branding", err);
     }
   };
 
@@ -622,7 +633,8 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     Promise.all([
-      fetchBanners(), 
+      fetchBanners(),
+      fetchBranding(),
       fetchProspects(), 
       fetchStats(), 
       fetchTrainers(), 
@@ -699,6 +711,35 @@ const AdminDashboard = () => {
     } catch (err) {
       console.error(err);
       toast.error('Erreur lors de la suppression');
+    }
+  };
+
+  const handleLogoUpload = async (type, event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('logo', file);
+    formData.append('type', type);
+    setUploadingLogo(type);
+    try {
+      const res = await api.post('/branding/admin/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setBranding({ navbar_logo_url: res.data?.navbar_logo_url || '', chart_logo_url: res.data?.chart_logo_url || '' });
+      toast.success('Logo mis à jour');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors de l\'upload du logo');
+    } finally {
+      setUploadingLogo(null);
+      event.target.value = '';
+    }
+  };
+
+  const handleDeleteLogo = async (type) => {
+    try {
+      const res = await api.delete(`/branding/admin/${type}`);
+      setBranding({ navbar_logo_url: res.data?.navbar_logo_url || '', chart_logo_url: res.data?.chart_logo_url || '' });
+      toast.success('Logo supprimé');
+    } catch (err) {
+      toast.error('Erreur lors de la suppression du logo');
     }
   };
 
@@ -851,7 +892,7 @@ const AdminDashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {banners.map((banner) => (
               <div key={banner.id} className="relative group rounded-lg overflow-hidden border aspect-video">
-                <img src={banner.image_url} alt="Banner" className="w-full h-full object-cover" />
+                <img src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${banner.image_url}`} alt="Banner" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <Button variant="destructive" size="icon" onClick={() => handleDeleteBanner(banner.id)}>
                     <Trash2 className="h-4 w-4" />
@@ -1137,7 +1178,7 @@ const AdminDashboard = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {banners.map((banner) => (
             <div key={banner.id} className="relative group rounded-lg overflow-hidden border aspect-video">
-              <img src={banner.image_url} alt="Banner" className="w-full h-full object-cover" />
+              <img src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${banner.image_url}`} alt="Banner" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <Button variant="destructive" size="icon" onClick={() => handleDeleteBanner(banner.id)}>
                   <Trash2 className="h-4 w-4" />
@@ -1150,6 +1191,39 @@ const AdminDashboard = () => {
       </CardContent>
     </Card>
   );
+
+  // Section: Branding
+  const renderBranding = () => {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${apiUrl}${url}`) : '';
+    const logos = [
+      { type: 'navbar', label: 'Logo de la barre de navigation', url: branding.navbar_logo_url },
+      { type: 'chart', label: 'Logo du graphique Trading Demo', url: branding.chart_logo_url },
+    ];
+    return (
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2"><ImageIcon className="h-5 w-5" /> Branding</CardTitle></CardHeader>
+        <CardContent className="grid gap-6 md:grid-cols-2">
+          {logos.map(({ type, label, url }) => (
+            <div key={type} className="space-y-3 rounded-lg border p-4">
+              <div>
+                <h3 className="font-semibold">{label}</h3>
+                <p className="text-sm text-muted-foreground">PNG, JPG, WEBP ou SVG — 5 Mo maximum</p>
+              </div>
+              <div className="flex min-h-24 items-center justify-center rounded-md bg-muted/40 p-4">
+                {url ? <img src={assetUrl(url)} alt={label} className="max-h-16 max-w-full object-contain" /> : <span className="text-sm text-muted-foreground">Logo par défaut utilisé</span>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => handleLogoUpload(type, event)} disabled={uploadingLogo === type} className="max-w-xs" />
+                {uploadingLogo === type && <span className="self-center text-sm text-muted-foreground">Upload en cours...</span>}
+                {url && <Button type="button" variant="destructive" size="sm" onClick={() => handleDeleteLogo(type)}>Supprimer</Button>}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  };
 
   // Section: Statistics Only
   const renderStatistics = () => (
@@ -3435,6 +3509,8 @@ const AdminDashboard = () => {
         return <EconomicCalendar />;
       case 'banners':
         return renderBanners();
+      case 'branding':
+        return renderBranding();
       case 'emails':
         return renderEmails();
       case 'statistics':

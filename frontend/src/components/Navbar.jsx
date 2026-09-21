@@ -1,4 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import api from '../lib/api';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
 import { Link } from 'react-router-dom';
 import { Button } from './ui/button';
 import { useAuthStore } from '../store/authStore';
@@ -6,10 +10,19 @@ import { useLanguageStore } from '../store/languageStore';
 import { Menu, X, Globe, TrendingUp } from 'lucide-react';
 
 // Logo - utilisez une URL ou importez le fichier quand disponible
-const logoUrl = '/logo.png';
+const fallbackLogoUrl = '/logo.png';
 
 const Navbar = () => {
   const { user, logout } = useAuthStore();
+  const [logoUrl, setLogoUrl] = useState(fallbackLogoUrl);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/branding').then(({ data }) => {
+      if (!cancelled && data?.navbar_logo_url) setLogoUrl(assetUrl(data.navbar_logo_url));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const { t, language, toggleLanguage } = useLanguageStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 

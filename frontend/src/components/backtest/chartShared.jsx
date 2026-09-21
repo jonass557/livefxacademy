@@ -1,5 +1,9 @@
 import React from 'react';
+import api from '../../lib/api';
 import { registerOverlay } from 'klinecharts';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
 import { Button } from '../ui/button';
 import {
   Slash, PenLine, MoveUpRight, Minus, SeparatorVertical, Tag,
@@ -291,14 +295,19 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
 // Filigrane logo au pied du graphique (comme TradingView).
 // En bas à gauche, semi-transparent, non cliquable.
 export function ChartWatermark() {
+  const [logoUrl, setLogoUrl] = React.useState('/logo.png');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/branding').then(({ data }) => {
+      if (!cancelled && data?.chart_logo_url) setLogoUrl(assetUrl(data.chart_logo_url));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="absolute bottom-2 left-2 pointer-events-none z-10 opacity-40">
-      <img
-        src="/logo.png"
-        alt=""
-        className="h-6 w-auto sm:h-7"
-        style={{ filter: 'grayscale(0.3)' }}
-      />
+      <img src={logoUrl} alt="" className="h-6 w-auto sm:h-7" style={{ filter: 'grayscale(0.3)' }} />
     </div>
   );
 }
