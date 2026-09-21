@@ -30,3 +30,6 @@ logs/
 
 # Coverage
 coverage/
+
+backend/node_modules/
+backend/tmp/
