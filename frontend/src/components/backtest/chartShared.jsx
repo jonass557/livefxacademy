@@ -292,8 +292,8 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
   );
 }
 
-// Filigrane logo au pied du graphique (comme TradingView).
-// En bas à gauche, semi-transparent, non cliquable.
+// Filigrane logo au pied du graphique (style TradingView).
+// En bas à gauche, couleurs vives bien visibles, taille agrandie, fixe et non cliquable.
 export function ChartWatermark() {
   const [logoUrl, setLogoUrl] = React.useState('/logo.png');
 
@@ -306,8 +306,17 @@ export function ChartWatermark() {
   }, []);
 
   return (
-    <div className="absolute bottom-2 left-2 pointer-events-none z-10 opacity-40">
-      <img src={logoUrl} alt="" className="h-6 w-auto sm:h-7" style={{ filter: 'grayscale(0.3)' }} />
+    <div className="absolute bottom-3 left-3 pointer-events-none z-20 select-none opacity-85 hover:opacity-100 transition-opacity">
+      <img
+        src={logoUrl}
+        alt="LivefxTrading"
+        className="h-9 sm:h-12 md:h-14 w-auto max-w-[130px] sm:max-w-[180px] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+        onError={(e) => {
+          if (e.target.src !== '/logo.png') {
+            e.target.src = '/logo.png';
+          }
+        }}
+      />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import AnnouncementInteractions from '../../components/AnnouncementInteractions'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Users, Video, TrendingUp, Image as ImageIcon, Trash2, MessageSquare, CheckCircle, XCircle, Clock, RefreshCw, BarChart3, Mail, GraduationCap, Eye, UserCheck, UserX, Lightbulb, ExternalLink, User, Phone, Calendar, Award, Briefcase, X, FileCheck, Send, AlertCircle, Target, ChevronDown, ChevronUp, Upload, Play, Pause, Edit2, Search, Globe } from 'lucide-react';
+import { Users, Video, TrendingUp, Image as ImageIcon, Trash2, MessageSquare, CheckCircle, XCircle, Clock, RefreshCw, BarChart3, Mail, GraduationCap, Eye, UserCheck, UserX, Lightbulb, ExternalLink, User, Phone, Calendar, Award, Briefcase, X, FileCheck, Send, AlertCircle, Target, ChevronDown, ChevronUp, Upload, Play, Pause, Edit2, Search, Globe, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
@@ -864,6 +864,24 @@ const AdminDashboard = () => {
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Branding Quick Access */}
+      <Card className="hover:border-primary/50 transition-colors border-primary/20 bg-gradient-to-r from-primary/5 via-card to-card">
+        <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary flex-shrink-0">
+              <ImageIcon className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm sm:text-base">Personnalisation des Logos (Branding)</h3>
+              <p className="text-xs text-muted-foreground">Modifiez en direct le logo de la barre de navigation et le logo du graphique Trading Démo.</p>
+            </div>
+          </div>
+          <Button size="sm" onClick={() => setActiveSection('branding')} className="gap-1.5 whitespace-nowrap self-start sm:self-center">
+            Gérer les logos <ArrowRight className="h-4 w-4" />
+          </Button>
         </CardContent>
       </Card>
 

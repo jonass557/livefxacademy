@@ -239,12 +239,14 @@ export default function CalendarView({ aiEnabled = true }) {
         </div>
       )}
 
-      <EventAnalysisModal
-        event={selected}
-        open={!!selected}
-        onOpenChange={(v) => !v && setSelected(null)}
-        aiEnabled={aiEnabled}
-      />
+      {selected && (
+        <EventAnalysisModal
+          event={selected}
+          open={!!selected}
+          onOpenChange={(v) => !v && setSelected(null)}
+          aiEnabled={aiEnabled}
+        />
+      )}
     </div>
   );
 }

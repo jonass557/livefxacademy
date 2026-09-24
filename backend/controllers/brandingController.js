@@ -39,6 +39,14 @@ exports.uploadLogo = async (req, res) => {
       return res.status(400).json({ message: 'Type de logo invalide' });
     }
 
+    const existing = await BrandingSettings.findOne();
+    if (existing && existing[`${req.body.type}_logo_public_id`]) {
+      const oldPath = path.join(__dirname, '../uploads/branding', existing[`${req.body.type}_logo_public_id`]);
+      if (fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath); } catch (_) {}
+      }
+    }
+
     const branding = await BrandingSettings.findOneAndUpdate(
       {},
       {

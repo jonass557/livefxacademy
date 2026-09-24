@@ -4,12 +4,12 @@
 // à partir du prix `mid` reçu par WebSocket.
 import React, { useEffect, useRef, useState } from 'react';
 import { init, dispose } from 'klinecharts';
-import { Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { Loader2, Maximize2, Minimize2, ChevronDown } from 'lucide-react';
 import { Button } from '../ui/button';
 import '../backtest/chart-landscape.css';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
-  DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen,
+  DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen, Dropdown,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 
@@ -100,47 +100,90 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     };
   }, [fullscreen, activeIndicators]);
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      chartRef.current?.resize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const wrapClass = fullscreen
     ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
-    : 'space-y-2';
-  const chartHeight = fullscreen ? undefined : 'clamp(360px, 56vh, 720px)';
+    : 'h-full w-full flex flex-col gap-1.5 overflow-hidden';
 
   return (
     <div className={wrapClass}>
-      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5" data-chart-toolbar>
+      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 flex-shrink-0" data-chart-toolbar>
         <span className="text-xs font-semibold text-primary mr-1">{symbolName || symbol}</span>
-        {/* Sélecteur d'unité de temps */}
-        <div className="flex flex-wrap gap-0.5">
-          {DEMO_TIMEFRAMES.map((tf) => (
-            <button
-              key={tf}
-              onClick={() => onSelectTimeframe(tf)}
-              className={`px-1.5 py-0.5 text-[11px] rounded border ${tf === timeframe ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-accent'}`}
-            >
-              {tf}
-            </button>
-          ))}
-        </div>
+        
+        {/* Sélecteur d'unité de temps en liste déroulante (exactement comme pour le backtesting) */}
+        <TimeframeDropdown timeframe={timeframe} onSelectTimeframe={onSelectTimeframe} />
+
         <DrawToolsMenu chartRef={chartRef} />
         <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={panesRef} />
         <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} className="h-7 px-2 ml-auto" title="Plein écran">
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>
       </div>
-      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
+
+      <div className="relative flex-1 min-h-[300px] w-full rounded-lg border overflow-hidden bg-card" data-chart-container>
         <ChartWatermark />
         <div ref={containerRef} className="w-full h-full" />
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         )}
         {error && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function TimeframeDropdown({ timeframe, onSelectTimeframe }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dropdown
+      open={open}
+      setOpen={setOpen}
+      width="w-48"
+      trigger={
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2.5 text-xs gap-1.5 font-semibold bg-card hover:bg-muted"
+          onClick={() => setOpen((o) => !o)}
+          title="Unité de temps"
+        >
+          <span className="text-muted-foreground text-[11px] font-normal">TF:</span>
+          <span>{timeframe}</span>
+          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+        </Button>
+      }
+    >
+      <div className="p-1.5 grid grid-cols-4 gap-1">
+        {DEMO_TIMEFRAMES.map((tf) => (
+          <Button
+            key={tf}
+            size="sm"
+            variant={tf === timeframe ? 'default' : 'ghost'}
+            className="h-7 px-2 text-xs font-semibold"
+            onClick={() => {
+              onSelectTimeframe(tf);
+              setOpen(false);
+            }}
+          >
+            {tf}
+          </Button>
+        ))}
+      </div>
+    </Dropdown>
   );
 }

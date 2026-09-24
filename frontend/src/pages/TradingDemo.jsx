@@ -14,7 +14,7 @@ import OrderTicket from '../components/trading-demo/OrderTicket';
 import { PositionsPanel, OrdersPanel, HistoryPanel, CloseDialog, EditStopsDialog } from '../components/trading-demo/Panels';
 
 const REFRESH_MS = 3500;
-const MOBILE_TABS = [
+const TABS = [
   { key: 'chart', label: 'Graphique', Icon: LineChart },
   { key: 'trade', label: 'Trader', Icon: ShoppingCart },
   { key: 'positions', label: 'Positions', Icon: List },
@@ -35,21 +35,11 @@ export default function TradingDemo() {
   const [selected, setSelected] = useState('EURUSD');
   const [timeframe, setTimeframe] = useState('H1');
   const [busy, setBusy] = useState(false);
-  const [panelTab, setPanelTab] = useState('positions'); // positions|orders|history (bureau)
-  const [mobileTab, setMobileTab] = useState('chart');
-  const [isDesktop, setIsDesktop] = useState(true);
+  const [activeTab, setActiveTab] = useState('chart');
   const [closeTarget, setCloseTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
 
   const refsBaseline = useRef({}); // symbol -> premier mid vu (pour la variation %)
-
-  // Détection bureau/mobile.
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)');
-    const on = () => setIsDesktop(mq.matches);
-    on(); mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
 
   // Symboles à suivre en temps réel : catégorie courante + favoris + sélection.
   const visibleSymbols = useMemo(() => {
@@ -89,7 +79,7 @@ export default function TradingDemo() {
 
   useEffect(() => { loadStatic(); refresh(); }, []);
   useEffect(() => { const t = setInterval(refresh, REFRESH_MS); return () => clearInterval(t); }, []);
-  useEffect(() => { if (panelTab === 'history' || mobileTab === 'history') loadHistory(); }, [panelTab, mobileTab]);
+  useEffect(() => { if (activeTab === 'history') loadHistory(); }, [activeTab]);
 
   // Actions.
   const onMarket = async (body) => { setBusy(true); try { const r = await demoApi.openMarket(body); setAccount(r.account); await refresh(); } finally { setBusy(false); } };
@@ -104,7 +94,7 @@ export default function TradingDemo() {
 
   const watchlistEl = (
     <Watchlist instruments={instruments} quotes={quotes} refs={refsBaseline.current}
-      selected={selected} onSelect={(s) => { setSelected(s); if (!isDesktop) setMobileTab('chart'); }}
+      selected={selected} onSelect={(s) => { setSelected(s); setActiveTab('chart'); }}
       favorites={favorites} onToggleFav={toggleFav} cat={cat} onCat={setCat} />
   );
   const chartEl = (
@@ -114,60 +104,139 @@ export default function TradingDemo() {
   const ticketEl = (
     <OrderTicket instrument={selectedInstrument} quote={selectedQuote} onMarket={onMarket} onPending={onPending} busy={busy} />
   );
-  const panelsEl = (
-    <div className="border rounded-xl bg-card/40">
-      <div className="flex items-center gap-1 border-b p-1.5">
-        {[['positions', `Positions (${positions.length})`], ['orders', `Ordres (${orders.length})`], ['history', 'Historique']].map(([k, l]) => (
-          <button key={k} onClick={() => setPanelTab(k)} className={`px-2 py-1 text-xs rounded ${panelTab === k ? 'bg-accent font-medium' : ''}`}>{l}</button>
-        ))}
-      </div>
-      {panelTab === 'positions' && <PositionsPanel positions={positions} quotes={quotes} onClose={setCloseTarget} onUpdate={setEditTarget} />}
-      {panelTab === 'orders' && <OrdersPanel orders={orders} onCancel={cancelOrder} />}
-      {panelTab === 'history' && <HistoryPanel trades={trades} />}
-    </div>
-  );
+
+  const isChartView = activeTab === 'chart';
 
   return (
-    <div className="space-y-3">
-      {/* En-tête */}
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-lg md:text-xl font-extrabold flex items-center gap-2"><LineChart className="h-5 w-5 text-primary" /> Trading Demo</h1>
-        <button onClick={resetAccount} className="flex items-center gap-1 text-xs px-2 py-1 rounded border hover:bg-accent">
-          <RefreshCw className="h-3 w-3" /> Réinitialiser
-        </button>
-      </div>
-      <AccountHeader account={account} connected={connected} />
-
-      {/* Bureau : grille 3 colonnes + panneaux dessous. Mobile : une section à la fois. */}
-      {isDesktop ? (
-        <>
-          <div className="grid grid-cols-[260px_1fr_300px] gap-3 items-start">
-            <div className="h-[62vh]">{watchlistEl}</div>
-            <div>{chartEl}</div>
-            <div>{ticketEl}</div>
-          </div>
-          {panelsEl}
-        </>
-      ) : (
-        <>
-          <div className="min-h-[60vh] pb-16">
-            {mobileTab === 'chart' && chartEl}
-            {mobileTab === 'trade' && ticketEl}
-            {mobileTab === 'positions' && <div className="border rounded-xl bg-card/40"><PositionsPanel positions={positions} quotes={quotes} onClose={setCloseTarget} onUpdate={setEditTarget} /></div>}
-            {mobileTab === 'orders' && <div className="border rounded-xl bg-card/40"><OrdersPanel orders={orders} onCancel={cancelOrder} /></div>}
-            {mobileTab === 'history' && <div className="border rounded-xl bg-card/40"><HistoryPanel trades={trades} /></div>}
-            {mobileTab === 'watchlist' && <div className="h-[62vh]">{watchlistEl}</div>}
-          </div>
-          {/* Navigation mobile fixe */}
-          <div className="fixed bottom-0 inset-x-0 z-50 flex justify-around border-t bg-background/95 backdrop-blur py-1 lg:hidden">
-            {MOBILE_TABS.map(({ key, label, Icon }) => (
-              <button key={key} onClick={() => setMobileTab(key)} className={`flex flex-col items-center gap-0.5 px-1 py-1 text-[9px] ${mobileTab === key ? 'text-primary' : 'text-muted-foreground'}`}>
-                <Icon className="h-4 w-4" /> {label}
+    <div className={`w-full ${isChartView ? 'h-screen max-h-screen flex flex-col overflow-hidden bg-background' : 'space-y-4 p-3 sm:p-5 max-w-7xl mx-auto pb-20'}`}>
+      {/* Barre de navigation des onglets */}
+      <div className={`flex items-center justify-between gap-2 border-b bg-card/75 backdrop-blur px-2 sm:px-4 py-2 ${isChartView ? 'flex-shrink-0 pl-28 sm:pl-32' : ''}`}>
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto">
+          {TABS.map(({ key, label, Icon }) => {
+            const count = key === 'positions' ? positions.length : key === 'orders' ? orders.length : null;
+            return (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                  activeTab === key
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{label}</span>
+                {count != null && count > 0 && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    activeTab === key ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/15 text-primary'
+                  }`}>
+                    {count}
+                  </span>
+                )}
               </button>
-            ))}
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${connected ? 'bg-green-500/10 text-green-600' : 'bg-yellow-500/10 text-yellow-600'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
+            <span className="hidden sm:inline">{connected ? 'En direct' : 'Connexion...'}</span>
+          </span>
+          {isChartView && (
+            <button
+              onClick={() => setActiveTab('trade')}
+              className="hidden sm:flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            >
+              <ShoppingCart className="h-3.5 w-3.5" /> Trader
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* AccountHeader (Balance, Equity, Marge...) : VISIBLE UNIQUEMENT SUR trade, positions, orders, history */}
+      {['trade', 'positions', 'orders', 'history'].includes(activeTab) && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="text-lg md:text-xl font-extrabold flex items-center gap-2">
+              <LineChart className="h-5 w-5 text-primary" /> Compte Démo
+            </h1>
+            <button
+              onClick={resetAccount}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border bg-card hover:bg-accent transition-colors font-medium"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Réinitialiser le compte
+            </button>
           </div>
-        </>
+          <AccountHeader account={account} connected={connected} />
+        </div>
       )}
+
+      {/* Contenu principal */}
+      {isChartView && (
+        <div className="flex-1 min-h-0 w-full p-1 sm:p-2 overflow-hidden">
+          {chartEl}
+        </div>
+      )}
+
+      {activeTab === 'trade' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-1">{ticketEl}</div>
+          <div className="lg:col-span-2 space-y-4">
+            <div className="h-[460px] rounded-xl border overflow-hidden bg-card">
+              {chartEl}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'positions' && (
+        <div className="border rounded-xl bg-card/40 p-2 sm:p-4">
+          <PositionsPanel positions={positions} quotes={quotes} onClose={setCloseTarget} onUpdate={setEditTarget} />
+        </div>
+      )}
+
+      {activeTab === 'orders' && (
+        <div className="border rounded-xl bg-card/40 p-2 sm:p-4">
+          <OrdersPanel orders={orders} onCancel={cancelOrder} />
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="border rounded-xl bg-card/40 p-2 sm:p-4">
+          <HistoryPanel trades={trades} />
+        </div>
+      )}
+
+      {activeTab === 'watchlist' && (
+        <div className="max-w-3xl mx-auto h-[75vh]">
+          {watchlistEl}
+        </div>
+      )}
+
+      {/* Navigation mobile fixe au bas */}
+      <div className="fixed bottom-0 inset-x-0 z-40 flex justify-around border-t bg-background/95 backdrop-blur py-1.5 lg:hidden">
+        {TABS.map(({ key, label, Icon }) => {
+          const count = key === 'positions' ? positions.length : key === 'orders' ? orders.length : null;
+          return (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`relative flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-medium transition-colors ${
+                activeTab === key ? 'text-primary font-bold' : 'text-muted-foreground'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{label}</span>
+              {count != null && count > 0 && (
+                <span className="absolute top-0 right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-primary-foreground text-[8px] flex items-center justify-center font-bold">
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       {closeTarget && <CloseDialog position={closeTarget} onConfirm={doClose} onCancel={() => setCloseTarget(null)} />}
       {editTarget && <EditStopsDialog position={editTarget} onConfirm={doEdit} onCancel={() => setEditTarget(null)} />}

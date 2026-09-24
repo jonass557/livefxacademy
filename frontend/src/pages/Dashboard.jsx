@@ -3,11 +3,14 @@ import { useAuthStore } from '../store/authStore';
 import ClientDashboard from './dashboards/ClientDashboard';
 import TrainerDashboard from './dashboards/TrainerDashboard';
 import AdminDashboard from './dashboards/AdminDashboard';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const Dashboard = () => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const section = searchParams.get('section');
+  const isChartSection = section === 'trading-demo' || section === 'backtesting';
 
   React.useEffect(() => {
     if (!user) {
@@ -28,6 +31,10 @@ const Dashboard = () => {
   }
 
   // Client dashboard
+  if (isChartSection) {
+    return user.role === 'client' ? <ClientDashboard /> : null;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">

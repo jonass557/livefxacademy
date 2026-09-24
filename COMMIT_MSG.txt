@@ -1,0 +1,12 @@
+feat: fix annonces eco blank page, optimize demo chart and branding
+
+- Annonces éco: correction de l'ordre des hooks React dans EventAnalysisModal pour éliminer le crash à l'ouverture de l'analyse (écran blanc) et ajout de MacroErrorBoundary
+- Trading Démo: masquage de la balance/equity/marge sur l'onglet Graphique (uniquement visible sur Trader, Positions, Ordres, Historique)
+- Tableau de bord: suppression du bandeau 'Tableau de bord Élève/Client' au-dessus du graphique démo et du backtesting
+- Graphique Démo: layout fixe sans défilement de page, canvas KLineCharts fluide occupant toute la hauteur
+- Timeframes: sélecteur en liste déroulante (Dropdown) identique au backtesting (M1 à W1)
+- Logo filigrane graphique: taille agrandie, couleurs vives restaurées, position fixe en bas à gauche
+- Branding Admin: carte d'accès rapide sur le dashboard admin et gestion des logos navbar + graphique
+- Ajout du plan d'intervention PLAN-INTERVENTIONS-LIVEFX.md
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

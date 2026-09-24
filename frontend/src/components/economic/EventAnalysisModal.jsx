@@ -26,12 +26,18 @@ export default function EventAnalysisModal({ event, open, onOpenChange, aiEnable
   const [loading, setLoading] = useState(false);
   const [actual, setActual] = useState('');
 
-  if (!event) return null;
-
-  // Préremplir le champ actual si l'événement en possède un (fourni par le fournisseur).
+  // Réinitialiser les analyses et le champ actual si l'événement change
   React.useEffect(() => {
-    if (event?.actual && !actual) setActual(String(event.actual));
-  }, [event]);
+    setResults({});
+    setTab('fundamental');
+    if (event?.actual) {
+      setActual(String(event.actual));
+    } else {
+      setActual('');
+    }
+  }, [event?.id]);
+
+  if (!event) return null;
 
   const runAnalysis = async (type) => {
     if (!aiEnabled) {
