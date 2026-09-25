@@ -210,24 +210,34 @@ export default function CalendarView({ aiEnabled = true }) {
                     <button
                       key={ev.id}
                       onClick={() => setSelected(ev)}
-                      className="w-full text-left group flex items-center gap-3 rounded-lg border bg-card p-3 hover:border-primary/40 hover:shadow-sm transition-all"
+                      className="w-full text-left group flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-lg border bg-card p-3 hover:border-primary/40 hover:shadow-sm transition-all"
                     >
-                      <div className="w-14 flex-shrink-0 text-sm font-semibold tabular-nums">
-                        {new Date(ev.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      {/* En-tête métadonnées : heure, drapeau, devise, niveau d'impact */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="w-12 sm:w-14 text-sm font-semibold tabular-nums text-foreground">
+                          {new Date(ev.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        {ev.flag && <span className="text-base sm:text-lg flex-shrink-0" title={ev.country_name}>{ev.flag}</span>}
+                        <Pill className="bg-primary/10 text-primary border-primary/20 text-xs px-2 py-0.5 flex-shrink-0">{ev.currency}</Pill>
+                        <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
+                          ev.impact === 'High' ? 'bg-red-500' : ev.impact === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
+                        }`} title={IMPACT_LABEL[ev.impact]} />
                       </div>
-                      {ev.flag && <span className="text-lg flex-shrink-0" title={ev.country_name}>{ev.flag}</span>}
-                      <Pill className="bg-primary/10 text-primary border-primary/20 flex-shrink-0">{ev.currency}</Pill>
-                      <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
-                        ev.impact === 'High' ? 'bg-red-500' : ev.impact === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
-                      }`} title={IMPACT_LABEL[ev.impact]} />
-                      <span className="flex-1 text-sm font-medium truncate">{ev.title}</span>
-                      <div className="hidden md:flex items-center gap-3 text-xs text-muted-foreground flex-shrink-0">
+
+                      {/* Phrase complète de l'annonce : aucun texte tronqué sur mobile */}
+                      <span className="flex-1 text-sm font-medium text-foreground whitespace-normal break-words leading-snug">
+                        {ev.title}
+                      </span>
+
+                      {/* Données chiffrées : visibles aussi sur mobile */}
+                      <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs text-muted-foreground flex-shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-muted/50">
                         <span>préc. <strong className="text-foreground">{ev.previous || '—'}</strong></span>
                         <span>prév. <strong className="text-foreground">{ev.forecast || '—'}</strong></span>
                         {hasActual && <span>publié <strong className={actualColor || 'text-foreground'}>{ev.actual}</strong></span>}
                         {ev.revised && <span className="hidden lg:inline">rév. <strong className="text-foreground">{ev.revised}</strong></span>}
                       </div>
-                      <span className="inline-flex items-center gap-1 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+
+                      <span className="hidden sm:inline-flex items-center gap-1 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <Sparkles className="h-3.5 w-3.5" /> Analyser <ChevronRight className="h-3.5 w-3.5" />
                       </span>
                     </button>

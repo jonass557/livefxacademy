@@ -10,7 +10,8 @@ const WebSocket = require('ws')
 const { TIMEFRAMES, MAX_CANDLES } = require('./provider')
 
 const APP_ID = process.env.DERIV_APP_ID || '1089' // 1089 = app_id public de test
-const WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
+const PRIMARY_WS_URL = process.env.DERIV_WS_URL || 'wss://api.derivws.com/trading/v1/options/ws/public'
+const FALLBACK_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 const PER_REQUEST = 5000 // maximum de bougies par requête Deriv
 const SOCKET_TIMEOUT = 25000
 
@@ -63,13 +64,12 @@ function listSymbols() { return SYMBOLS }
 function listTimeframes() { return TIMEFRAMES }
 function getSymbolMeta(symbol) { return SYMBOLS.find((s) => s.symbol === symbol) || null }
 
-// Ouvre une connexion WS, exécute `job(send)` puis ferme. `send(payload)` renvoie
-// une promesse résolue avec la réponse Deriv correspondante (matching par req_id).
-function withSocket(job) {
+// Tente une connexion WS sur l'URL donnée.
+function connectSocket(url, job) {
   return new Promise((resolve, reject) => {
     let settled = false
-    const ws = new WebSocket(WS_URL)
-    const pending = new Map() // req_id -> { resolve, reject }
+    const ws = new WebSocket(url)
+    const pending = new Map() // req_id -> { res, rej }
     let reqSeq = 0
 
     const timer = setTimeout(() => {
@@ -113,6 +113,19 @@ function withSocket(job) {
       if (!settled) { settled = true; clearTimeout(timer); reject(new Error('Deriv: connexion fermée')) }
     })
   })
+}
+
+// Ouvre une connexion WS sur l'endpoint principal, ou bascule sur le fallback si échec.
+async function withSocket(job) {
+  try {
+    return await connectSocket(PRIMARY_WS_URL, job)
+  } catch (err) {
+    if (PRIMARY_WS_URL !== FALLBACK_WS_URL) {
+      console.warn(`[derivProvider] Endpoint principal indisponible (${err.message}), tentative fallback...`)
+      return await connectSocket(FALLBACK_WS_URL, job)
+    }
+    throw err
+  }
 }
 
 // Récupère les bougies OHLC de `start` à `end` (epoch secondes), paginées à rebours.

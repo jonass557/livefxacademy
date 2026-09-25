@@ -378,8 +378,7 @@ export default function ReplayChart({
 
       {/* ==================== GRAPHIQUE ==================== */}
       <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
-        <ChartWatermark />
-        <div className="pointer-events-none absolute left-1 top-1 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
+        <div className="pointer-events-none absolute left-1 top-1 z-20 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
           <p className="text-[10px] font-semibold text-primary sm:text-xs">
             {symbolName} <span className="text-foreground">{timeframe}</span>
           </p>
@@ -391,6 +390,7 @@ export default function ReplayChart({
           )}
         </div>
         <div ref={containerRef} className="w-full h-full" />
+        <ChartWatermark />
       </div>
     </div>
   );

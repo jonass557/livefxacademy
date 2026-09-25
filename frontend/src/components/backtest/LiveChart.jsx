@@ -153,10 +153,9 @@ export default function LiveChart({
 
       {/* Graphique pleine largeur (les outils sont dans les menus) */}
       <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
-        <ChartWatermark />
         {/* Entête OHLC en surimpression, façon MT5 */}
         {last && (
-          <div className="pointer-events-none absolute left-1 top-1 z-10 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
+          <div className="pointer-events-none absolute left-1 top-1 z-20 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
             <p className="text-[10px] font-semibold text-primary sm:text-xs">
               {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
             </p>
@@ -169,6 +168,7 @@ export default function LiveChart({
           </div>
         )}
         <div ref={containerRef} className="w-full h-full" />
+        <ChartWatermark />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

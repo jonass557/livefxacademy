@@ -292,8 +292,9 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
   );
 }
 
-// Filigrane logo au pied du graphique (style TradingView).
-// En bas à gauche, couleurs vives bien visibles, taille agrandie, fixe et non cliquable.
+// Filigrane logo sur le graphique (style TradingView).
+// 1) Grand filigrane central semi-transparent au centre de la zone de prix
+// 2) Logo de marque net dans le coin inférieur gauche (au-dessus de l'axe des temps)
 export function ChartWatermark() {
   const [logoUrl, setLogoUrl] = React.useState('/logo.png');
 
@@ -305,18 +306,33 @@ export function ChartWatermark() {
     return () => { cancelled = true; };
   }, []);
 
+  const handleImgError = (e) => {
+    if (e.target.src !== '/logo.png') {
+      e.target.src = '/logo.png';
+    }
+  };
+
   return (
-    <div className="absolute bottom-3 left-3 pointer-events-none z-20 select-none opacity-85 hover:opacity-100 transition-opacity">
-      <img
-        src={logoUrl}
-        alt="LivefxTrading"
-        className="h-9 sm:h-12 md:h-14 w-auto max-w-[130px] sm:max-w-[180px] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
-        onError={(e) => {
-          if (e.target.src !== '/logo.png') {
-            e.target.src = '/logo.png';
-          }
-        }}
-      />
-    </div>
+    <>
+      {/* Grand filigrane au centre du graphique, style TradingView */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-10 overflow-hidden p-6">
+        <img
+          src={logoUrl}
+          alt="LivefxTrading Watermark"
+          className="w-56 sm:w-72 md:w-96 max-h-[48%] object-contain opacity-25 dark:opacity-30 drop-shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
+          onError={handleImgError}
+        />
+      </div>
+
+      {/* Badge logo dans le coin gauche, surélevé pour ne pas chevaucher l'axe X des temps */}
+      <div className="absolute bottom-7 left-3 pointer-events-none z-20 select-none opacity-85 hover:opacity-100 transition-opacity">
+        <img
+          src={logoUrl}
+          alt="LivefxTrading"
+          className="h-8 sm:h-10 md:h-11 w-auto max-w-[120px] sm:max-w-[160px] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]"
+          onError={handleImgError}
+        />
+      </div>
+    </>
   );
 }

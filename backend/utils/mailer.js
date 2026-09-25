@@ -30,26 +30,32 @@ const wrap = (title, contentHtml) => `
 
 /**
  * Send a branded email. Best-effort: never throws, returns true/false.
- * @param {string|string[]} to - recipient(s)
+ * @param {string|string[]} to - direct recipient(s)
+ * @param {string|string[]} bcc - blind carbon copy recipient(s) (pour diffusion sans exposer les emails)
  * @param {string} subject
  * @param {string} title - heading shown inside the email body
  * @param {string} html - inner HTML content
  */
-async function sendMail({ to, subject, title, html }) {
+async function sendMail({ to, bcc, subject, title, html }) {
   try {
     const recipients = Array.isArray(to) ? to.filter(Boolean) : (to ? [to] : []);
-    if (recipients.length === 0) return false;
+    const bccRecipients = Array.isArray(bcc) ? bcc.filter(Boolean) : (bcc ? [bcc] : []);
+    if (recipients.length === 0 && bccRecipients.length === 0) return false;
     if (!isConfigured()) {
       console.warn(`[mailer] SMTP non configuré — email non envoyé: "${subject}"`);
       return false;
     }
     const transporter = createTransporter();
-    await transporter.sendMail({
+    const mailOptions = {
       from: `"LivefxTrading" <${process.env.SMTP_USER}>`,
-      to: recipients.join(','),
       subject,
       html: wrap(title || subject, html)
-    });
+    };
+    if (recipients.length > 0) mailOptions.to = recipients.join(',');
+    else mailOptions.to = process.env.SMTP_USER; // fallback boîte d'envoi si uniquement bcc
+    if (bccRecipients.length > 0) mailOptions.bcc = bccRecipients;
+
+    await transporter.sendMail(mailOptions);
     return true;
   } catch (err) {
     console.error(`[mailer] Erreur envoi email "${subject}":`, err.message);
@@ -69,4 +75,17 @@ async function notifyAdmins({ subject, title, html }) {
   }
 }
 
-module.exports = { sendMail, notifyAdmins, isConfigured };
+/** Send a branded email to all users (clients, trainers, admins) via bcc. */
+async function notifyUsers({ subject, title, html, roles = ['client', 'trainer', 'admin'] }) {
+  try {
+    const users = await User.find({ role: { $in: roles }, email: { $ne: null, $ne: '' } }).select('email');
+    const emails = users.map(u => u.email).filter(Boolean);
+    if (!emails.length) return false;
+    return await sendMail({ bcc: emails, subject, title, html });
+  } catch (err) {
+    console.error('[mailer] Erreur notifyUsers:', err.message);
+    return false;
+  }
+}
+
+module.exports = { sendMail, notifyAdmins, notifyUsers, isConfigured };
