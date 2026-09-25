@@ -35,7 +35,7 @@ const fmt$ = (n) => `${n >= 0 ? '+' : ''}${n.toFixed(2)} $`;
 export default function ReplayChart({
   candles, symbolName, timeframe, periodBounds,
   pip = 0.0001, lot = 0.1, initialBalance = 10000,
-  loading = false, replaySignal = 0,
+  loading = false, replaySignal = 0, error = null, onRetry = null,
 }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -264,10 +264,28 @@ export default function ReplayChart({
       </div>
     );
   }
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border h-64 text-sm text-destructive gap-3 p-4 text-center">
+        <p className="font-semibold">{error}</p>
+        {onRetry && (
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            Réessayer
+          </Button>
+        )}
+      </div>
+    );
+  }
   if (!candles?.length) {
     return (
-      <div className="flex items-center justify-center rounded-xl border h-64 text-sm text-muted-foreground">
-        Aucune donnée pour cette période.
+      <div className="flex flex-col items-center justify-center rounded-xl border h-64 text-sm text-muted-foreground gap-2 p-4 text-center">
+        <p className="font-medium">Aucune bougie disponible pour la période sélectionnée.</p>
+        <p className="text-xs text-muted-foreground">Essayez d'élargir la période ou de changer d'unité de temps.</p>
+        {onRetry && (
+          <Button size="sm" variant="outline" className="mt-1" onClick={onRetry}>
+            Actualiser
+          </Button>
+        )}
       </div>
     );
   }

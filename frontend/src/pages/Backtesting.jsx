@@ -168,6 +168,9 @@ const Backtesting = () => {
   const symbols = provider?.symbols || [];
   const currentSymbol = symbols.find((s) => s.symbol === form.symbol);
 
+  const [error, setError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     api.get('/backtests/meta').then((r) => setMeta(r.data)).catch(() => toast.error('Impossible de charger les métadonnées'));
   }, []);
@@ -176,19 +179,30 @@ const Backtesting = () => {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
     api.get('/backtests/candles', {
       params: {
         provider: form.provider, symbol: form.symbol, timeframe: form.timeframe,
         start_date: form.start_date, end_date: form.end_date,
       },
     })
-      .then((r) => { if (!cancelled) setCandles(r.data.candles); })
+      .then((r) => {
+        if (!cancelled) {
+          setCandles(r.data.candles || []);
+          setError(null);
+        }
+      })
       .catch((err) => {
-        if (!cancelled) { setCandles(null); toast.error(err.response?.data?.message || 'Données indisponibles'); }
+        if (!cancelled) {
+          setCandles(null);
+          const msg = err.response?.data?.message || 'Données indisponibles';
+          setError(msg);
+          toast.error(msg);
+        }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [form.provider, form.symbol, form.timeframe, form.start_date, form.end_date]);
+  }, [form.provider, form.symbol, form.timeframe, form.start_date, form.end_date, reloadKey]);
 
   const periodBounds = useMemo(() => ({
     start: Math.floor(new Date(form.start_date).getTime() / 1000),
@@ -258,6 +272,8 @@ const Backtesting = () => {
         initialBalance={INITIAL_BALANCE}
         loading={loading}
         replaySignal={replaySignal}
+        error={error}
+        onRetry={() => setReloadKey((k) => k + 1)}
       />
     </div>
   );
