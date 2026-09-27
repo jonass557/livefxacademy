@@ -62,7 +62,17 @@ export default function EventAnalysisModal({ event, open, onOpenChange, aiEnable
     }
   };
 
-  const eventDate = new Date(event.date);
+  function formatSafeLongDate(val) {
+    if (!val) return '';
+    try {
+      const clean = typeof val === 'string' && val.includes(' ') && !val.includes('T') ? val.replace(' ', 'T') : val;
+      const d = new Date(clean);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+    } catch (_) {
+      return '';
+    }
+  }
 
   const renderTabBody = (type) => {
     const result = results[type];
@@ -120,7 +130,7 @@ export default function EventAnalysisModal({ event, open, onOpenChange, aiEnable
           </div>
           <DialogTitle className="mt-2">{event.title}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            {eventDate.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+            {formatSafeLongDate(event.date)}
           </p>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>Précédent : <strong className="text-foreground">{event.previous || '—'}</strong></span>

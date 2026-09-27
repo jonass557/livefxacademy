@@ -11,9 +11,52 @@ const { TIMEFRAMES, MAX_CANDLES } = require('./provider')
 
 const APP_ID = process.env.DERIV_APP_ID || '1089' // 1089 = app_id public de test
 const PRIMARY_WS_URL = process.env.DERIV_WS_URL || 'wss://api.derivws.com/trading/v1/options/ws/public'
-const FALLBACK_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 const PER_REQUEST = 5000 // maximum de bougies par requête Deriv
-const SOCKET_TIMEOUT = 25000
+const SOCKET_TIMEOUT = 4000 // 4s timeout max pour réactivité immédiate
+
+// Cache mémoire des bougies pour un chargement instantané (0 ms)
+const candleCache = new Map() // key -> { candles, expiresAt }
+const CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
+
+// Correspondance des symboles Deriv vers Yahoo Finance pour fallback de secours
+const DERIV_TO_YAHOO_SYMBOL = {
+  frxEURUSD: 'EURUSD=X',
+  frxGBPUSD: 'GBPUSD=X',
+  frxUSDJPY: 'USDJPY=X',
+  frxAUDUSD: 'AUDUSD=X',
+  frxUSDCAD: 'USDCAD=X',
+  frxUSDCHF: 'USDCHF=X',
+  frxNZDUSD: 'NZDUSD=X',
+  frxEURGBP: 'EURGBP=X',
+  frxEURJPY: 'EURJPY=X',
+  frxGBPJPY: 'GBPJPY=X',
+  frxEURCHF: 'EURCHF=X',
+  frxEURAUD: 'EURAUD=X',
+  frxEURNZD: 'EURNZD=X',
+  frxGBPAUD: 'GBPAUD=X',
+  frxGBPCAD: 'GBPCAD=X',
+  frxGBPNZD: 'GBPNZD=X',
+  frxAUDJPY: 'AUDJPY=X',
+  frxCADJPY: 'CADJPY=X',
+  frxCHFJPY: 'CHFJPY=X',
+  frxAUDCAD: 'AUDCAD=X',
+  frxAUDNZD: 'AUDNZD=X',
+  frxNZDCAD: 'NZDCAD=X',
+  frxNZDJPY: 'NZDJPY=X',
+  frxXAUUSD: 'GC=F',
+  frxXAGUSD: 'SI=F',
+  frxXPTUSD: 'PL=F',
+  frxXPDUSD: 'PA=F',
+  OTC_SPC: '^GSPC',
+  OTC_DJI: '^DJI',
+  OTC_NDX: '^NDX',
+  OTC_FTSE: '^FTSE',
+  OTC_GDAXI: '^GDAXI',
+  OTC_N225: '^N225',
+  OTC_FCHI: '^FCHI',
+  cryBTCUSD: 'BTC-USD',
+  cryETHUSD: 'ETH-USD',
+}
 
 // Marchés exposés, groupés par catégorie (pip = taille d'un point).
 // Tous disponibles via ticks_history sans autorisation (app_id suffit).
@@ -73,7 +116,11 @@ function connectSocket(url, job) {
     let reqSeq = 0
 
     const timer = setTimeout(() => {
-      if (!settled) { settled = true; try { ws.close() } catch (_) {} reject(new Error('Deriv: délai de connexion dépassé')) }
+      if (!settled) {
+        settled = true
+        try { ws.close() } catch (_) {}
+        reject(new Error('Deriv: délai de connexion dépassé (timeout 4s)'))
+      }
     }, SOCKET_TIMEOUT)
 
     const finish = (fn, arg) => {
@@ -115,39 +162,20 @@ function connectSocket(url, job) {
   })
 }
 
-// Ouvre une connexion WS sur l'endpoint principal, ou bascule sur le fallback si échec.
-async function withSocket(job) {
-  try {
-    return await connectSocket(PRIMARY_WS_URL, job)
-  } catch (err) {
-    if (PRIMARY_WS_URL !== FALLBACK_WS_URL) {
-      console.warn(`[derivProvider] Endpoint principal indisponible (${err.message}), tentative fallback...`)
-      return await connectSocket(FALLBACK_WS_URL, job)
-    }
-    throw err
-  }
-}
-
-// Récupère les bougies OHLC de `start` à `end` (epoch secondes), paginées à rebours.
-async function fetchCandles({ symbol, granularity, start, end }) {
-  if (!getSymbolMeta(symbol)) throw new Error('Symbole non supporté : ' + symbol)
-  const startEpoch = Math.floor(start)
-  const endEpoch = Math.floor(end)
-  if (!(startEpoch < endEpoch)) throw new Error('Période invalide (début ≥ fin)')
-
-  return withSocket(async (send) => {
+// Récupère les bougies depuis Deriv via WebSocket.
+async function fetchFromDerivWS({ symbol, granularity, startEpoch, endEpoch, count }) {
+  const targetCount = count ? Math.min(count, MAX_CANDLES) : MAX_CANDLES
+  return connectSocket(PRIMARY_WS_URL, async (send) => {
     const byEpoch = new Map()
     let cursorEnd = endEpoch
 
-    // Boucle de pagination : on remonte le temps tant qu'il reste des bougies
-    // dans la période et qu'on n'a pas atteint le plafond.
-    for (let guard = 0; guard < Math.ceil(MAX_CANDLES / PER_REQUEST) + 2; guard++) {
+    for (let guard = 0; guard < Math.ceil(targetCount / PER_REQUEST) + 2; guard++) {
       const msg = await send({
         ticks_history: symbol,
         style: 'candles',
         granularity,
         end: cursorEnd,
-        count: PER_REQUEST,
+        count: Math.min(targetCount - byEpoch.size, PER_REQUEST),
         adjust_start_time: 1,
       })
       const candles = Array.isArray(msg.candles) ? msg.candles : []
@@ -157,7 +185,8 @@ async function fetchCandles({ symbol, granularity, start, end }) {
       for (const c of candles) {
         const t = Number(c.epoch)
         if (t < earliest) earliest = t
-        if (t >= startEpoch && t <= endEpoch && !byEpoch.has(t)) {
+        const inRange = startEpoch != null ? (t >= startEpoch && t <= endEpoch) : (t <= endEpoch)
+        if (inRange && !byEpoch.has(t)) {
           byEpoch.set(t, {
             time: t,
             open: Number(c.open),
@@ -168,15 +197,75 @@ async function fetchCandles({ symbol, granularity, start, end }) {
         }
       }
 
-      // On a atteint (ou dépassé) le début demandé, ou le plafond, ou plus rien à paginer.
-      if (earliest <= startEpoch || byEpoch.size >= MAX_CANDLES || candles.length < PER_REQUEST) break
+      if ((startEpoch != null && earliest <= startEpoch) || byEpoch.size >= targetCount || candles.length < PER_REQUEST) break
       cursorEnd = earliest - 1
     }
 
     const out = Array.from(byEpoch.values()).sort((a, b) => a.time - b.time)
-    // Respecte le plafond en conservant les bougies les plus récentes.
-    return out.length > MAX_CANDLES ? out.slice(out.length - MAX_CANDLES) : out
+    return out.length > targetCount ? out.slice(out.length - targetCount) : out
   })
+}
+
+// Récupère les bougies OHLC avec cache mémoire et secours transparent Yahoo Finance.
+async function fetchCandles({ symbol, granularity, start, end, count }) {
+  if (!getSymbolMeta(symbol)) throw new Error('Symbole non supporté : ' + symbol)
+  const endEpoch = end ? Math.floor(end) : Math.floor(Date.now() / 1000)
+  const startEpoch = start ? Math.floor(start) : null
+  if (startEpoch != null && !(startEpoch < endEpoch)) throw new Error('Période invalide (début ≥ fin)')
+
+  const targetCount = count || (startEpoch != null ? MAX_CANDLES : 300)
+
+  // 1. Vérification du cache mémoire (retour en 0 ms)
+  const cacheKey = `${symbol}:${granularity}:${startEpoch || 'latest'}:${endEpoch}:${targetCount}`
+  const cached = candleCache.get(cacheKey)
+  if (cached && Date.now() < cached.expiresAt && cached.candles?.length > 0) {
+    return cached.candles
+  }
+
+  let candles = []
+  let errorDeriv = null
+
+  // 2. Tentative via Deriv WebSocket
+  try {
+    candles = await fetchFromDerivWS({ symbol, granularity, startEpoch, endEpoch, count: targetCount })
+  } catch (err) {
+    errorDeriv = err
+    console.warn(`[derivProvider] Deriv indisponible (${err.message}). Basculement automatique sur Yahoo Finance...`)
+  }
+
+  // 3. Secours automatique sur Yahoo Finance si Deriv a échoué ou n'a renvoyé aucune donnée
+  if (!candles || candles.length === 0) {
+    const yahooSymbol = DERIV_TO_YAHOO_SYMBOL[symbol]
+    if (yahooSymbol) {
+      try {
+        const yahoo = require('./yahooProvider')
+        // Si startEpoch n'est pas fourni, on remonte assez loin pour inclure les vendredis lors du week-end
+        const yStart = startEpoch || (endEpoch - targetCount * granularity * 3)
+        candles = await yahoo.fetchCandles({ symbol: yahooSymbol, granularity, start: yStart, end: endEpoch })
+        if (candles?.length > 0) {
+          console.log(`[derivProvider] Récupéré avec succès ${candles.length} bougies via Yahoo Finance (${yahooSymbol})`)
+          if (candles.length > targetCount) candles = candles.slice(candles.length - targetCount)
+        }
+      } catch (yahooErr) {
+        console.error(`[derivProvider] Fallback Yahoo a également échoué : ${yahooErr.message}`)
+        if (errorDeriv) throw errorDeriv
+        throw yahooErr
+      }
+    } else if (errorDeriv) {
+      throw errorDeriv
+    }
+  }
+
+  // Mise en cache mémoire (limite à 300 entrées pour la RAM)
+  if (candles && candles.length > 0) {
+    if (candleCache.size > 300) {
+      const oldestKey = candleCache.keys().next().value
+      candleCache.delete(oldestKey)
+    }
+    candleCache.set(cacheKey, { candles, expiresAt: Date.now() + CACHE_TTL_MS })
+  }
+
+  return candles || []
 }
 
 module.exports = {
@@ -186,4 +275,5 @@ module.exports = {
   listTimeframes,
   getSymbolMeta,
   fetchCandles,
+  DERIV_TO_YAHOO_SYMBOL,
 }

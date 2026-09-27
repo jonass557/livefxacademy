@@ -41,6 +41,16 @@ class MacroErrorBoundary extends React.Component {
   }
 }
 
+class BellBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err) { console.warn('NotificationBell error:', err); }
+  render() { return this.state.hasError ? null : this.props.children; }
+}
+
 export default function EconomicCalendar() {
   const [tab, setTab] = useState('calendar');
   const [aiEnabled, setAiEnabled] = useState(true);
@@ -69,7 +79,9 @@ export default function EconomicCalendar() {
                 centrales et assistant pédagogique pour comprendre l'impact sur les marchés.
               </p>
             </div>
-            <NotificationBell />
+            <BellBoundary>
+              <NotificationBell />
+            </BellBoundary>
           </div>
         </div>
 

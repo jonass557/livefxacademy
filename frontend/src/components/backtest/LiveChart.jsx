@@ -7,6 +7,7 @@ import './chart-landscape.css';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
   DrawToolsMenu, IndicatorsMenu, MarketPicker, ChartWatermark, useFullscreen,
+  configureMT4Chart, ChartZoomControls,
 } from './chartShared';
 
 const REFRESH_MS = 15000; // rafraîchissement auto (quasi temps réel)
@@ -42,6 +43,7 @@ export default function LiveChart({
     ensureRectOverlay();
     const chart = init(el);
     chart.setStyles(CHART_STYLES);
+    configureMT4Chart(chart);
     chartRef.current = chart;
     return () => {
       clearInterval(timerRef.current);
@@ -136,6 +138,7 @@ export default function LiveChart({
           setActive={setActiveIndicators}
           panesRef={indicatorPanesRef}
         />
+        <ChartZoomControls chartRef={chartRef} />
         <span className="text-[11px] text-muted-foreground hidden xs:flex items-center gap-1 ml-auto">
           <RefreshCw className="h-3 w-3" />
           {lastUpdate ? lastUpdate.toLocaleTimeString('fr-FR') : '…'}

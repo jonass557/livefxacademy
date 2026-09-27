@@ -292,9 +292,8 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
   );
 }
 
-// Filigrane logo sur le graphique (style TradingView).
-// 1) Grand filigrane central semi-transparent au centre de la zone de prix
-// 2) Logo de marque net dans le coin inférieur gauche (au-dessus de l'axe des temps)
+// Logo de marque fixé dans le coin inférieur gauche (au-dessus de l'axe des temps).
+// Le grand filigrane central masquant les chandeliers a été retiré.
 export function ChartWatermark() {
   const [logoUrl, setLogoUrl] = React.useState('/logo.png');
 
@@ -313,26 +312,106 @@ export function ChartWatermark() {
   };
 
   return (
-    <>
-      {/* Grand filigrane au centre du graphique, style TradingView */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-10 overflow-hidden p-6">
-        <img
-          src={logoUrl}
-          alt="LivefxTrading Watermark"
-          className="w-56 sm:w-72 md:w-96 max-h-[48%] object-contain opacity-25 dark:opacity-30 drop-shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
-          onError={handleImgError}
-        />
-      </div>
+    <div className="absolute bottom-6 left-3 pointer-events-none z-20 select-none opacity-90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]">
+      <img
+        src={logoUrl}
+        alt="LivefxTrading"
+        className="h-7 sm:h-8 md:h-9 w-auto max-w-[120px] sm:max-w-[140px] object-contain"
+        onError={handleImgError}
+      />
+    </div>
+  );
+}
 
-      {/* Badge logo dans le coin gauche, surélevé pour ne pas chevaucher l'axe X des temps */}
-      <div className="absolute bottom-7 left-3 pointer-events-none z-20 select-none opacity-85 hover:opacity-100 transition-opacity">
-        <img
-          src={logoUrl}
-          alt="LivefxTrading"
-          className="h-8 sm:h-10 md:h-11 w-auto max-w-[120px] sm:max-w-[160px] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]"
-          onError={handleImgError}
-        />
-      </div>
-    </>
+// Configuration de KLineCharts pour une flexibilité et fluidité totale façon MT4 / MT5 :
+// - Étirement vertical de l'axe des prix (glisser sur l'axe Y à droite pour compresser/étirer les bougies)
+// - Étirement horizontal de l'axe des temps (glisser sur l'axe X)
+// - Zoom/dézoom molette et pinch tactile
+export function configureMT4Chart(chart) {
+  if (!chart) return;
+  try {
+    chart.setZoomEnabled?.(true);
+    chart.setScrollEnabled?.(true);
+    chart.setPaneOptions?.({
+      id: 'candle_pane',
+      axisOptions: {
+        scrollZoomEnabled: true,
+      },
+      gap: { top: 0.12, bottom: 0.08 },
+    });
+    chart.setPaneOptions?.({
+      id: 'x_axis',
+      axisOptions: {
+        scrollZoomEnabled: true,
+      },
+    });
+  } catch (e) {
+    console.warn('configureMT4Chart:', e);
+  }
+}
+
+// Boutons de zoom rapide façon MT4/MT5 intégrables dans la toolbar (+, -, Auto)
+export function ChartZoomControls({ chartRef, className = '' }) {
+  const handleZoomIn = () => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    try {
+      const space = chart.getBarSpace?.() || 6;
+      chart.setBarSpace?.(Math.min(space + 2, 45));
+    } catch (_) {
+      chart.zoomAtCoordinate?.(0.25);
+    }
+  };
+
+  const handleZoomOut = () => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    try {
+      const space = chart.getBarSpace?.() || 6;
+      chart.setBarSpace?.(Math.max(space - 2, 2));
+    } catch (_) {
+      chart.zoomAtCoordinate?.(-0.25);
+    }
+  };
+
+  const handleReset = () => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    try {
+      chart.setBarSpace?.(6);
+      chart.scrollToRealTime?.();
+    } catch (_) {}
+  };
+
+  return (
+    <div className={`inline-flex items-center gap-0.5 rounded-md border bg-card/90 p-0.5 shadow-sm ${className}`}>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0 hover:bg-muted"
+        onClick={handleZoomIn}
+        title="Zoom avant (+)"
+      >
+        <span className="font-bold text-xs leading-none">+</span>
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0 hover:bg-muted"
+        onClick={handleZoomOut}
+        title="Zoom arrière (-)"
+      >
+        <span className="font-bold text-xs leading-none">−</span>
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 px-1.5 text-[10px] font-semibold hover:bg-muted"
+        onClick={handleReset}
+        title="Échelle automatique / Réinitialiser"
+      >
+        Auto
+      </Button>
+    </div>
   );
 }

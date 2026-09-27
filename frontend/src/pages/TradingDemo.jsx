@@ -107,8 +107,19 @@ export default function TradingDemo() {
 
   const isChartView = activeTab === 'chart';
 
+  // En vue graphique : bloquer le scroll du document pour que le graphique et le logo restent parfaitement fixes
+  useEffect(() => {
+    if (isChartView) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isChartView]);
+
   return (
-    <div className={`w-full ${isChartView ? 'h-screen max-h-screen flex flex-col overflow-hidden bg-background' : 'space-y-4 p-3 sm:p-5 max-w-7xl mx-auto pb-20'}`}>
+    <div className={`w-full ${isChartView ? 'h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden bg-background pb-14 lg:pb-0' : 'space-y-4 p-3 sm:p-5 max-w-7xl mx-auto pb-20'}`}>
       {/* Barre de navigation des onglets */}
       <div className={`flex items-center justify-between gap-2 border-b bg-card/75 backdrop-blur px-2 sm:px-4 py-2 ${isChartView ? 'flex-shrink-0 pl-28 sm:pl-32' : ''}`}>
         <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto">

@@ -10,6 +10,7 @@ import '../backtest/chart-landscape.css';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
   DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen, Dropdown,
+  configureMT4Chart, ChartZoomControls,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 
@@ -35,6 +36,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     ensureRectOverlay();
     const chart = init(el);
     chart.setStyles(CHART_STYLES);
+    configureMT4Chart(chart);
     chartRef.current = chart;
     return () => { clearInterval(timerRef.current); dispose(el); chartRef.current = null; };
   }, []);
@@ -124,6 +126,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
 
         <DrawToolsMenu chartRef={chartRef} />
         <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={panesRef} />
+        <ChartZoomControls chartRef={chartRef} />
         <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} className="h-7 px-2 ml-auto" title="Plein écran">
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>

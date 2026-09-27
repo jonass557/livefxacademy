@@ -1042,9 +1042,11 @@ const ClientDashboard = () => {
     }
   };
 
-  // Feature buttons shown on the main page (replaces the sidebar)
+  // Boutons de fonctionnalités affichés sur la page d'accueil (outils de trading en tête)
   const navItems = [
-    { id: 'announcements', icon: Video, label: t('sidebar.announcements') },
+    { id: 'trading-demo', icon: LineChart, label: 'Graphique (Trading Démo)' },
+    { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
+    { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
     { id: 'economics', icon: Calendar, label: 'Annonces éco' },
     { id: 'services', icon: Briefcase, label: t('sidebar.services') },
     { id: 'trading', icon: TrendingUp, label: t('sidebar.tradingInfo') },
@@ -1053,18 +1055,15 @@ const ClientDashboard = () => {
     { id: 'contact', icon: MessageSquare, label: t('sidebar.contact') },
     { id: 'consultation', icon: ClipboardList, label: t('sidebar.consultationForm') },
     { id: 'vacation', icon: Palmtree, label: t('sidebar.vacationProgram') },
-    { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
-    { id: 'trading-demo', icon: LineChart, label: 'Graphique' },
-    { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
   ];
 
   const isChartSection = activeSection === 'trading-demo' || activeSection === 'backtesting';
 
   return (
-    <div className="min-h-[calc(100vh-4rem)]">
-      <main className="w-full">
-        {/* Graphiques : pleine largeur sans padding pour maximiser l'espace */}
-        <div className={isChartSection ? '' : 'p-4 md:p-6 mx-auto max-w-7xl'}>
+    <div className={isChartSection ? 'h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden' : 'min-h-[calc(100vh-4rem)]'}>
+      <main className="w-full h-full">
+        {/* Graphiques : pleine largeur et hauteur sans padding pour maximiser l'espace */}
+        <div className={isChartSection ? 'h-full w-full overflow-hidden' : 'p-4 md:p-6 mx-auto max-w-7xl'}>
           {/* Header : masqué sur les sections graphiques */}
           {!isChartSection && (
             <div className="mb-4 md:mb-6 relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-purple-500/10 p-6 md:p-8">
@@ -1105,7 +1104,7 @@ const ClientDashboard = () => {
               {renderDashboard()}
             </div>
           ) : (
-            <div className={isChartSection ? 'relative' : 'space-y-4'}>
+            <div className={isChartSection ? 'relative h-full w-full overflow-hidden' : 'space-y-4'}>
               {isChartSection ? (
                 <>
                   {/* Bouton retour discret superposé en haut à gauche pour les graphiques */}

@@ -6,6 +6,7 @@ import './chart-landscape.css';
 import {
   CHART_STYLES, ensureRectOverlay, detectPriceDigits,
   DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen,
+  configureMT4Chart, ChartZoomControls,
 } from './chartShared';
 import {
   Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
@@ -152,6 +153,7 @@ export default function ReplayChart({
     const chart = init(el);
     chartRef.current = chart;
     chart.setStyles(CHART_STYLES);
+    configureMT4Chart(chart);
     chart.setPriceVolumePrecision?.(priceDigits, 0);
     chart.applyNewData(klineData);
     drawPeriodBounds();
@@ -346,6 +348,7 @@ export default function ReplayChart({
         <span className="text-xs text-muted-foreground ml-auto hidden lg:inline">
           {symbolName} • {timeframe}
         </span>
+        <ChartZoomControls chartRef={chartRef} />
         <DrawToolsMenu chartRef={chartRef} />
         <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={indicatorPanesRef} />
         <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}>

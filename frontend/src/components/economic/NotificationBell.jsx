@@ -15,6 +15,22 @@ const RISK_STYLE = {
   faible: 'border-l-green-500',
 };
 
+function formatNotifDate(iso) {
+  if (!iso) return '';
+  try {
+    const clean = typeof iso === 'string' && iso.includes(' ') && !iso.includes('T')
+      ? iso.replace(' ', 'T')
+      : iso;
+    const d = new Date(clean);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('fr-FR', {
+      weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
+  } catch (_) {
+    return '';
+  }
+}
+
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState([]);
@@ -101,26 +117,24 @@ export default function NotificationBell() {
                 Aucune alerte pour le moment.
               </div>
             ) : (
-              notifs.map((n) => (
+              notifs.map((n, idx) => (
                 <div
-                  key={n._id}
-                  className={`px-4 py-3 border-b last:border-0 border-l-4 ${RISK_STYLE[n.risk] || 'border-l-border'} ${
-                    n.read ? 'opacity-60' : 'bg-primary/5'
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    {n.impact === 'High' && <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />}
-                    <div className="min-w-0">
-                      <p className="text-sm">{n.message}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {new Date(n.event_date).toLocaleString('fr-FR', {
-                          weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                        })}
-                      </p>
+                  key={n._id || n.id || idx}
+                    className={`px-4 py-3 border-b last:border-0 border-l-4 ${RISK_STYLE[n.risk] || 'border-l-border'} ${
+                      n.read ? 'opacity-60' : 'bg-primary/5'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {n.impact === 'High' && <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />}
+                      <div className="min-w-0">
+                        <p className="text-sm">{n.message}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {formatNotifDate(n.event_date)}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                ))
             )}
           </div>
         </div>

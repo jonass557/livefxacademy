@@ -34,9 +34,40 @@ const EVENT_TYPE_LABELS = {
   other: 'Autre',
 };
 
+// Parseur de date robuste compatible Safari / iOS WebKit et formats variés
+function parseSafeDate(iso) {
+  if (!iso) return null;
+  try {
+    const clean = typeof iso === 'string' && iso.includes(' ') && !iso.includes('T')
+      ? iso.replace(' ', 'T')
+      : iso;
+    const d = new Date(clean);
+    return isNaN(d.getTime()) ? null : d;
+  } catch (_) {
+    return null;
+  }
+}
+
 // Clé de jour (ex: "lundi 12 août") pour regrouper.
-const dayKey = (iso) =>
-  new Date(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const dayKey = (iso) => {
+  const d = parseSafeDate(iso);
+  if (!d) return 'Date indéterminée';
+  try {
+    return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  } catch (_) {
+    return 'Date indéterminée';
+  }
+};
+
+const formatTime = (iso) => {
+  const d = parseSafeDate(iso);
+  if (!d) return '—';
+  try {
+    return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return '—';
+  }
+};
 
 export default function CalendarView({ aiEnabled = true }) {
   const [events, setEvents] = useState([]);
@@ -215,7 +246,7 @@ export default function CalendarView({ aiEnabled = true }) {
                       {/* En-tête métadonnées : heure, drapeau, devise, niveau d'impact */}
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <div className="w-12 sm:w-14 text-sm font-semibold tabular-nums text-foreground">
-                          {new Date(ev.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          {formatTime(ev.date)}
                         </div>
                         {ev.flag && <span className="text-base sm:text-lg flex-shrink-0" title={ev.country_name}>{ev.flag}</span>}
                         <Pill className="bg-primary/10 text-primary border-primary/20 text-xs px-2 py-0.5 flex-shrink-0">{ev.currency}</Pill>
