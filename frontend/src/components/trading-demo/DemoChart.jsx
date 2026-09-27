@@ -36,9 +36,14 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     ensureRectOverlay();
     const chart = init(el);
     chart.setStyles(CHART_STYLES);
-    configureMT4Chart(chart);
+    const unbindMT4 = configureMT4Chart(chart);
     chartRef.current = chart;
-    return () => { clearInterval(timerRef.current); dispose(el); chartRef.current = null; };
+    return () => {
+      unbindMT4?.();
+      clearInterval(timerRef.current);
+      dispose(el);
+      chartRef.current = null;
+    };
   }, []);
 
   useEffect(() => {

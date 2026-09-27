@@ -157,6 +157,7 @@ exports.getMarketCandles = async (req, res) => {
     const meta = provider.getSymbolMeta(symbol);
     if (!meta) return res.status(400).json({ message: 'Symbole non supporté : ' + symbol });
 
+    const granularity = granularityOf(timeframe);
     let candles = [];
     if (start_date && end_date) {
       // Période explicite (aperçu de la zone à backtester).

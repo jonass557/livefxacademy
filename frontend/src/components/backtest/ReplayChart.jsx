@@ -153,7 +153,7 @@ export default function ReplayChart({
     const chart = init(el);
     chartRef.current = chart;
     chart.setStyles(CHART_STYLES);
-    configureMT4Chart(chart);
+    const unbindMT4 = configureMT4Chart(chart);
     chart.setPriceVolumePrecision?.(priceDigits, 0);
     chart.applyNewData(klineData);
     drawPeriodBounds();
@@ -165,6 +165,7 @@ export default function ReplayChart({
     indicatorPanesRef.current = {};
     resetSession();
     return () => {
+      unbindMT4?.();
       clearInterval(timerRef.current);
       dispose(el);
       chartRef.current = null;

@@ -48,7 +48,7 @@ export const CHART_STYLES = {
     tooltip: { showRule: 'none' },
   },
   xAxis: { axisLine: { color: 'rgba(148,163,184,0.3)' }, tickText: { color: '#9ca3af' } },
-  yAxis: { axisLine: { color: 'rgba(148,163,184,0.3)' }, tickText: { color: '#9ca3af' } },
+  yAxis: { size: 72, inside: false, axisLine: { color: 'rgba(148,163,184,0.3)' }, tickText: { color: '#9ca3af' } },
   crosshair: {
     horizontal: { line: { color: '#6b7280' }, text: { backgroundColor: '#374151' } },
     vertical: { line: { color: '#6b7280' }, text: { backgroundColor: '#374151' } },
@@ -323,12 +323,181 @@ export function ChartWatermark() {
   );
 }
 
+// ---- Redimensionnement vertical et horizontal fluide façon MT4 / MT5 & TradingView ----
+
+// Étire ou compresse l'axe des prix Y avec un facteur multiplicateur
+export function zoomPriceY(chart, factor = 1.15) {
+  if (!chart) return;
+  try {
+    const pane = chart.getDrawPaneById?.('candle_pane');
+    const yAxis = pane?.getAxisComponent?.();
+    if (!yAxis) return;
+    const range = yAxis.getRange?.();
+    if (!range || !range.range) return;
+
+    const newRange = Math.max(range.range * factor, range.range * 0.02);
+    const difRange = (newRange - range.range) / 2;
+    const newFrom = range.from - difRange;
+    const newTo = range.to + difRange;
+    const newRealFrom = yAxis.convertToRealValue(newFrom);
+    const newRealTo = yAxis.convertToRealValue(newTo);
+
+    yAxis.setRange({
+      from: newFrom,
+      to: newTo,
+      range: newRange,
+      realFrom: newRealFrom,
+      realTo: newRealTo,
+      realRange: newRealTo - newRealFrom,
+    });
+    chart.adjustPaneViewport?.(false, true, true, true);
+  } catch (err) {
+    console.warn('zoomPriceY error:', err);
+  }
+}
+
+// Réinitialise l'axe des prix Y à l'échelle automatique
+export function resetPriceY(chart) {
+  if (!chart) return;
+  try {
+    const pane = chart.getDrawPaneById?.('candle_pane');
+    const yAxis = pane?.getAxisComponent?.();
+    if (!yAxis) return;
+    yAxis.setAutoCalcTickFlag?.(true);
+    chart.adjustPaneViewport?.(false, true, true, true);
+  } catch (err) {
+    console.warn('resetPriceY error:', err);
+  }
+}
+
+// Attache des écouteurs Pointer / Touch / Wheel sur le conteneur de l'axe des prix Y
+// pour un étirement vertical fluide, fiable et instantané sur tous les appareils (PC, mobile, tactile)
+export function setupYAxisDrag(chart) {
+  if (!chart) return () => {};
+
+  let cleanupListeners = () => {};
+
+  const initDrag = () => {
+    try {
+      const yAxisDom = chart.getDom?.('candle_pane', 'yAxis');
+      if (!yAxisDom) return;
+
+      yAxisDom.style.touchAction = 'none';
+      yAxisDom.style.cursor = 'ns-resize';
+      yAxisDom.style.userSelect = 'none';
+      yAxisDom.style.webkitUserSelect = 'none';
+
+      let isDragging = false;
+      let startY = 0;
+      let initialRange = null;
+
+      const onPointerDown = (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        const pane = chart.getDrawPaneById?.('candle_pane');
+        const yAxis = pane?.getAxisComponent?.();
+        if (!yAxis) return;
+
+        const currentRange = yAxis.getRange?.();
+        if (!currentRange || !currentRange.range) return;
+
+        isDragging = true;
+        startY = e.clientY;
+        initialRange = { ...currentRange };
+
+        // Empêche le comportement natif défectueux de KLineCharts
+        e.preventDefault();
+        e.stopPropagation();
+
+        try {
+          e.target?.setPointerCapture?.(e.pointerId);
+        } catch (_) {}
+
+        const onPointerMove = (ev) => {
+          if (!isDragging || !initialRange) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+
+          const deltaY = ev.clientY - startY;
+          // Glissement vers le HAUT (deltaY < 0) : agrandit les bougies verticalement (réduit le range de prix)
+          // Glissement vers le BAS (deltaY > 0) : compresse les bougies verticalement (augmente le range de prix)
+          const scale = Math.exp(deltaY * 0.005);
+          const newRange = Math.max(initialRange.range * scale, initialRange.range * 0.02);
+          const difRange = (newRange - initialRange.range) / 2;
+          const newFrom = initialRange.from - difRange;
+          const newTo = initialRange.to + difRange;
+          const newRealFrom = yAxis.convertToRealValue(newFrom);
+          const newRealTo = yAxis.convertToRealValue(newTo);
+
+          yAxis.setRange({
+            from: newFrom,
+            to: newTo,
+            range: newRange,
+            realFrom: newRealFrom,
+            realTo: newRealTo,
+            realRange: newRealTo - newRealFrom,
+          });
+          chart.adjustPaneViewport?.(false, true, true, true);
+        };
+
+        const onPointerUp = (ev) => {
+          if (!isDragging) return;
+          isDragging = false;
+          initialRange = null;
+          ev.stopPropagation();
+          try {
+            ev.target?.releasePointerCapture?.(ev.pointerId);
+          } catch (_) {}
+          window.removeEventListener('pointermove', onPointerMove, true);
+          window.removeEventListener('pointerup', onPointerUp, true);
+          window.removeEventListener('pointercancel', onPointerUp, true);
+        };
+
+        window.addEventListener('pointermove', onPointerMove, { capture: true, passive: false });
+        window.addEventListener('pointerup', onPointerUp, { capture: true });
+        window.addEventListener('pointercancel', onPointerUp, { capture: true });
+      };
+
+      const onDblClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resetPriceY(chart);
+      };
+
+      const onWheel = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const factor = e.deltaY < 0 ? 0.90 : 1.10;
+        zoomPriceY(chart, factor);
+      };
+
+      yAxisDom.addEventListener('pointerdown', onPointerDown, { passive: false });
+      yAxisDom.addEventListener('dblclick', onDblClick);
+      yAxisDom.addEventListener('wheel', onWheel, { passive: false });
+
+      cleanupListeners = () => {
+        yAxisDom.removeEventListener('pointerdown', onPointerDown);
+        yAxisDom.removeEventListener('dblclick', onDblClick);
+        yAxisDom.removeEventListener('wheel', onWheel);
+      };
+    } catch (err) {
+      console.warn('setupYAxisDrag error:', err);
+    }
+  };
+
+  const timer = setTimeout(initDrag, 50);
+
+  return () => {
+    clearTimeout(timer);
+    cleanupListeners();
+  };
+}
+
 // Configuration de KLineCharts pour une flexibilité et fluidité totale façon MT4 / MT5 :
 // - Étirement vertical de l'axe des prix (glisser sur l'axe Y à droite pour compresser/étirer les bougies)
 // - Étirement horizontal de l'axe des temps (glisser sur l'axe X)
 // - Zoom/dézoom molette et pinch tactile
 export function configureMT4Chart(chart) {
-  if (!chart) return;
+  if (!chart) return () => {};
   try {
     chart.setZoomEnabled?.(true);
     chart.setScrollEnabled?.(true);
@@ -348,9 +517,11 @@ export function configureMT4Chart(chart) {
   } catch (e) {
     console.warn('configureMT4Chart:', e);
   }
+
+  return setupYAxisDrag(chart);
 }
 
-// Boutons de zoom rapide façon MT4/MT5 intégrables dans la toolbar (+, -, Auto)
+// Boutons de zoom rapide façon MT4/MT5 intégrables dans la toolbar (+, -, ↕+, ↕-, Auto)
 export function ChartZoomControls({ chartRef, className = '' }) {
   const handleZoomIn = () => {
     const chart = chartRef.current;
@@ -374,12 +545,21 @@ export function ChartZoomControls({ chartRef, className = '' }) {
     }
   };
 
+  const handleStretchY = () => {
+    zoomPriceY(chartRef.current, 0.85);
+  };
+
+  const handleCompressY = () => {
+    zoomPriceY(chartRef.current, 1.18);
+  };
+
   const handleReset = () => {
     const chart = chartRef.current;
     if (!chart) return;
     try {
       chart.setBarSpace?.(6);
       chart.scrollToRealTime?.();
+      resetPriceY(chart);
     } catch (_) {}
   };
 
@@ -390,7 +570,7 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         variant="ghost"
         className="h-6 w-6 p-0 hover:bg-muted"
         onClick={handleZoomIn}
-        title="Zoom avant (+)"
+        title="Zoom horizontal avant (+)"
       >
         <span className="font-bold text-xs leading-none">+</span>
       </Button>
@@ -399,16 +579,36 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         variant="ghost"
         className="h-6 w-6 p-0 hover:bg-muted"
         onClick={handleZoomOut}
-        title="Zoom arrière (-)"
+        title="Zoom horizontal arrière (−)"
       >
         <span className="font-bold text-xs leading-none">−</span>
       </Button>
+      <div className="h-3 w-[1px] bg-border mx-0.5" />
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 px-1 text-[11px] font-semibold hover:bg-muted"
+        onClick={handleStretchY}
+        title="Étirer verticalement l'axe des prix (bougies plus hautes)"
+      >
+        ↕+
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 px-1 text-[11px] font-semibold hover:bg-muted"
+        onClick={handleCompressY}
+        title="Compresser verticalement l'axe des prix (bougies plus plates)"
+      >
+        ↕−
+      </Button>
+      <div className="h-3 w-[1px] bg-border mx-0.5" />
       <Button
         size="sm"
         variant="ghost"
         className="h-6 px-1.5 text-[10px] font-semibold hover:bg-muted"
         onClick={handleReset}
-        title="Échelle automatique / Réinitialiser"
+        title="Échelle automatique X et Y / Réinitialiser"
       >
         Auto
       </Button>

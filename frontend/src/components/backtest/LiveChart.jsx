@@ -43,9 +43,10 @@ export default function LiveChart({
     ensureRectOverlay();
     const chart = init(el);
     chart.setStyles(CHART_STYLES);
-    configureMT4Chart(chart);
+    const unbindMT4 = configureMT4Chart(chart);
     chartRef.current = chart;
     return () => {
+      unbindMT4?.();
       clearInterval(timerRef.current);
       dispose(el);
       chartRef.current = null;
