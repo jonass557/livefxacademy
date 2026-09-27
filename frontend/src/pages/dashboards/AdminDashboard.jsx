@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Users, Video, TrendingUp, Image as ImageIcon, Trash2, MessageSquare, CheckCircle, XCircle, Clock, RefreshCw, BarChart3, Mail, GraduationCap, Eye, UserCheck, UserX, Lightbulb, ExternalLink, User, Phone, Calendar, Award, Briefcase, X, FileCheck, Send, AlertCircle, Target, ChevronDown, ChevronUp, Upload, Play, Pause, Edit2, Search, Globe, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
-import api from '../../lib/api';
+import api, { API_URL } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
 import AdminSidebar from '../../components/AdminSidebar';
@@ -910,7 +910,7 @@ const AdminDashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {banners.map((banner) => (
               <div key={banner.id} className="relative group rounded-lg overflow-hidden border aspect-video">
-                <img src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${banner.image_url}`} alt="Banner" className="w-full h-full object-cover" />
+                <img src={`${API_URL}${banner.image_url}`} alt="Banner" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <Button variant="destructive" size="icon" onClick={() => handleDeleteBanner(banner.id)}>
                     <Trash2 className="h-4 w-4" />
@@ -1196,7 +1196,7 @@ const AdminDashboard = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {banners.map((banner) => (
             <div key={banner.id} className="relative group rounded-lg overflow-hidden border aspect-video">
-              <img src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${banner.image_url}`} alt="Banner" className="w-full h-full object-cover" />
+              <img src={`${API_URL}${banner.image_url}`} alt="Banner" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <Button variant="destructive" size="icon" onClick={() => handleDeleteBanner(banner.id)}>
                   <Trash2 className="h-4 w-4" />
@@ -1212,8 +1212,7 @@ const AdminDashboard = () => {
 
   // Section: Branding
   const renderBranding = () => {
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${apiUrl}${url}`) : '';
+    const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
     const logos = [
       { type: 'navbar', label: 'Logo de la barre de navigation', url: branding.navbar_logo_url },
       { type: 'chart', label: 'Logo du graphique Trading Demo', url: branding.chart_logo_url },

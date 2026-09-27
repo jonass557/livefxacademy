@@ -1,8 +1,7 @@
 import React from 'react';
-import api from '../../lib/api';
+import api, { API_URL } from '../../lib/api';
 import { registerOverlay } from 'klinecharts';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
 import { Button } from '../ui/button';
 import {

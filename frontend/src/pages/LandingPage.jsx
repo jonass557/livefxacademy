@@ -7,7 +7,7 @@ import {
   GraduationCap, Target, BookOpen, BarChart3, Zap, Award,
   Globe, Clock, HeadphonesIcon, Facebook
 } from 'lucide-react';
-import api from '../lib/api';
+import api, { API_URL } from '../lib/api';
 import { getServiceIcon } from '../lib/serviceIcons';
 import { useLanguageStore } from '../store/languageStore';
 
@@ -41,7 +41,6 @@ const LandingPage = () => {
       try {
         const res = await api.get('/banners');
         if (res.data && res.data.length > 0) {
-          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
           setHeroImages(res.data.map(b => {
             return b.image_url.startsWith('http') ? b.image_url : `${API_URL}${b.image_url}`;
           }));

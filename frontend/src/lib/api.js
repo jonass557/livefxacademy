@@ -1,8 +1,17 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import * as authNs from '../store/authStore';
-// En production, définir VITE_API_URL (ex: https://livefx-backend.onrender.com)
-// En local, on retombe sur http://localhost:5000
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+export function getApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && !envUrl.includes('localhost')) {
+    return envUrl;
+  }
+  if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return 'https://api.livefx-trading.com';
+  }
+  return envUrl || 'http://localhost:5000';
+}
+
+export const API_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
