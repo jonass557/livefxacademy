@@ -4,7 +4,7 @@
 const { getProvider, TIMEFRAMES } = require('./index');
 
 // Granularités (secondes) gérées par le Trading Demo, W1/MN inclus (au-delà de Deriv).
-const GRAN = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400, W1: 604800, MN: 2592000 };
+const GRAN = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H2: 7200, H4: 14400, H6: 21600, H8: 28800, D1: 86400, W1: 604800, MN: 2592000 };
 
 // Agrège des bougies D1 en périodes hebdo/mensuelles (buckets par clé calendaire UTC).
 function aggregate(daily, bucketKeyFn) {

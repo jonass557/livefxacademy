@@ -26,22 +26,23 @@ const SYMBOLS = [
   { symbol: '^NDX', name: 'Nasdaq 100', pip: 1, category: 'indices' },
 ]
 
-// granularité (secondes) -> intervalle Yahoo. 14400 (H4) : pas d'intervalle natif,
-// on demande du 60m puis on agrège en bougies 4h.
+// granularité (secondes) -> intervalle Yahoo. Pour H2, H4, H6, H8 : pas d'intervalle natif,
+// on demande du 60m puis on agrège en bougies multi-heures correspondantes.
 const INTERVAL_BY_GRANULARITY = {
   60: '1m', 300: '5m', 900: '15m', 1800: '30m',
-  3600: '60m', 14400: '60m', 86400: '1d', 604800: '1wk', 2592000: '1mo',
+  3600: '60m', 7200: '60m', 14400: '60m', 21600: '60m', 28800: '60m',
+  86400: '1d', 604800: '1wk', 2592000: '1mo',
 }
 
 function listSymbols() { return SYMBOLS }
 function listTimeframes() { return TIMEFRAMES }
 function getSymbolMeta(symbol) { return SYMBOLS.find((s) => s.symbol === symbol) || null }
 
-// Agrège des bougies 60m en bougies 4h (buckets alignés sur 14400 s UTC).
-function aggregate4h(hourly) {
+// Agrège des bougies 60m en bougies multi-heures (buckets alignés sur granularity s UTC).
+function aggregateToGranularity(hourly, targetGranularity) {
   const buckets = new Map()
   for (const c of hourly) {
-    const key = Math.floor(c.time / 14400) * 14400
+    const key = Math.floor(c.time / targetGranularity) * targetGranularity
     const b = buckets.get(key)
     if (!b) buckets.set(key, { time: key, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume || 0 })
     else {
@@ -79,7 +80,8 @@ async function fetchCandles({ symbol, granularity, start, end }) {
   }
   out.sort((a, b) => a.time - b.time)
 
-  const candles = granularity === 14400 ? aggregate4h(out) : out
+  const isAggregated = [7200, 14400, 21600, 28800].includes(granularity)
+  const candles = isAggregated ? aggregateToGranularity(out, granularity) : out
   return candles.length > MAX_CANDLES ? candles.slice(candles.length - MAX_CANDLES) : candles
 }
 

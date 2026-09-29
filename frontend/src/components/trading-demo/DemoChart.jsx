@@ -8,9 +8,10 @@ import { Loader2, Maximize2, Minimize2, ChevronDown } from 'lucide-react';
 import { Button } from '../ui/button';
 import '../backtest/chart-landscape.css';
 import {
-  CHART_STYLES, ensureRectOverlay, detectPriceDigits,
+  CHART_STYLES, ensureCustomOverlaysAndIndicators, detectPriceDigits,
   DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen, Dropdown,
-  configureMT4Chart, ChartZoomControls,
+  configureMT4Chart, ChartZoomControls, buildKLineStyles,
+  useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 
@@ -30,12 +31,21 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   const [activeIndicators, setActiveIndicators] = useState({});
   const [fullscreen, setFullscreen] = useFullscreen();
 
+  const {
+    styles: chartColors,
+    applyStyles,
+    applyPreset,
+    resetDefault,
+    open: styleModalOpen,
+    setOpen: setStyleModalOpen,
+  } = useChartStyles(chartRef);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    ensureRectOverlay();
+    ensureCustomOverlaysAndIndicators();
     const chart = init(el);
-    chart.setStyles(CHART_STYLES);
+    chart.setStyles(buildKLineStyles(chartColors));
     const unbindMT4 = configureMT4Chart(chart);
     chartRef.current = chart;
     return () => {
@@ -131,13 +141,26 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
 
         <DrawToolsMenu chartRef={chartRef} />
         <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={panesRef} />
+        <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
         <ChartZoomControls chartRef={chartRef} />
         <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} className="h-7 px-2 ml-auto" title="Plein écran">
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>
       </div>
 
-      <div className="relative flex-1 min-h-[300px] w-full rounded-lg border overflow-hidden bg-card" data-chart-container>
+      <div
+        className="relative flex-1 min-h-[300px] w-full rounded-lg border overflow-hidden transition-colors"
+        style={{ backgroundColor: chartColors?.bgColor || undefined }}
+        data-chart-container
+      >
+        <ChartStyleSettingsModal
+          open={styleModalOpen}
+          onClose={() => setStyleModalOpen(false)}
+          styles={chartColors}
+          onApplyStyles={applyStyles}
+          onApplyPreset={applyPreset}
+          onReset={resetDefault}
+        />
         <div ref={containerRef} className="w-full h-full" />
         <ChartWatermark />
         {loading && (

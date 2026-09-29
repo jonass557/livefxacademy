@@ -465,7 +465,7 @@ const RegistrationDetails = () => {
   const capitalRanges = ['< 1 000€', '1 000€ - 5 000€', '5 000€ - 10 000€', '10 000€ - 50 000€', '> 50 000€'];
   const platforms = ['Discord', 'Zoom', 'Google Meet', 'Telegram', 'WhatsApp', 'En présentiel'];
   const marketTypes = ['Forex', 'Crypto', 'Actions', 'Indices', 'Matières premières', 'Options'];
-  const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
+  const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H2', 'H4', 'H6', 'H8', 'D1', 'W1', 'MN'];
 
   if (loading) return <div className="flex justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div></div>;
 
@@ -988,7 +988,7 @@ const StrategiesSection = () => {
   };
 
   const marketTypes = ['Forex', 'Crypto', 'Actions', 'Indices', 'Matières premières', 'Options'];
-  const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
+  const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H2', 'H4', 'H6', 'H8', 'D1', 'W1', 'MN'];
 
   if (loading) return <div className="flex justify-center p-8"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div></div>;
 

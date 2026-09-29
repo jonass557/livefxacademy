@@ -5,9 +5,10 @@ import { Loader2, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import './chart-landscape.css';
 import {
-  CHART_STYLES, ensureRectOverlay, detectPriceDigits,
+  CHART_STYLES, ensureCustomOverlaysAndIndicators, detectPriceDigits,
   DrawToolsMenu, IndicatorsMenu, MarketPicker, ChartWatermark, useFullscreen,
-  configureMT4Chart, ChartZoomControls,
+  configureMT4Chart, ChartZoomControls, buildKLineStyles,
+  useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
 } from './chartShared';
 
 const REFRESH_MS = 15000; // rafraîchissement auto (quasi temps réel)
@@ -15,8 +16,8 @@ const REFRESH_MS = 15000; // rafraîchissement auto (quasi temps réel)
 /**
  * Graphique du marché en direct (chandeliers japonais KLineCharts) affiché
  * dès l'ouverture de la page Backtesting : sélecteur de marché par catégorie
- * et d'unité de temps dans l'entête, menus Outils/Indicateurs, mise à jour
- * automatique.
+ * et d'unité de temps dans l'entête, menus Outils/Indicateurs, personnalisation
+ * complète des couleurs MT5/TV, mise à jour automatique.
  */
 export default function LiveChart({
   provider, symbol, timeframe, symbolName,
@@ -36,13 +37,22 @@ export default function LiveChart({
   const [digits, setDigits] = useState(5);
   const [fullscreen, setFullscreen] = useFullscreen();
 
+  const {
+    styles: chartColors,
+    applyStyles,
+    applyPreset,
+    resetDefault,
+    open: styleModalOpen,
+    setOpen: setStyleModalOpen,
+  } = useChartStyles(chartRef);
+
   // ---- Initialisation du graphique (une seule fois) ----
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    ensureRectOverlay();
+    ensureCustomOverlaysAndIndicators();
     const chart = init(el);
-    chart.setStyles(CHART_STYLES);
+    chart.setStyles(buildKLineStyles(chartColors));
     const unbindMT4 = configureMT4Chart(chart);
     chartRef.current = chart;
     return () => {
@@ -139,6 +149,7 @@ export default function LiveChart({
           setActive={setActiveIndicators}
           panesRef={indicatorPanesRef}
         />
+        <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
         <ChartZoomControls chartRef={chartRef} />
         <span className="text-[11px] text-muted-foreground hidden xs:flex items-center gap-1 ml-auto">
           <RefreshCw className="h-3 w-3" />
@@ -156,7 +167,20 @@ export default function LiveChart({
       </div>
 
       {/* Graphique pleine largeur (les outils sont dans les menus) */}
-      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
+      <div
+        className={`relative w-full rounded-lg border overflow-hidden transition-colors ${fullscreen ? 'flex-1 min-h-0' : ''}`}
+        style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
+        data-chart-container
+      >
+        {/* Modal de personnalisation des couleurs */}
+        <ChartStyleSettingsModal
+          open={styleModalOpen}
+          onClose={() => setStyleModalOpen(false)}
+          styles={chartColors}
+          onApplyStyles={applyStyles}
+          onApplyPreset={applyPreset}
+          onReset={resetDefault}
+        />
         {/* Entête OHLC en surimpression, façon MT5 */}
         {last && (
           <div className="pointer-events-none absolute left-1 top-1 z-20 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">

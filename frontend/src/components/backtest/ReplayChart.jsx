@@ -4,9 +4,10 @@ import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import './chart-landscape.css';
 import {
-  CHART_STYLES, ensureRectOverlay, detectPriceDigits,
+  CHART_STYLES, ensureCustomOverlaysAndIndicators, detectPriceDigits,
   DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen,
-  configureMT4Chart, ChartZoomControls,
+  configureMT4Chart, ChartZoomControls, buildKLineStyles,
+  useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
 } from './chartShared';
 import {
   Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
@@ -55,6 +56,15 @@ export default function ReplayChart({
   const [position, setPosition] = useState(null);
   const [balance, setBalance] = useState(initialBalance);
   const [closedTrades, setClosedTrades] = useState(0);
+
+  const {
+    styles: chartColors,
+    applyStyles,
+    applyPreset,
+    resetDefault,
+    open: styleModalOpen,
+    setOpen: setStyleModalOpen,
+  } = useChartStyles(chartRef);
 
   const klineData = useMemo(
     () => (candles || []).map((c) => ({ timestamp: c.time * 1000, open: c.open, high: c.high, low: c.low, close: c.close })),
@@ -149,10 +159,10 @@ export default function ReplayChart({
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !klineData.length) return;
-    ensureRectOverlay();
+    ensureCustomOverlaysAndIndicators();
     const chart = init(el);
     chartRef.current = chart;
-    chart.setStyles(CHART_STYLES);
+    chart.setStyles(buildKLineStyles(chartColors));
     const unbindMT4 = configureMT4Chart(chart);
     chart.setPriceVolumePrecision?.(priceDigits, 0);
     chart.applyNewData(klineData);
@@ -352,6 +362,7 @@ export default function ReplayChart({
         <ChartZoomControls chartRef={chartRef} />
         <DrawToolsMenu chartRef={chartRef} />
         <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={indicatorPanesRef} />
+        <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
         <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}>
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </Button>
@@ -399,7 +410,19 @@ export default function ReplayChart({
       )}
 
       {/* ==================== GRAPHIQUE ==================== */}
-      <div className={`relative w-full rounded-lg border overflow-hidden ${fullscreen ? 'flex-1 min-h-0' : ''}`} style={{ height: chartHeight }} data-chart-container>
+      <div
+        className={`relative w-full rounded-lg border overflow-hidden transition-colors ${fullscreen ? 'flex-1 min-h-0' : ''}`}
+        style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
+        data-chart-container
+      >
+        <ChartStyleSettingsModal
+          open={styleModalOpen}
+          onClose={() => setStyleModalOpen(false)}
+          styles={chartColors}
+          onApplyStyles={applyStyles}
+          onApplyPreset={applyPreset}
+          onReset={resetDefault}
+        />
         <div className="pointer-events-none absolute left-1 top-1 z-20 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
           <p className="text-[10px] font-semibold text-primary sm:text-xs">
             {symbolName} <span className="text-foreground">{timeframe}</span>

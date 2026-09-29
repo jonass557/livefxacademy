@@ -29,6 +29,6 @@ export const DEMO_CATEGORIES = [
   { key: 'OTHER', label: 'Autres' },
 ];
 
-export const DEMO_TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
+export const DEMO_TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H2', 'H4', 'H6', 'H8', 'D1', 'W1', 'MN'];
 
 export const fmt = (n, d = 2) => (n == null || isNaN(n) ? '—' : Number(n).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }));

@@ -21,7 +21,10 @@ const TIMEFRAMES = [
   { key: 'M15', label: '15 minutes', granularity: 900 },
   { key: 'M30', label: '30 minutes', granularity: 1800 },
   { key: 'H1', label: '1 heure', granularity: 3600 },
+  { key: 'H2', label: '2 heures', granularity: 7200 },
   { key: 'H4', label: '4 heures', granularity: 14400 },
+  { key: 'H6', label: '6 heures', granularity: 21600 },
+  { key: 'H8', label: '8 heures', granularity: 28800 },
   { key: 'D1', label: '1 jour', granularity: 86400 },
 ]
 

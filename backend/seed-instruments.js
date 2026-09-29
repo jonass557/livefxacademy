@@ -49,11 +49,11 @@ const crypto = (symbol, name, digits, binanceSymbol) => ({
   provider: 'binance', provider_symbol: binanceSymbol,
 });
 
-const synth = (symbol, name) => ({
-  symbol, name, category: 'SYNTHETIC', quote_currency: 'USD', enabled: false,
-  contract_size: 1, pip_size: 0.01, tick_size: 0.01, digits: 2, tick_value: 0.01,
-  min_volume: 0.01, max_volume: 100, volume_step: 0.01, spread_pips: 0,
-  provider: 'deriv', provider_symbol: null, // désactivé : aucun prix tant que non branché
+const synth = (symbol, name, providerSymbol, pip = 0.01, digits = 2) => ({
+  symbol, name, category: 'SYNTHETIC', quote_currency: 'USD', enabled: true,
+  contract_size: 1, pip_size: pip, tick_size: pip, digits, tick_value: pip,
+  min_volume: 0.01, max_volume: 100, volume_step: 0.01, spread_pips: 1,
+  provider: 'deriv', provider_symbol: providerSymbol,
 });
 
 const INSTRUMENTS = [
@@ -107,11 +107,25 @@ const INSTRUMENTS = [
   index('FRA40', 'France 40', 'EUR', '^FCHI'),
   index('JP225', 'Japon 225', 'JPY', '^N225'),
 
-  // --- SYNTHETIC (désactivés : architecture prête, aucun prix inventé) ---
-  synth('VOL75', 'Volatility 75 Index'),
-  synth('VOL100', 'Volatility 100 Index'),
-  synth('BOOM1000', 'Boom 1000 Index'),
-  synth('CRASH1000', 'Crash 1000 Index'),
+  // --- SYNTHETIC (Deriv Synthetic Indices) ---
+  synth('R_10', 'Volatility 10 Index', 'R_10', 0.001, 3),
+  synth('R_25', 'Volatility 25 Index', 'R_25', 0.001, 3),
+  synth('R_50', 'Volatility 50 Index', 'R_50', 0.0001, 4),
+  synth('R_75', 'Volatility 75 Index', 'R_75', 0.0001, 4),
+  synth('R_100', 'Volatility 100 Index', 'R_100', 0.01, 2),
+  synth('1HZ10V', 'Volatility 10 (1s) Index', '1HZ10V', 0.01, 2),
+  synth('1HZ25V', 'Volatility 25 (1s) Index', '1HZ25V', 0.01, 2),
+  synth('1HZ50V', 'Volatility 50 (1s) Index', '1HZ50V', 0.01, 2),
+  synth('1HZ75V', 'Volatility 75 (1s) Index', '1HZ75V', 0.01, 2),
+  synth('1HZ100V', 'Volatility 100 (1s) Index', '1HZ100V', 0.01, 2),
+  synth('BOOM500', 'Boom 500 Index', 'BOOM500', 0.001, 3),
+  synth('BOOM1000', 'Boom 1000 Index', 'BOOM1000', 0.001, 3),
+  synth('CRASH500', 'Crash 500 Index', 'CRASH500', 0.001, 3),
+  synth('CRASH1000', 'Crash 1000 Index', 'CRASH1000', 0.001, 3),
+  synth('STEP', 'Step Index', 'stpRNG', 0.1, 1),
+  synth('JUMP10', 'Jump 10 Index', 'JD10', 0.01, 2),
+  synth('JUMP50', 'Jump 50 Index', 'JD50', 0.01, 2),
+  synth('JUMP100', 'Jump 100 Index', 'JD100', 0.01, 2),
 ];
 
 async function seed() {
