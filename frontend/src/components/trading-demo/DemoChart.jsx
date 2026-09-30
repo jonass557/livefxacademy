@@ -12,6 +12,7 @@ import {
   DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen, Dropdown,
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
+  useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 
@@ -39,6 +40,8 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     open: styleModalOpen,
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
+
+  const overlayManager = useChartOverlayManager(chartRef);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -136,10 +139,12 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
       <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 flex-shrink-0" data-chart-toolbar>
         <span className="text-xs font-semibold text-primary mr-1">{symbolName || symbol}</span>
         
-        {/* Sélecteur d'unité de temps en liste déroulante (exactement comme pour le backtesting) */}
+        {/* Sélecteur d'unité de temps en liste déroulante */}
         <TimeframeDropdown timeframe={timeframe} onSelectTimeframe={onSelectTimeframe} />
 
-        <DrawToolsMenu chartRef={chartRef} />
+        <CandleCountdownBadge timeframe={timeframe} />
+
+        <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
         <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={panesRef} />
         <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
         <ChartZoomControls chartRef={chartRef} />
@@ -161,6 +166,14 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
           onApplyPreset={applyPreset}
           onReset={resetDefault}
         />
+
+        {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
+        <SelectedOverlayBar
+          overlay={overlayManager.selectedOverlay}
+          onDelete={overlayManager.deleteSelected}
+          onDeselect={() => overlayManager.setSelectedOverlay(null)}
+        />
+
         <div ref={containerRef} className="w-full h-full" />
         <ChartWatermark />
         {loading && (

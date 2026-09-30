@@ -8,6 +8,7 @@ import {
   DrawToolsMenu, IndicatorsMenu, ChartWatermark, useFullscreen,
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
+  useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
 } from './chartShared';
 import {
   Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
@@ -65,6 +66,8 @@ export default function ReplayChart({
     open: styleModalOpen,
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
+
+  const overlayManager = useChartOverlayManager(chartRef);
 
   const klineData = useMemo(
     () => (candles || []).map((c) => ({ timestamp: c.time * 1000, open: c.open, high: c.high, low: c.low, close: c.close })),
@@ -360,7 +363,7 @@ export default function ReplayChart({
           {symbolName} • {timeframe}
         </span>
         <ChartZoomControls chartRef={chartRef} />
-        <DrawToolsMenu chartRef={chartRef} />
+        <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
         <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={indicatorPanesRef} />
         <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
         <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}>
@@ -423,16 +426,30 @@ export default function ReplayChart({
           onApplyPreset={applyPreset}
           onReset={resetDefault}
         />
-        <div className="pointer-events-none absolute left-1 top-1 z-20 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
-          <p className="text-[10px] font-semibold text-primary sm:text-xs">
-            {symbolName} <span className="text-foreground">{timeframe}</span>
-          </p>
-          {cur && (
-            <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px]">
-              O {cur.open.toFixed(digits)} H {cur.high.toFixed(digits)} L {cur.low.toFixed(digits)}{' '}
-              <span className={cur.close >= cur.open ? 'text-emerald-500' : 'text-red-500'}>C {cur.close.toFixed(digits)}</span>
+
+        {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
+        <SelectedOverlayBar
+          overlay={overlayManager.selectedOverlay}
+          onDelete={overlayManager.deleteSelected}
+          onDeselect={() => overlayManager.setSelectedOverlay(null)}
+        />
+
+        <div className="pointer-events-none absolute left-1 top-1 z-20 flex items-center gap-2 rounded-md bg-background/90 backdrop-blur-sm border px-2 py-1 shadow-sm sm:left-2 sm:top-2">
+          <div>
+            <p className="text-[10px] font-semibold text-primary sm:text-xs leading-none mb-0.5">
+              {symbolName} <span className="text-foreground">{timeframe}</span>
             </p>
-          )}
+            {cur && (
+              <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px] leading-tight">
+                O {cur.open.toFixed(digits)} H {cur.high.toFixed(digits)} L {cur.low.toFixed(digits)}{' '}
+                <span className={cur.close >= cur.open ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
+                  C {cur.close.toFixed(digits)}
+                </span>
+              </p>
+            )}
+          </div>
+          <div className="h-6 w-px bg-border mx-0.5 hidden xs:block" />
+          <CandleCountdownBadge timeframe={timeframe} referenceTime={cur?.time ? cur.time * 1000 : null} />
         </div>
         <div ref={containerRef} className="w-full h-full" />
         <ChartWatermark />

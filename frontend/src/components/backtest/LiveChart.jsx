@@ -9,6 +9,7 @@ import {
   DrawToolsMenu, IndicatorsMenu, MarketPicker, ChartWatermark, useFullscreen,
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
+  useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
 } from './chartShared';
 
 const REFRESH_MS = 15000; // rafraîchissement auto (quasi temps réel)
@@ -45,6 +46,8 @@ export default function LiveChart({
     open: styleModalOpen,
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
+
+  const overlayManager = useChartOverlayManager(chartRef);
 
   // ---- Initialisation du graphique (une seule fois) ----
   useEffect(() => {
@@ -142,7 +145,7 @@ export default function LiveChart({
           onSelectSymbol={onSelectSymbol}
           onSelectTimeframe={onSelectTimeframe}
         />
-        <DrawToolsMenu chartRef={chartRef} />
+        <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
         <IndicatorsMenu
           chartRef={chartRef}
           active={activeIndicators}
@@ -181,18 +184,30 @@ export default function LiveChart({
           onApplyPreset={applyPreset}
           onReset={resetDefault}
         />
-        {/* Entête OHLC en surimpression, façon MT5 */}
+
+        {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
+        <SelectedOverlayBar
+          overlay={overlayManager.selectedOverlay}
+          onDelete={overlayManager.deleteSelected}
+          onDeselect={() => overlayManager.setSelectedOverlay(null)}
+        />
+
+        {/* Entête OHLC en surimpression avec compte à rebours de clôture, façon MT5 */}
         {last && (
-          <div className="pointer-events-none absolute left-1 top-1 z-20 leading-tight rounded-md bg-background/85 backdrop-blur-sm border px-1.5 py-0.5 shadow-sm sm:left-2 sm:top-2 sm:px-2 sm:py-1">
-            <p className="text-[10px] font-semibold text-primary sm:text-xs">
-              {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
-            </p>
-            <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px]">
-              O {last.open.toFixed(digits)} H {last.high.toFixed(digits)} L {last.low.toFixed(digits)}{' '}
-              <span className={last.close >= last.open ? 'text-emerald-500' : 'text-red-500'}>
-                C {last.close.toFixed(digits)}
-              </span>
-            </p>
+          <div className="pointer-events-none absolute left-1 top-1 z-20 flex items-center gap-2 rounded-md bg-background/90 backdrop-blur-sm border px-2 py-1 shadow-sm sm:left-2 sm:top-2">
+            <div>
+              <p className="text-[10px] font-semibold text-primary sm:text-xs leading-none mb-0.5">
+                {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
+              </p>
+              <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px] leading-tight">
+                O {last.open.toFixed(digits)} H {last.high.toFixed(digits)} L {last.low.toFixed(digits)}{' '}
+                <span className={last.close >= last.open ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
+                  C {last.close.toFixed(digits)}
+                </span>
+              </p>
+            </div>
+            <div className="h-6 w-px bg-border mx-0.5 hidden xs:block" />
+            <CandleCountdownBadge timeframe={timeframe} />
           </div>
         )}
         <div ref={containerRef} className="w-full h-full" />

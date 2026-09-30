@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import api, { API_URL } from '../../lib/api';
 import { registerOverlay, registerIndicator, IndicatorSeries } from 'klinecharts';
 
@@ -9,6 +9,7 @@ import {
   Equal, AlignJustify, Square, Type, Eraser, ChevronDown, Pencil, FunctionSquare,
   ArrowRight, ArrowUpRight, MapPin, ArrowUp, ArrowDown, TrendingUp, TrendingDown,
   Paintbrush, Waves, GitCommit, Grid, Palette, RotateCcw, Settings, X, Check,
+  Trash2, Clock,
 } from 'lucide-react';
 
 // ---- Constantes et Thèmes (façon MT4 / MT5 & TradingView) ----
@@ -158,6 +159,64 @@ export function buildKLineStyles(settings = {}) {
     crosshair: {
       horizontal: { line: { color: s.crosshairColor || '#6b7280' }, text: { backgroundColor: '#374151', color: '#ffffff' } },
       vertical: { line: { color: s.crosshairColor || '#6b7280' }, text: { backgroundColor: '#374151', color: '#ffffff' } },
+    },
+    overlay: {
+      point: {
+        color: '#2563eb',
+        borderColor: '#ffffff',
+        borderSize: 2.5,
+        radius: 7.5,
+        activeColor: '#ef4444',
+        activeBorderColor: '#ffffff',
+        activeBorderSize: 3,
+        activeRadius: 11,
+      },
+      line: {
+        style: 'solid',
+        smooth: false,
+        color: '#3b82f6',
+        size: 2.5,
+        dashedValue: [2, 2],
+      },
+      rect: {
+        style: 'stroke_fill',
+        color: 'rgba(59, 130, 246, 0.18)',
+        borderColor: '#3b82f6',
+        borderSize: 2,
+        borderRadius: 0,
+      },
+      polygon: {
+        style: 'stroke_fill',
+        color: 'rgba(59, 130, 246, 0.18)',
+        borderColor: '#3b82f6',
+        borderSize: 2,
+      },
+      circle: {
+        style: 'stroke_fill',
+        color: 'rgba(59, 130, 246, 0.18)',
+        borderColor: '#3b82f6',
+        borderSize: 2,
+      },
+      arc: {
+        style: 'stroke',
+        color: '#3b82f6',
+        size: 2.5,
+      },
+      text: {
+        color: '#ffffff',
+        size: 13,
+        family: 'sans-serif',
+        weight: 'bold',
+        paddingLeft: 6,
+        paddingRight: 6,
+        paddingTop: 4,
+        paddingBottom: 4,
+        borderStyle: 'solid',
+        borderSize: 1.5,
+        borderColor: '#3b82f6',
+        borderRadius: 4,
+        backgroundColor: 'rgba(17, 24, 39, 0.92)',
+      },
     },
   };
 }
@@ -901,20 +960,198 @@ export function Dropdown({ trigger, open, setOpen, children, align = 'left', wid
   );
 }
 
-// Menu « Outils » : tous les outils de dessin regroupés avec prompt texte
-export function DrawToolsMenu({ chartRef }) {
+// Obtenir le libellé en français d'un outil de dessin
+export function getToolLabel(name) {
+  const tool = DRAW_TOOLS.find((t) => t.name === name);
+  if (tool) return tool.label;
+  if (name === 'segment') return 'Ligne de tendance';
+  if (name === 'rect') return 'Rectangle / Zone';
+  if (name === 'text') return 'Annotation texte';
+  if (name === 'priceLine') return 'Ligne de prix';
+  if (name === 'rayLine') return 'Demi-droite';
+  if (name === 'horizontalStraightLine') return 'Ligne horizontale';
+  if (name === 'verticalStraightLine') return 'Ligne verticale';
+  if (name === 'fibonacciLine') return 'Retracement Fibonacci';
+  if (name === 'gannBox') return 'Boîte de Gann';
+  if (name === 'brush') return 'Pinceau';
+  if (name === 'positionLong') return 'Position Long (Achat)';
+  if (name === 'positionShort') return 'Position Short (Vente)';
+  return name || 'Dessin';
+}
+
+// Hook de gestion des tracés et outils graphiques :
+// - Sélection au clic
+// - Suppression via bouton flottant, touche Suppr / Backspace, ou double-clic
+// - Manipulation fluide des poignées agrandies
+export function useChartOverlayManager(chartRef) {
+  const [selectedOverlay, setSelectedOverlay] = useState(null);
+
+  const deleteOverlay = useCallback((target) => {
+    const chart = chartRef?.current;
+    if (!chart) return;
+    const id = typeof target === 'string' ? target : target?.id;
+    if (id) {
+      try {
+        chart.removeOverlay({ id });
+      } catch (_) {
+        try {
+          chart.removeOverlay(id);
+        } catch (_) {}
+      }
+    }
+    setSelectedOverlay((curr) => (curr?.id === id ? null : curr));
+  }, [chartRef]);
+
+  const deleteSelected = useCallback(() => {
+    if (selectedOverlay) {
+      deleteOverlay(selectedOverlay);
+      setSelectedOverlay(null);
+    }
+  }, [selectedOverlay, deleteOverlay]);
+
+  const deleteAllDrawings = useCallback(() => {
+    const chart = chartRef?.current;
+    if (!chart) return;
+    try {
+      chart.removeOverlay({ groupId: 'draw' });
+    } catch (_) {}
+    setSelectedOverlay(null);
+  }, [chartRef]);
+
+  // Raccourci clavier Suppr / Backspace pour supprimer l'outil actif
+  useEffect(() => {
+    if (!selectedOverlay) return;
+    const handleKeyDown = (e) => {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteSelected();
+      } else if (e.key === 'Escape') {
+        setSelectedOverlay(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedOverlay, deleteSelected]);
+
+  // Création enrichie avec liaison automatique des événements de clic, sélection et suppression
+  const createDrawing = useCallback((name, extra = {}) => {
+    const chart = chartRef?.current;
+    if (!chart) return null;
+
+    const overlayConfig = {
+      name,
+      groupId: 'draw',
+      ...extra,
+      onSelected: ({ overlay }) => {
+        setSelectedOverlay(overlay);
+        return true;
+      },
+      onClick: ({ overlay }) => {
+        setSelectedOverlay(overlay);
+        return true;
+      },
+      onDoubleClick: ({ overlay }) => {
+        deleteOverlay(overlay);
+        return true;
+      },
+      onRightClick: ({ overlay }) => {
+        deleteOverlay(overlay);
+        return true;
+      },
+    };
+
+    return chart.createOverlay(overlayConfig);
+  }, [chartRef, deleteOverlay]);
+
+  return {
+    selectedOverlay,
+    setSelectedOverlay,
+    deleteOverlay,
+    deleteSelected,
+    deleteAllDrawings,
+    createDrawing,
+  };
+}
+
+// Barre d'action flottante qui apparaît au clic sur un outil/dessin avec bouton Supprimer
+export function SelectedOverlayBar({ overlay, onDelete, onDeselect, className = '' }) {
+  if (!overlay) return null;
+  const label = getToolLabel(overlay.name);
+
+  return (
+    <div
+      className={`pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/95 border border-primary/50 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-150 ${className}`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
+        <span className="text-xs font-semibold text-foreground max-w-[130px] sm:max-w-[220px] truncate">
+          {label}
+        </span>
+      </div>
+      <div className="h-3.5 w-px bg-border mx-0.5" />
+      <Button
+        size="sm"
+        variant="destructive"
+        className="h-6 px-2.5 text-xs gap-1 shadow-xs hover:bg-destructive/90 cursor-pointer"
+        onClick={() => onDelete?.(overlay)}
+        title="Supprimer cet outil (ou touche Suppr / Backspace)"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        <span>Supprimer</span>
+      </Button>
+      <button
+        type="button"
+        onClick={onDeselect}
+        className="p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+        title="Désélectionner"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// Menu « Outils » : tous les outils de dessin regroupés avec gestionnaire de suppression
+export function DrawToolsMenu({ chartRef, overlayManager }) {
   const [open, setOpen] = React.useState(false);
 
   const handleSelectTool = (name) => {
     const chart = chartRef.current;
     if (!chart) return;
+    const extra = {};
     if (name === 'text') {
       const txt = window.prompt("Texte de l'annotation :", "Note d'analyse");
-      if (txt) {
-        chart.createOverlay({ name: 'text', extendData: txt, groupId: 'draw' });
-      }
+      if (!txt) return;
+      extra.extendData = txt;
+    }
+    if (overlayManager?.createDrawing) {
+      overlayManager.createDrawing(name, extra);
     } else {
-      chart.createOverlay({ name, groupId: 'draw' });
+      chart.createOverlay({
+        name,
+        groupId: 'draw',
+        ...extra,
+        onSelected: ({ overlay }) => {
+          overlayManager?.setSelectedOverlay?.(overlay);
+          return true;
+        },
+        onClick: ({ overlay }) => {
+          overlayManager?.setSelectedOverlay?.(overlay);
+          return true;
+        },
+        onDoubleClick: ({ overlay }) => {
+          chart.removeOverlay(overlay.id);
+          overlayManager?.setSelectedOverlay?.(null);
+          return true;
+        },
+        onRightClick: ({ overlay }) => {
+          chart.removeOverlay(overlay.id);
+          overlayManager?.setSelectedOverlay?.(null);
+          return true;
+        },
+      });
     }
     setOpen(false);
   };
@@ -934,6 +1171,25 @@ export function DrawToolsMenu({ chartRef }) {
       }
     >
       <div className="p-1 max-h-80 overflow-y-auto">
+        {overlayManager?.selectedOverlay && (
+          <>
+            <div className="p-1.5 mb-1 rounded bg-destructive/10 border border-destructive/20 flex items-center justify-between">
+              <span className="text-[11px] font-medium text-destructive truncate pr-1">
+                {getToolLabel(overlayManager.selectedOverlay.name)}
+              </span>
+              <button
+                className="px-2 py-0.5 rounded bg-destructive text-destructive-foreground text-[11px] font-semibold flex items-center gap-1 hover:bg-destructive/90"
+                onClick={() => {
+                  overlayManager.deleteSelected();
+                  setOpen(false);
+                }}
+              >
+                <Trash2 className="h-3 w-3" /> Supprimer
+              </button>
+            </div>
+            <div className="border-t my-1" />
+          </>
+        )}
         {groups.map((grp) => {
           const tools = DRAW_TOOLS.filter((t) => t.group === grp);
           if (!tools.length) return null;
@@ -955,13 +1211,100 @@ export function DrawToolsMenu({ chartRef }) {
         })}
         <div className="border-t my-1" />
         <button
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive hover:bg-muted"
-          onClick={() => { chartRef.current?.removeOverlay({ groupId: 'draw' }); setOpen(false); }}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive hover:bg-muted font-medium"
+          onClick={() => {
+            if (overlayManager?.deleteAllDrawings) {
+              overlayManager.deleteAllDrawings();
+            } else {
+              chartRef.current?.removeOverlay({ groupId: 'draw' });
+            }
+            setOpen(false);
+          }}
         >
           <Eraser className="h-3.5 w-3.5" /> Effacer tous les dessins
         </button>
       </div>
     </Dropdown>
+  );
+}
+
+// ---- Gestion du compte à rebours de clôture de bougie ----
+
+export function getTimeframeSeconds(tf) {
+  if (!tf) return 60;
+  const upper = String(tf).trim().toUpperCase();
+  if (upper === 'M1' || upper === '1M') return 60;
+  if (upper === 'M5' || upper === '5M') return 300;
+  if (upper === 'M15' || upper === '15M') return 900;
+  if (upper === 'M30' || upper === '30M') return 1800;
+  if (upper === 'H1' || upper === '1H') return 3600;
+  if (upper === 'H2' || upper === '2H') return 7200;
+  if (upper === 'H4' || upper === '4H') return 14400;
+  if (upper === 'H6' || upper === '6H') return 21600;
+  if (upper === 'H8' || upper === '8H') return 28800;
+  if (upper === 'D1' || upper === '1D') return 86400;
+  if (upper === 'W1' || upper === '1W') return 604800;
+  if (upper === 'MN' || upper === '1MTH' || upper === '1MO') return 2592000;
+  const num = parseInt(tf, 10);
+  if (!isNaN(num) && num > 0) return num * 60;
+  return 3600;
+}
+
+export function calculateCandleRemaining(timeframe, referenceTime = null) {
+  const nowMs = referenceTime != null
+    ? (typeof referenceTime === 'number' ? (referenceTime > 1e11 ? referenceTime : referenceTime * 1000) : new Date(referenceTime).getTime())
+    : Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+  const durSec = getTimeframeSeconds(timeframe);
+  const remSec = durSec - (nowSec % durSec);
+  return Math.max(0, remSec);
+}
+
+export function formatCountdown(totalSec) {
+  if (totalSec == null || totalSec <= 0) return '00:00';
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+export function useCandleCountdown(timeframe, referenceTime = null) {
+  const [remaining, setRemaining] = useState(() => calculateCandleRemaining(timeframe, referenceTime));
+
+  useEffect(() => {
+    setRemaining(calculateCandleRemaining(timeframe, referenceTime));
+    if (referenceTime != null) return;
+
+    const interval = setInterval(() => {
+      setRemaining(calculateCandleRemaining(timeframe));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timeframe, referenceTime]);
+
+  return {
+    remainingSeconds: remaining,
+    formatted: formatCountdown(remaining),
+  };
+}
+
+export function CandleCountdownBadge({ timeframe, referenceTime = null, className = '' }) {
+  const { formatted, remainingSeconds } = useCandleCountdown(timeframe, referenceTime);
+  const isUrgent = remainingSeconds <= 30;
+
+  return (
+    <div
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono border bg-background/90 shadow-2xs backdrop-blur-xs select-none ${
+        isUrgent ? 'border-red-500/60 text-red-500 animate-pulse' : 'border-border/80 text-foreground'
+      } ${className}`}
+      title={`Temps restant avant la clôture de la bougie (${timeframe})`}
+    >
+      <Clock className="h-3 w-3 text-primary shrink-0" />
+      <span className="text-[10px] uppercase font-semibold text-muted-foreground hidden sm:inline">Clôture :</span>
+      <span className="tabular-nums font-bold tracking-tight">{formatted}</span>
+    </div>
   );
 }
 

@@ -22,11 +22,13 @@ function buildMessage(ev, lead) {
   return `⏰ Dans ${lead} min : ${ev.currency} — ${ev.title} (${ev.impact}). Prudence, volatilité attendue.`;
 }
 
-// Envoie un email d'alerte instantanée à tous les utilisateurs enregistrés
+// Envoie un email d'alerte instantanée UNIQUEMENT pour les annonces à fort impact (High)
 async function sendEconomicAlertEmail(ev) {
+  // STRICTEMENT réservé aux annonces macroéconomiques à fort impact
+  if (!ev || ev.impact !== 'High') return;
   try {
-    const impactColor = ev.impact === 'High' ? '#ef4444' : ev.impact === 'Medium' ? '#f59e0b' : '#10b981';
-    const impactLabel = ev.impact === 'High' ? 'Élevé' : ev.impact === 'Medium' ? 'Moyen' : 'Faible';
+    const impactColor = '#ef4444';
+    const impactLabel = 'Élevé';
     const eventDate = new Date(ev.timestamp);
     const timeStr = eventDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     const dateStr = eventDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -125,8 +127,8 @@ async function createIfAbsent(ev, lead) {
       risk: RISK_BY_IMPACT[ev.impact] || 'moyen',
     });
 
-    // Envoi d'un email instantané à l'instant que l'annonce sort (T-0)
-    if (lead === 0) {
+    // Envoi d'un email instantané à l'instant que l'annonce sort (T-0) - STRICTEMENT fort impact
+    if (lead === 0 && ev.impact === 'High') {
       sendEconomicAlertEmail(ev).catch((err) =>
         console.error('[economic scheduler] email error:', err.message)
       );
