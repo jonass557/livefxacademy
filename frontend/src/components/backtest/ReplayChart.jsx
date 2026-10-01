@@ -318,7 +318,7 @@ export default function ReplayChart({
   const wrapClass = fullscreen
     ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
     : 'space-y-3';
-  const chartHeight = fullscreen ? undefined : 'clamp(420px, 62vh, 760px)';
+  const chartHeight = fullscreen ? undefined : 'clamp(500px, calc(100vh - 12rem), 960px)';
 
   return (
     <div className={wrapClass}>

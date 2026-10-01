@@ -1458,11 +1458,11 @@ export function ChartWatermark() {
   };
 
   return (
-    <div className="absolute bottom-6 left-3 pointer-events-none z-20 select-none opacity-90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]">
+    <div className="absolute bottom-7 sm:bottom-8 left-3 sm:left-4 pointer-events-none z-20 select-none opacity-95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
       <img
         src={logoUrl}
         alt="LivefxTrading"
-        className="h-7 sm:h-8 md:h-9 w-auto max-w-[120px] sm:max-w-[140px] object-contain"
+        className="h-10 sm:h-12 md:h-14 lg:h-16 w-auto max-w-[170px] sm:max-w-[210px] md:max-w-[250px] object-contain transition-all"
         onError={handleImgError}
       />
     </div>

@@ -31,8 +31,11 @@ const Dashboard = () => {
   }
 
   // Client dashboard
-  if (isChartSection) {
-    return user.role === 'client' ? <ClientDashboard /> : null;
+  if (user.role === 'client') {
+    if (!section) {
+      return <Navigate to="/dashboard?section=trading-demo" replace />;
+    }
+    return <ClientDashboard />;
   }
 
   return (

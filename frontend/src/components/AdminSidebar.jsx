@@ -20,7 +20,8 @@ import {
   Send,
   Briefcase,
   Menu,
-  X
+  X,
+  Newspaper
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { useLanguageStore } from '../store/languageStore';
@@ -40,7 +41,7 @@ const AdminSidebar = ({ activeSection, setActiveSection, collapsed, setCollapsed
     { id: 'prospects', icon: Users, label: t('sidebar.prospects') },
     { id: 'vacation-programs', icon: Palmtree, label: 'Programmes Vacances' },
     { id: 'services', icon: Briefcase, label: 'Services' },
-    { id: 'announcements', icon: Video, label: 'Vidéos Annonces' },
+    { id: 'announcements', icon: Newspaper, label: "Fil d'actualité" },
     { id: 'economics', icon: TrendingUp, label: 'Annonces éco' },
     { id: 'banners', icon: Image, label: t('sidebar.banners') },
     { id: 'branding', icon: Settings, label: 'Branding' },

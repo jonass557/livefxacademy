@@ -119,9 +119,9 @@ export default function TradingDemo() {
   }, [isChartView]);
 
   return (
-    <div className={`w-full ${isChartView ? 'h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden bg-background pb-14 lg:pb-0' : 'space-y-4 p-3 sm:p-5 max-w-7xl mx-auto pb-20'}`}>
-      {/* Barre de navigation des onglets */}
-      <div className={`flex items-center justify-between gap-2 border-b bg-card/75 backdrop-blur px-2 sm:px-4 py-2 ${isChartView ? 'flex-shrink-0 pl-28 sm:pl-32' : ''}`}>
+    <div className={`w-full ${isChartView ? 'h-full flex-1 min-h-0 flex flex-col overflow-hidden bg-background pb-[52px] lg:pb-0' : 'space-y-4 p-3 sm:p-5 max-w-7xl mx-auto pb-20'}`}>
+      {/* Barre de navigation des onglets : masquée sur téléphone pour éviter le doublon avec la barre du bas */}
+      <div className={`hidden lg:flex items-center justify-between gap-2 border-b bg-card/75 backdrop-blur px-2 sm:px-4 py-2 ${isChartView ? 'flex-shrink-0 pl-28 sm:pl-32' : ''}`}>
         <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto">
           {TABS.map(({ key, label, Icon }) => {
             const count = key === 'positions' ? positions.length : key === 'orders' ? orders.length : null;
@@ -183,9 +183,9 @@ export default function TradingDemo() {
         </div>
       )}
 
-      {/* Contenu principal */}
+      {/* Contenu principal : le graphique occupe tout l'espace vertical disponible sans espace mort en bas */}
       {isChartView && (
-        <div className="flex-1 min-h-0 w-full p-1 sm:p-2 overflow-hidden">
+        <div className="flex-1 min-h-0 w-full p-0 sm:p-1 overflow-hidden">
           {chartEl}
         </div>
       )}
@@ -193,7 +193,7 @@ export default function TradingDemo() {
       {activeTab === 'trade' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-1">{ticketEl}</div>
-          <div className="lg:col-span-2 space-y-4">
+          <div className="hidden lg:block lg:col-span-2 space-y-4">
             <div className="h-[460px] rounded-xl border overflow-hidden bg-card">
               {chartEl}
             </div>

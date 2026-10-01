@@ -12,6 +12,11 @@ const announcementVideoSchema = new mongoose.Schema({
   description: String,
   cloudinary_public_id: String,
   cloudinary_url: String,
+  media_type: {
+    type: String,
+    enum: ['video', 'image'],
+    default: 'video'
+  },
   priority: {
     type: Number,
     default: 0

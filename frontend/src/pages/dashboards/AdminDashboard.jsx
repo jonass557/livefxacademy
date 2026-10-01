@@ -53,13 +53,15 @@ const AdminDashboard = () => {
   const [userFilter, setUserFilter] = useState('all');
   const [userSearch, setUserSearch] = useState('');
 
-  // Announcements state
+  // Announcements / Fil d'actualité state
   const [announcements, setAnnouncements] = useState([]);
   const [announcementStats, setAnnouncementStats] = useState(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoFile, setVideoFile] = useState(null);
   const [videoTitle, setVideoTitle] = useState('');
   const [videoDescription, setVideoDescription] = useState('');
+  const [mediaType, setMediaType] = useState('video'); // 'video' | 'image'
+  const [mediaUrlInput, setMediaUrlInput] = useState('');
   const videoFileInputRef = useRef(null);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
 
@@ -300,15 +302,20 @@ const AdminDashboard = () => {
 
   const handleUploadAnnouncement = async (e) => {
     e.preventDefault();
-    if (!videoFile || !videoTitle) {
-      toast.warning('Veuillez remplir le titre et sélectionner une vidéo');
+    if ((!videoFile && !mediaUrlInput) || !videoTitle) {
+      toast.warning('Veuillez remplir le titre et sélectionner un fichier ou fournir une URL');
       return;
     }
 
     const formData = new FormData();
-    formData.append('video', videoFile);
+    if (videoFile) {
+      formData.append('file', videoFile);
+      formData.append('video', videoFile);
+    }
     formData.append('title', videoTitle);
     formData.append('description', videoDescription);
+    formData.append('media_type', mediaType);
+    if (mediaUrlInput) formData.append('media_url', mediaUrlInput);
 
     setUploadingVideo(true);
     try {
@@ -318,12 +325,13 @@ const AdminDashboard = () => {
       setVideoFile(null);
       setVideoTitle('');
       setVideoDescription('');
+      setMediaUrlInput('');
       if (videoFileInputRef.current) videoFileInputRef.current.value = '';
       fetchAnnouncements();
       fetchAnnouncementStats();
-      toast.success('Vidéo publiée avec succès !');
+      toast.success(mediaType === 'image' ? 'Image publiée avec succès dans le fil d\'actualité !' : 'Vidéo publiée avec succès dans le fil d\'actualité !');
     } catch (err) {
-      toast.error('Erreur lors de l\'upload');
+      toast.error('Erreur lors de la publication');
     } finally {
       setUploadingVideo(false);
     }
@@ -2305,14 +2313,14 @@ const AdminDashboard = () => {
     </div>
   );
 
-  // Section: Announcements Management
+  // Section: Fil d'actualité Management (Vidéos & Images)
   const renderAnnouncements = () => (
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Vidéos</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Publications</CardTitle>
             <Video className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -2322,12 +2330,12 @@ const AdminDashboard = () => {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Vidéos Actives</CardTitle>
+            <CardTitle className="text-sm font-medium">Publications Actives</CardTitle>
             <Play className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{announcementStats?.active_videos || 0}</div>
-            <p className="text-xs text-muted-foreground">Visibles</p>
+            <p className="text-xs text-muted-foreground">Visibles dans le fil</p>
           </CardContent>
         </Card>
         <Card>
@@ -2337,7 +2345,7 @@ const AdminDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">{announcementStats?.total_views || 0}</div>
-            <p className="text-xs text-muted-foreground">Lectures</p>
+            <p className="text-xs text-muted-foreground">Lectures / Vues</p>
           </CardContent>
         </Card>
         <Card className="bg-primary/5 border-primary/20">
@@ -2346,7 +2354,7 @@ const AdminDashboard = () => {
             <Upload className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">Publiez une nouvelle vidéo d'annonce</p>
+            <p className="text-sm text-muted-foreground">Publier une vidéo ou image dans le fil</p>
           </CardContent>
         </Card>
       </div>
@@ -2355,51 +2363,94 @@ const AdminDashboard = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" /> Publier une Nouvelle Vidéo d'Annonce
+            <Upload className="h-5 w-5 text-primary" /> Publier dans le Fil d'actualité (Vidéo ou Image)
           </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUploadAnnouncement} className="space-y-4">
+            {/* Sélecteur de type de média */}
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Type de publication *</label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMediaType('video')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                    mediaType === 'video'
+                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                      : 'bg-card text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <Video className="h-4 w-4" />
+                  <span>Vidéo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMediaType('image')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                    mediaType === 'image'
+                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                      : 'bg-card text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  <span>Image (Photo / Bannière)</span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium mb-1 block">Titre de la vidéo *</label>
+                <label className="text-sm font-medium mb-1 block">Titre de la publication *</label>
                 <Input
                   value={videoTitle}
                   onChange={(e) => setVideoTitle(e.target.value)}
-                  placeholder="Ex: Nouvelle formation disponible !"
+                  placeholder={mediaType === 'video' ? "Ex: Nouvelle session live & analyse..." : "Ex: Graphique d'analyse EUR/USD du jour..."}
                   required
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Fichier vidéo *</label>
+                <label className="text-sm font-medium mb-1 block">
+                  Fichier {mediaType === 'video' ? 'vidéo (MP4, WEBM, MOV)' : 'image (PNG, JPG, WEBP)'} *
+                </label>
                 <Input
                   ref={videoFileInputRef}
                   type="file"
-                  accept="video/*"
+                  accept={mediaType === 'video' ? "video/*" : "image/*"}
                   onChange={(e) => setVideoFile(e.target.files[0])}
-                  required
                 />
               </div>
             </div>
+
             <div>
-              <label className="text-sm font-medium mb-1 block">Description</label>
+              <label className="text-sm font-medium mb-1 block">Ou URL directe du média (Optionnel)</label>
+              <Input
+                value={mediaUrlInput}
+                onChange={(e) => setMediaUrlInput(e.target.value)}
+                placeholder="https://... (si vous préférez coller un lien direct d'image ou vidéo)"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Description / Analyse</label>
               <textarea
                 value={videoDescription}
                 onChange={(e) => setVideoDescription(e.target.value)}
-                className="w-full border rounded-md p-2 bg-background min-h-[80px]"
-                placeholder="Description de l'annonce..."
+                className="w-full border rounded-md p-2 bg-background min-h-[90px]"
+                placeholder="Détails, explications ou message accompagnant la publication..."
               />
             </div>
+
             <Button type="submit" disabled={uploadingVideo} className="w-full md:w-auto">
               {uploadingVideo ? (
                 <>
                   <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                  Upload en cours...
+                  Publication en cours...
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Publier la vidéo
+                  Publier dans le fil d'actualité
                 </>
               )}
             </Button>
@@ -2407,12 +2458,12 @@ const AdminDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Videos List */}
+      {/* Posts List */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5" /> Vidéos d'Annonces Publiées
+              <Video className="h-5 w-5" /> Publications du Fil d'actualité ({announcements.length})
             </CardTitle>
             <Button variant="outline" size="sm" onClick={() => { fetchAnnouncements(); fetchAnnouncementStats(); }}>
               <RefreshCw className="h-4 w-4" />
@@ -2422,78 +2473,95 @@ const AdminDashboard = () => {
         <CardContent>
           {announcements.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              Aucune vidéo d'annonce publiée.
+              Aucune publication dans le fil d'actualité.
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {announcements.map((video) => (
-                <div key={video.id} className="border rounded-lg overflow-hidden">
-                  <div className="aspect-video bg-black relative">
-                    <video
-                      src={video.cloudinary_url}
-                      poster={cloudinaryVideoThumb(video.cloudinary_url) || undefined}
-                      preload="none"
-                      className="w-full h-full object-cover"
-                      controls
-                    />
-                    {!video.is_active && (
-                      <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs">
-                        Désactivée
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    {editingAnnouncement?.id === video.id ? (
-                      <div className="space-y-2">
-                        <Input
-                          value={editingAnnouncement.title}
-                          onChange={(e) => setEditingAnnouncement({...editingAnnouncement, title: e.target.value})}
-                          placeholder="Titre"
+              {announcements.map((post) => {
+                const isImg = post.media_type === 'image' || /\.(jpg|jpeg|png|webp|gif|svg|avif)(\?.*)?$/i.test(post.cloudinary_url || '');
+
+                return (
+                  <div key={post.id} className="border rounded-lg overflow-hidden bg-card flex flex-col">
+                    <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">
+                      {isImg ? (
+                        <img
+                          src={post.cloudinary_url}
+                          alt={post.title}
+                          className="w-full h-full object-cover"
                         />
-                        <textarea
-                          value={editingAnnouncement.description || ''}
-                          onChange={(e) => setEditingAnnouncement({...editingAnnouncement, description: e.target.value})}
-                          className="w-full border rounded-md p-2 bg-background text-sm"
-                          placeholder="Description"
+                      ) : (
+                        <video
+                          src={post.cloudinary_url}
+                          poster={cloudinaryVideoThumb(post.cloudinary_url) || undefined}
+                          preload="none"
+                          className="w-full h-full object-cover"
+                          controls
                         />
-                        <div className="flex gap-2">
-                          <Button size="sm" onClick={() => handleUpdateAnnouncement(video.id, editingAnnouncement)}>
-                            Enregistrer
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setEditingAnnouncement(null)}>
-                            Annuler
-                          </Button>
-                        </div>
+                      )}
+                      <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded text-[11px] font-medium flex items-center gap-1">
+                        {isImg ? <ImageIcon className="h-3 w-3" /> : <Video className="h-3 w-3" />}
+                        <span>{isImg ? 'Image' : 'Vidéo'}</span>
                       </div>
-                    ) : (
-                      <>
-                        <h4 className="font-semibold">{video.title}</h4>
-                        <p className="text-sm text-muted-foreground line-clamp-2">{video.description}</p>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {video.view_count || 0} vues</span>
-                          <span>{new Date(video.created_at).toLocaleDateString('fr-FR')}</span>
+                      {!post.is_active && (
+                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-semibold">
+                          Désactivée
                         </div>
-                        <div className="flex gap-2 mt-3">
-                          <Button size="sm" variant="outline" onClick={() => setEditingAnnouncement(video)}>
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant={video.is_active ? "outline" : "default"}
-                            onClick={() => handleToggleAnnouncement(video.id)}
-                          >
-                            {video.is_active ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDeleteAnnouncement(video.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                      )}
+                    </div>
+                    <div className="p-4 flex-1 flex flex-col justify-between">
+                      {editingAnnouncement?.id === post.id ? (
+                        <div className="space-y-2">
+                          <Input
+                            value={editingAnnouncement.title}
+                            onChange={(e) => setEditingAnnouncement({...editingAnnouncement, title: e.target.value})}
+                            placeholder="Titre"
+                          />
+                          <textarea
+                            value={editingAnnouncement.description || ''}
+                            onChange={(e) => setEditingAnnouncement({...editingAnnouncement, description: e.target.value})}
+                            className="w-full border rounded-md p-2 bg-background text-sm"
+                            placeholder="Description"
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleUpdateAnnouncement(post.id, editingAnnouncement)}>
+                              Enregistrer
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditingAnnouncement(null)}>
+                              Annuler
+                            </Button>
+                          </div>
                         </div>
-                        <AnnouncementInteractions video={video} isAdmin={true} />
-                      </>
-                    )}
+                      ) : (
+                        <div>
+                          <h4 className="font-semibold text-base">{post.title}</h4>
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{post.description}</p>
+                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {post.view_count || 0} vues</span>
+                            <span>{new Date(post.created_at).toLocaleDateString('fr-FR')}</span>
+                          </div>
+                          <div className="flex gap-2 mt-3">
+                            <Button size="sm" variant="outline" onClick={() => setEditingAnnouncement(post)}>
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant={post.is_active ? "outline" : "default"}
+                              onClick={() => handleToggleAnnouncement(post.id)}
+                            >
+                              {post.is_active ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeleteAnnouncement(post.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          {/* Commentaires & Réponses administrables */}
+                          <AnnouncementInteractions video={post} isAdmin={true} />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
