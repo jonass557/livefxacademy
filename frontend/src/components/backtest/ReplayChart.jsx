@@ -9,6 +9,7 @@ import {
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
+  ChartErrorBoundary,
 } from './chartShared';
 import {
   Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
@@ -317,11 +318,12 @@ export default function ReplayChart({
   // z-[60] : au-dessus du bouton menu flottant du sidebar mobile (z-50).
   const wrapClass = fullscreen
     ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
-    : 'space-y-3';
-  const chartHeight = fullscreen ? undefined : 'clamp(500px, calc(100vh - 12rem), 960px)';
+    : 'flex-1 min-h-0 w-full flex flex-col gap-1.5 overflow-hidden';
+  const chartHeight = fullscreen ? undefined : '100%';
 
   return (
-    <div className={wrapClass}>
+    <ChartErrorBoundary>
+      <div className={wrapClass}>
       {/* ==================== BARRE DE CONTRÔLE ==================== */}
       <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2" data-chart-toolbar data-replay-controls>
         {!inReplay ? (
@@ -414,7 +416,7 @@ export default function ReplayChart({
 
       {/* ==================== GRAPHIQUE ==================== */}
       <div
-        className={`relative w-full rounded-lg border overflow-hidden transition-colors ${fullscreen ? 'flex-1 min-h-0' : ''}`}
+        className="relative flex-1 min-h-[350px] w-full rounded-none border-0 overflow-hidden transition-colors"
         style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
         data-chart-container
       >
@@ -439,9 +441,9 @@ export default function ReplayChart({
             <p className="text-[10px] font-semibold text-primary sm:text-xs leading-none mb-0.5">
               {symbolName} <span className="text-foreground">{timeframe}</span>
             </p>
-            {cur && (
+            {cur && typeof cur.close === 'number' && typeof cur.open === 'number' && (
               <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px] leading-tight">
-                O {cur.open.toFixed(digits)} H {cur.high.toFixed(digits)} L {cur.low.toFixed(digits)}{' '}
+                O {cur.open.toFixed(digits)} H {(cur.high ?? cur.open).toFixed(digits)} L {(cur.low ?? cur.close).toFixed(digits)}{' '}
                 <span className={cur.close >= cur.open ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
                   C {cur.close.toFixed(digits)}
                 </span>
@@ -455,5 +457,6 @@ export default function ReplayChart({
         <ChartWatermark />
       </div>
     </div>
+    </ChartErrorBoundary>
   );
 }

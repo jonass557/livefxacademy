@@ -9,15 +9,12 @@
     min-height: 300px !important;
   }
 
-  /* Barre d'outils : compacte, pas de wrap */
+  /* Barre d'outils : compacte, les menus déroulants ne doivent jamais être coupés */
   [data-chart-toolbar] {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE/Edge */
-  }
-  [data-chart-toolbar]::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
+    flex-wrap: wrap;
+    overflow: visible !important;
+    position: relative;
+    z-index: 50;
   }
 
   /* Panneaux latéraux (watchlist, positions) : réduits ou cachés en paysage */
@@ -37,9 +34,13 @@
   }
 }
 
-/* Mode portrait : hauteur normale */
-@media (orientation: portrait) {
-  [data-chart-container] {
-    /* Conserve la hauteur définie en JS (clamp) */
-  }
+/* Règles globales barre d'outils et menus déroulants pour empêcher tout rognage */
+[data-chart-toolbar] {
+  overflow: visible !important;
+  position: relative;
+  z-index: 50;
+}
+
+[data-chart-dropdown] {
+  z-index: 80 !important;
 }

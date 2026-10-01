@@ -1075,10 +1075,10 @@ const ClientDashboard = () => {
   const isChartSection = activeSection === 'trading-demo' || activeSection === 'backtesting';
 
   return (
-    <div className={isChartSection ? 'h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden' : 'min-h-[calc(100vh-4rem)]'}>
-      <main className="w-full h-full">
+    <div className={isChartSection ? 'h-screen max-h-screen w-screen max-w-full overflow-hidden flex flex-col p-0 m-0' : 'min-h-[calc(100vh-4rem)]'}>
+      <main className="w-full h-full flex-1 min-h-0 flex flex-col p-0 m-0">
         {/* Graphiques : pleine largeur et hauteur sans padding pour maximiser l'espace */}
-        <div className={isChartSection ? 'h-full w-full overflow-hidden' : 'p-4 md:p-6 mx-auto max-w-7xl'}>
+        <div className={isChartSection ? 'h-full w-full flex-1 min-h-0 overflow-hidden p-0 m-0' : 'p-4 md:p-6 mx-auto max-w-7xl'}>
           {/* Header : masqué sur les sections graphiques */}
           {!isChartSection && (
             <div className="mb-4 md:mb-6 relative overflow-hidden rounded-2xl border bg-gradient-to-r from-primary/10 via-card to-purple-500/10 p-6 md:p-8">
@@ -1119,7 +1119,7 @@ const ClientDashboard = () => {
               {renderDashboard()}
             </div>
           ) : (
-            <div className={isChartSection ? 'relative h-full w-full overflow-hidden' : 'space-y-4'}>
+            <div className={isChartSection ? 'relative h-full w-full flex-1 min-h-0 overflow-hidden p-0 m-0' : 'space-y-4'}>
               {isChartSection ? (
                 <>
                   {/* Bouton retour discret superposé en haut à gauche pour les graphiques */}

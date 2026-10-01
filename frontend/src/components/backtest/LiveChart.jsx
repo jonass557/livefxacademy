@@ -10,6 +10,7 @@ import {
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
+  ChartErrorBoundary,
 } from './chartShared';
 
 const REFRESH_MS = 15000; // rafraîchissement auto (quasi temps réel)
@@ -125,104 +126,106 @@ export default function LiveChart({
 
   // z-[60] : au-dessus du bouton menu flottant du sidebar mobile (z-50).
   const wrapClass = fullscreen
-    ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
-    : 'space-y-2';
-  const chartHeight = fullscreen ? undefined : 'clamp(500px, calc(100vh - 9.5rem), 960px)';
+    ? 'fixed inset-0 z-[60] flex flex-col gap-1 bg-background p-1 overflow-hidden'
+    : 'h-full w-full flex flex-col gap-1 overflow-hidden p-0 m-0';
+  const chartHeight = fullscreen ? undefined : '100%';
 
   return (
-    <div className={wrapClass}>
-      {/* Barre unique : sélecteur de marché + menus + statut + plein écran */}
-      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5" data-chart-toolbar>
-        <span className="relative flex h-2 w-2 mr-0.5" title="Marché en direct">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-        </span>
-        <MarketPicker
-          symbols={symbols}
-          timeframes={timeframes}
-          symbol={symbol}
-          timeframe={timeframe}
-          onSelectSymbol={onSelectSymbol}
-          onSelectTimeframe={onSelectTimeframe}
-        />
-        <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
-        <IndicatorsMenu
-          chartRef={chartRef}
-          active={activeIndicators}
-          setActive={setActiveIndicators}
-          panesRef={indicatorPanesRef}
-        />
-        <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
-        <ChartZoomControls chartRef={chartRef} />
-        <span className="text-[11px] text-muted-foreground hidden xs:flex items-center gap-1 ml-auto">
-          <RefreshCw className="h-3 w-3" />
-          {lastUpdate ? lastUpdate.toLocaleTimeString('fr-FR') : '…'}
-        </span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setFullscreen((f) => !f)}
-          className="h-7 px-2 ml-auto xs:ml-0"
-          title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}
+    <ChartErrorBoundary>
+      <div className={wrapClass}>
+        {/* Barre unique : sélecteur de marché + menus + statut + plein écran */}
+        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 px-1 py-0.5" data-chart-toolbar>
+          <span className="relative flex h-2 w-2 mr-0.5" title="Marché en direct">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          </span>
+          <MarketPicker
+            symbols={symbols}
+            timeframes={timeframes}
+            symbol={symbol}
+            timeframe={timeframe}
+            onSelectSymbol={onSelectSymbol}
+            onSelectTimeframe={onSelectTimeframe}
+          />
+          <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
+          <IndicatorsMenu
+            chartRef={chartRef}
+            active={activeIndicators}
+            setActive={setActiveIndicators}
+            panesRef={indicatorPanesRef}
+          />
+          <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
+          <ChartZoomControls chartRef={chartRef} />
+          <span className="text-[11px] text-muted-foreground hidden xs:flex items-center gap-1 ml-auto">
+            <RefreshCw className="h-3 w-3" />
+            {lastUpdate ? lastUpdate.toLocaleTimeString('fr-FR') : '…'}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setFullscreen((f) => !f)}
+            className="h-7 px-2 ml-auto xs:ml-0"
+            title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}
+          >
+            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        {/* Graphique pleine largeur (les outils sont dans les menus) */}
+        <div
+          className="relative flex-1 min-h-[300px] w-full rounded-none border-0 overflow-hidden transition-colors"
+          style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
+          data-chart-container
         >
-          {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </Button>
-      </div>
+          {/* Modal de personnalisation des couleurs */}
+          <ChartStyleSettingsModal
+            open={styleModalOpen}
+            onClose={() => setStyleModalOpen(false)}
+            styles={chartColors}
+            onApplyStyles={applyStyles}
+            onApplyPreset={applyPreset}
+            onReset={resetDefault}
+          />
 
-      {/* Graphique pleine largeur (les outils sont dans les menus) */}
-      <div
-        className={`relative w-full rounded-lg border overflow-hidden transition-colors ${fullscreen ? 'flex-1 min-h-0' : ''}`}
-        style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
-        data-chart-container
-      >
-        {/* Modal de personnalisation des couleurs */}
-        <ChartStyleSettingsModal
-          open={styleModalOpen}
-          onClose={() => setStyleModalOpen(false)}
-          styles={chartColors}
-          onApplyStyles={applyStyles}
-          onApplyPreset={applyPreset}
-          onReset={resetDefault}
-        />
+          {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
+          <SelectedOverlayBar
+            overlay={overlayManager.selectedOverlay}
+            onDelete={overlayManager.deleteSelected}
+            onDeselect={() => overlayManager.setSelectedOverlay(null)}
+          />
 
-        {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
-        <SelectedOverlayBar
-          overlay={overlayManager.selectedOverlay}
-          onDelete={overlayManager.deleteSelected}
-          onDeselect={() => overlayManager.setSelectedOverlay(null)}
-        />
-
-        {/* Entête OHLC en surimpression avec compte à rebours de clôture, façon MT5 */}
-        {last && (
-          <div className="pointer-events-none absolute left-1 top-1 z-20 flex items-center gap-2 rounded-md bg-background/90 backdrop-blur-sm border px-2 py-1 shadow-sm sm:left-2 sm:top-2">
-            <div>
-              <p className="text-[10px] font-semibold text-primary sm:text-xs leading-none mb-0.5">
-                {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
-              </p>
-              <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px] leading-tight">
-                O {last.open.toFixed(digits)} H {last.high.toFixed(digits)} L {last.low.toFixed(digits)}{' '}
-                <span className={last.close >= last.open ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
-                  C {last.close.toFixed(digits)}
-                </span>
-              </p>
+          {/* Entête OHLC en surimpression avec compte à rebours de clôture, façon MT5 */}
+          {last && typeof last.close === 'number' && typeof last.open === 'number' && (
+            <div className="pointer-events-none absolute left-1 top-1 z-20 flex items-center gap-2 rounded-md bg-background/90 backdrop-blur-sm border px-2 py-1 shadow-sm sm:left-2 sm:top-2">
+              <div>
+                <p className="text-[10px] font-semibold text-primary sm:text-xs leading-none mb-0.5">
+                  {symbolName || symbol} <span className="text-foreground">{timeframe}</span>
+                </p>
+                <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px] leading-tight">
+                  O {last.open.toFixed(digits)} H {(last.high ?? last.open).toFixed(digits)} L {(last.low ?? last.close).toFixed(digits)}{' '}
+                  <span className={last.close >= last.open ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
+                    C {last.close.toFixed(digits)}
+                  </span>
+                </p>
+              </div>
+              <div className="h-6 w-px bg-border mx-0.5 hidden xs:block" />
+              <CandleCountdownBadge timeframe={timeframe} />
             </div>
-            <div className="h-6 w-px bg-border mx-0.5 hidden xs:block" />
-            <CandleCountdownBadge timeframe={timeframe} />
-          </div>
-        )}
-        <div ref={containerRef} className="w-full h-full" />
-        <ChartWatermark />
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        )}
-        {error && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
-            <p className="text-sm text-destructive">{error}</p>
-          </div>
-        )}
+          )}
+          <div ref={containerRef} className="w-full h-full" />
+          <ChartWatermark />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {error && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </ChartErrorBoundary>
   );
 }

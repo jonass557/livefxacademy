@@ -310,7 +310,6 @@ const AdminDashboard = () => {
     const formData = new FormData();
     if (videoFile) {
       formData.append('file', videoFile);
-      formData.append('video', videoFile);
     }
     formData.append('title', videoTitle);
     formData.append('description', videoDescription);
@@ -331,7 +330,9 @@ const AdminDashboard = () => {
       fetchAnnouncementStats();
       toast.success(mediaType === 'image' ? 'Image publiée avec succès dans le fil d\'actualité !' : 'Vidéo publiée avec succès dans le fil d\'actualité !');
     } catch (err) {
-      toast.error('Erreur lors de la publication');
+      const msg = err.response?.data?.message || err.message || 'Erreur lors de la publication';
+      toast.error(`Erreur lors de la publication : ${msg}`);
+      console.error('Publication announcement error:', err);
     } finally {
       setUploadingVideo(false);
     }

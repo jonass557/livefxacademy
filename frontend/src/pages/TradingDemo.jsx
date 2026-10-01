@@ -183,9 +183,9 @@ export default function TradingDemo() {
         </div>
       )}
 
-      {/* Contenu principal : le graphique occupe tout l'espace vertical disponible sans espace mort en bas */}
+      {/* Contenu principal : le graphique occupe tout l'espace vertical disponible sans espace mort en bas ni sur les côtés */}
       {isChartView && (
-        <div className="flex-1 min-h-0 w-full p-0 sm:p-1 overflow-hidden">
+        <div className="flex-1 min-h-0 w-full p-0 m-0 overflow-hidden">
           {chartEl}
         </div>
       )}

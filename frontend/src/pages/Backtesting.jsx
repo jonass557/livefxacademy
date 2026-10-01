@@ -210,7 +210,7 @@ const Backtesting = () => {
   }), [form.start_date, form.end_date]);
 
   return (
-    <div className="space-y-3">
+    <div className="h-full w-full flex-1 min-h-0 flex flex-col overflow-hidden space-y-2 p-0 sm:p-1">
       {/* ==================== EN-TÊTE ==================== */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>

@@ -31,7 +31,7 @@ function AppLayout({ children }) {
   // Admin, Trainer and Client dashboard have their own full-width layout with sidebar
   if (isDashboard && (isAdmin || isTrainer || user?.role === 'client')) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
+      <div className={isChartSection ? "h-screen w-screen max-w-full overflow-hidden flex flex-col p-0 m-0 bg-background text-foreground" : "min-h-screen bg-background text-foreground"}>
         {!isChartSection && <Navbar />}
         {children}
       </div>

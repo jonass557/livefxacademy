@@ -17,15 +17,17 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    const isVideo = file.mimetype && file.mimetype.startsWith('video');
     return {
       folder: 'livefx_announcements',
-      resource_type: isVideo ? 'video' : 'image',
+      resource_type: 'auto',
     };
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // 100 MB max
+});
 
 // Middleware admin only
 const adminOnly = [authenticateToken, requireRole(['admin'])];
@@ -184,24 +186,24 @@ router.post('/admin/upload', adminOnly, (req, res, next) => {
       return res.status(400).json({ message: 'Veuillez fournir un fichier (vidéo ou image) ou une URL média' });
     }
 
-    let resolvedMediaType = media_type;
+    let resolvedMediaType = (media_type === 'image' || media_type === 'video') ? media_type : null;
     let finalUrl = media_url;
     let publicId = '';
 
     if (file) {
-      const isVideo = file.mimetype ? file.mimetype.startsWith('video') : /\.(mp4|mov|avi|webm|mkv|m4v)(\?.*)?$/i.test(file.path || '');
+      const isVideo = file.mimetype ? file.mimetype.startsWith('video') : /\.(mp4|mov|avi|webm|mkv|m4v)(\?.*)?$/i.test(file.path || file.originalname || '');
       resolvedMediaType = resolvedMediaType || (isVideo ? 'video' : 'image');
       finalUrl = file.path;
       publicId = file.filename || '';
     } else {
-      const isVideo = resolvedMediaType === 'video' || /\.(mp4|mov|avi|webm|mkv|m4v)(\?.*)?$/i.test(media_url);
+      const isVideo = resolvedMediaType === 'video' || /\.(mp4|mov|avi|webm|mkv|m4v)(\?.*)?$/i.test(media_url || '');
       resolvedMediaType = resolvedMediaType || (isVideo ? 'video' : 'image');
     }
     
     const post = await AnnouncementVideo.create({
       admin_id: adminId,
-      title,
-      description,
+      title: title.trim(),
+      description: (description || '').trim(),
       cloudinary_public_id: publicId,
       cloudinary_url: finalUrl,
       media_type: resolvedMediaType,
@@ -210,8 +212,8 @@ router.post('/admin/upload', adminOnly, (req, res, next) => {
     
     res.status(201).json({ message: 'Publication ajoutée avec succès au fil d\'actualité', video: post, post });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Erreur serveur' });
+    console.error('Error creating announcement post:', err);
+    res.status(500).json({ message: err.message || 'Erreur lors de l\'enregistrement de la publication' });
   }
 });
 

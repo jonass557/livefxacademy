@@ -13,6 +13,7 @@ import {
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
+  ChartErrorBoundary,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 
@@ -131,63 +132,65 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   }, []);
 
   const wrapClass = fullscreen
-    ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
-    : 'h-full w-full flex flex-col gap-1.5 overflow-hidden';
+    ? 'fixed inset-0 z-[60] flex flex-col gap-1 bg-background p-1 overflow-hidden'
+    : 'h-full w-full flex flex-col gap-1 overflow-hidden p-0 m-0';
 
   return (
-    <div className={wrapClass}>
-      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 flex-shrink-0" data-chart-toolbar>
-        <span className="text-xs font-semibold text-primary mr-1">{symbolName || symbol}</span>
-        
-        {/* Sélecteur d'unité de temps en liste déroulante */}
-        <TimeframeDropdown timeframe={timeframe} onSelectTimeframe={onSelectTimeframe} />
+    <ChartErrorBoundary>
+      <div className={wrapClass}>
+        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 flex-shrink-0 px-1 py-0.5" data-chart-toolbar>
+          <span className="text-xs font-semibold text-primary mr-1">{symbolName || symbol}</span>
+          
+          {/* Sélecteur d'unité de temps en liste déroulante */}
+          <TimeframeDropdown timeframe={timeframe} onSelectTimeframe={onSelectTimeframe} />
 
-        <CandleCountdownBadge timeframe={timeframe} />
+          <CandleCountdownBadge timeframe={timeframe} />
 
-        <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
-        <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={panesRef} />
-        <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
-        <ChartZoomControls chartRef={chartRef} />
-        <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} className="h-7 px-2 ml-auto" title="Plein écran">
-          {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </Button>
+          <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
+          <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={panesRef} />
+          <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
+          <ChartZoomControls chartRef={chartRef} />
+          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} className="h-7 px-2 ml-auto" title="Plein écran">
+            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        <div
+          className="relative flex-1 min-h-[300px] w-full rounded-none border-0 overflow-hidden transition-colors"
+          style={{ backgroundColor: chartColors?.bgColor || undefined }}
+          data-chart-container
+        >
+          <ChartStyleSettingsModal
+            open={styleModalOpen}
+            onClose={() => setStyleModalOpen(false)}
+            styles={chartColors}
+            onApplyStyles={applyStyles}
+            onApplyPreset={applyPreset}
+            onReset={resetDefault}
+          />
+
+          {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
+          <SelectedOverlayBar
+            overlay={overlayManager.selectedOverlay}
+            onDelete={overlayManager.deleteSelected}
+            onDeselect={() => overlayManager.setSelectedOverlay(null)}
+          />
+
+          <div ref={containerRef} className="w-full h-full" />
+          <ChartWatermark />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {error && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+        </div>
       </div>
-
-      <div
-        className="relative flex-1 min-h-[300px] w-full rounded-lg border overflow-hidden transition-colors"
-        style={{ backgroundColor: chartColors?.bgColor || undefined }}
-        data-chart-container
-      >
-        <ChartStyleSettingsModal
-          open={styleModalOpen}
-          onClose={() => setStyleModalOpen(false)}
-          styles={chartColors}
-          onApplyStyles={applyStyles}
-          onApplyPreset={applyPreset}
-          onReset={resetDefault}
-        />
-
-        {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
-        <SelectedOverlayBar
-          overlay={overlayManager.selectedOverlay}
-          onDelete={overlayManager.deleteSelected}
-          onDeselect={() => overlayManager.setSelectedOverlay(null)}
-        />
-
-        <div ref={containerRef} className="w-full h-full" />
-        <ChartWatermark />
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        )}
-        {error && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
-            <p className="text-sm text-destructive">{error}</p>
-          </div>
-        )}
-      </div>
-    </div>
+    </ChartErrorBoundary>
   );
 }
 
@@ -197,13 +200,16 @@ function TimeframeDropdown({ timeframe, onSelectTimeframe }) {
     <Dropdown
       open={open}
       setOpen={setOpen}
-      width="w-48"
+      width="w-52"
       trigger={
         <Button
           size="sm"
           variant="outline"
           className="h-7 px-2.5 text-xs gap-1.5 font-semibold bg-card hover:bg-muted"
-          onClick={() => setOpen((o) => !o)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
           title="Unité de temps"
         >
           <span className="text-muted-foreground text-[11px] font-normal">TF:</span>
@@ -219,7 +225,8 @@ function TimeframeDropdown({ timeframe, onSelectTimeframe }) {
             size="sm"
             variant={tf === timeframe ? 'default' : 'ghost'}
             className="h-7 px-2 text-xs font-semibold"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               onSelectTimeframe(tf);
               setOpen(false);
             }}

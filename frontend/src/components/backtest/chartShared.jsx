@@ -270,8 +270,7 @@ export const INDICATOR_LABELS = {
 let customOverlaysRegistered = false;
 export function ensureCustomOverlaysAndIndicators() {
   if (customOverlaysRegistered) return;
-
-  // 1. Rectangle
+  try {
   registerOverlay({
     name: 'rect',
     totalStep: 3,
@@ -685,21 +684,25 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
-  customOverlaysRegistered = true;
+    customOverlaysRegistered = true;
+  } catch (err) {
+    console.warn('Erreur lors de l\'enregistrement des indicateurs/overlays personnalisés:', err);
+  }
 }
 
 // Rétrocompatibilité
 export const ensureRectOverlay = ensureCustomOverlaysAndIndicators;
 
-// Précision des prix déduite des données (5 décimales EUR/USD, 3 pour JPY…).
+// Précision des prix déduite des données (5 décimales EUR/USD, 3 pour JPY…) avec protection null-safe.
 export function detectPriceDigits(candles) {
   let d = 2;
   for (const c of (candles || []).slice(0, 50)) {
+    if (!c || c.close == null) continue;
     const s = String(c.close);
     const i = s.indexOf('.');
     if (i >= 0) d = Math.max(d, s.length - i - 1);
   }
-  return Math.min(d, 6);
+  return Math.min(Math.max(d, 0), 8);
 }
 
 // Plein écran : Échap pour sortir, scroll du body bloqué pendant l'affichage.
@@ -939,25 +942,91 @@ export function ChartStyleButton({ onClick, className = '' }) {
   );
 }
 
-// Menu déroulant générique avec fermeture au clic extérieur.
+// Menu déroulant générique robuste (tactile, mobile, PC) avec fermeture au clic extérieur.
 export function Dropdown({ trigger, open, setOpen, children, align = 'left', width = 'w-56' }) {
   const ref = React.useRef(null);
   React.useEffect(() => {
     if (!open) return;
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onDown);
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+    };
   }, [open, setOpen]);
+
   return (
-    <div ref={ref} className="relative">
-      {trigger}
+    <div ref={ref} className="relative inline-block" data-chart-dropdown-wrapper>
+      <div onClick={(e) => e.stopPropagation()}>{trigger}</div>
       {open && (
-        <div className={`absolute top-full mt-1 z-30 max-w-[calc(100vw-1.5rem)] rounded-lg border bg-popover text-popover-foreground shadow-lg ${width} ${align === 'right' ? 'right-0' : 'left-0'}`}>
+        <div
+          data-chart-dropdown
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`absolute top-full mt-1.5 z-[80] max-w-[calc(100vw-1rem)] max-h-[82vh] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-2xl ${width} ${align === 'right' ? 'right-0' : 'left-0'}`}
+        >
           {children}
         </div>
       )}
     </div>
   );
+}
+
+// Composant ErrorBoundary pour isoler les graphiques et éviter l'écran blanc
+export class ChartErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Chart crashed:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(CHART_STYLE_STORAGE_KEY);
+      }
+    } catch (_) {}
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center p-6 text-center rounded-xl border bg-card/90 max-w-lg mx-auto my-12 space-y-4 shadow-lg">
+          <div className="p-3 rounded-full bg-destructive/10 text-destructive">
+            <RotateCcw className="h-8 w-8 animate-spin" />
+          </div>
+          <h3 className="text-lg font-bold text-foreground">Affichage du graphique indisponible</h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Un problème de rendu graphique ou de données en cache est survenu. Cliquez ci-dessous pour recharger ou réinitialiser.
+          </p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            <Button size="sm" onClick={() => this.setState({ hasError: false, error: null })}>
+              Réessayer
+            </Button>
+            <Button size="sm" variant="outline" onClick={this.handleReset}>
+              Réinitialiser le graphique & vider le cache
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // Obtenir le libellé en français d'un outil de dessin
