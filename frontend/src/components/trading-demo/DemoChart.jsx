@@ -138,7 +138,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   return (
     <ChartErrorBoundary>
       <div className={wrapClass}>
-        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 flex-shrink-0 px-1 py-0.5" data-chart-toolbar>
+        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 flex-shrink-0 pl-24 sm:pl-28 pr-1 py-0.5" data-chart-toolbar>
           <span className="text-xs font-semibold text-primary mr-1">{symbolName || symbol}</span>
           
           {/* Sélecteur d'unité de temps en liste déroulante */}

@@ -1527,7 +1527,7 @@ export function ChartWatermark() {
   };
 
   return (
-    <div className="absolute bottom-7 sm:bottom-8 left-3 sm:left-4 pointer-events-none z-20 select-none opacity-95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
+    <div className="absolute bottom-20 sm:bottom-8 left-3 sm:left-4 pointer-events-none z-20 select-none opacity-95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
       <img
         src={logoUrl}
         alt="LivefxTrading"

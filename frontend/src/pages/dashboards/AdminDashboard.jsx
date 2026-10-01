@@ -318,9 +318,7 @@ const AdminDashboard = () => {
 
     setUploadingVideo(true);
     try {
-      await api.post('/announcements/admin/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await api.post('/announcements/admin/upload', formData);
       setVideoFile(null);
       setVideoTitle('');
       setVideoDescription('');
@@ -666,6 +664,12 @@ const AdminDashboard = () => {
       fetchEmailTemplates()
     ]).finally(() => setLoading(false));
   }, []);
+
+  // Défilement vers le haut et déblocage systématique du scroll body à chaque changement de section
+  useEffect(() => {
+    document.body.style.overflow = 'auto';
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [activeSection]);
 
   useEffect(() => {
     fetchProspects();

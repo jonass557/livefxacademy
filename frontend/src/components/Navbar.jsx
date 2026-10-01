@@ -72,7 +72,7 @@ const Navbar = () => {
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4">
         {/* LOGO */}
-        <Link to="/" className="flex items-center space-x-2">
+        <Link to={user?.role === 'admin' ? "/dashboard" : "/"} className="flex items-center space-x-2">
           <img 
             src={logoUrl} 
             alt="LivefxTrading" 
@@ -92,12 +92,12 @@ const Navbar = () => {
         
         {/* DESKTOP MENU */}
         <div className="hidden md:flex items-center gap-4 lg:gap-6">
-          <Link to="/" className="text-sm font-medium transition-colors hover:text-primary">
-            {t('navbar.home')}
+          <Link to={user?.role === 'admin' ? "/dashboard" : "/"} className="text-sm font-medium transition-colors hover:text-primary">
+            {user?.role === 'admin' ? 'Dashboard Admin' : t('navbar.home')}
           </Link>
 
-          {/* Menu déroulant des 11 fonctionnalités pour les membres connectés */}
-          {user && (
+          {/* Menu déroulant des 11 fonctionnalités réservé EXCLUSIVEMENT aux utilisateurs non-admin */}
+          {user && user.role !== 'admin' && (
             <div className="relative" ref={dropdownRef}>
               <button
                 type="button"
@@ -188,12 +188,12 @@ const Navbar = () => {
       {/* MOBILE MENU CONTENT */}
       {isMenuOpen && (
         <div className="md:hidden border-t bg-background p-4 space-y-4 animate-in slide-in-from-top-5 max-h-[85vh] overflow-y-auto">
-          <Link to="/" className="block text-sm font-medium hover:text-primary" onClick={toggleMenu}>
-            {t('navbar.home')}
+          <Link to={user?.role === 'admin' ? "/dashboard" : "/"} className="block text-sm font-medium hover:text-primary" onClick={toggleMenu}>
+            {user?.role === 'admin' ? 'Dashboard Administration' : t('navbar.home')}
           </Link>
 
-          {/* Menu déroulant mobile des 11 fonctionnalités */}
-          {user && (
+          {/* Menu déroulant mobile des 11 fonctionnalités réservé EXCLUSIVEMENT aux utilisateurs non-admin */}
+          {user && user.role !== 'admin' && (
             <div className="space-y-2 border-t pt-2">
               <button
                 type="button"

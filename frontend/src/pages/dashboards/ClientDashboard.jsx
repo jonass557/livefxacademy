@@ -1122,10 +1122,11 @@ const ClientDashboard = () => {
             <div className={isChartSection ? 'relative h-full w-full flex-1 min-h-0 overflow-hidden p-0 m-0' : 'space-y-4'}>
               {isChartSection ? (
                 <>
-                  {/* Bouton retour discret superposé en haut à gauche pour les graphiques */}
+                  {/* Bouton retour clair, grand et très visible superposé en haut à gauche pour les graphiques */}
                   <button
                     onClick={handleGoBack}
-                    className="fixed top-4 left-4 z-50 flex items-center gap-1 rounded-lg bg-background/90 backdrop-blur border px-3 py-1.5 text-sm hover:bg-accent transition-colors shadow-lg cursor-pointer"
+                    className="fixed top-2.5 left-2.5 sm:top-3 sm:left-3 z-[75] flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground font-bold px-3.5 py-1.5 text-xs sm:text-sm hover:bg-primary/90 active:scale-95 transition-all shadow-2xl border border-primary-foreground/20 cursor-pointer"
+                    title="Retour à la page précédente"
                   >
                     <ArrowLeft className="h-4 w-4" /> Retour
                   </button>

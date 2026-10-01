@@ -176,7 +176,7 @@ router.post('/admin/upload', adminOnly, (req, res, next) => {
   try {
     const file = req.files?.[0] || req.file;
     const { title, description, priority = 0, media_type, media_url } = req.body;
-    const adminId = req.user.id;
+    const adminId = req.user?.id || req.user?._id;
     
     if (!title) {
       return res.status(400).json({ message: 'Le titre est requis' });

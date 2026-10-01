@@ -19,6 +19,7 @@ const authRoutes = require('./routes/authRoutes');
 const videoRoutes = require('./routes/videoRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
 const brandingRoutes = require('./routes/brandingRoutes');
+const brandingController = require('./controllers/brandingController');
 const prospectRoutes = require('./routes/prospectRoutes');
 const consultationRoutes = require('./routes/consultationRoutes');
 const vacationRoutes = require('./routes/vacationRoutes');
@@ -109,6 +110,9 @@ marketSocket.attach(server);
 
 server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  // Synchronise le logo navbar avec logo.png pour le partage sur réseaux sociaux (WhatsApp/Facebook)
+  brandingController.syncLogoFiles();
+
   // Démarre le scheduler des notifications « annonces économiques »
   // (crée les documents EconomicNotification aux paliers T-60/30/15/5/0 min).
   economicScheduler.start();

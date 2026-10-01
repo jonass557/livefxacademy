@@ -52,6 +52,8 @@ const AdminSidebar = ({ activeSection, setActiveSection, collapsed, setCollapsed
 
   const handleMenuClick = (id) => {
     setActiveSection(id);
+    document.body.style.overflow = 'auto';
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     if (setMobileOpen) setMobileOpen(false);
   };
 

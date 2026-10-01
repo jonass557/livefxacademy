@@ -134,7 +134,7 @@ export default function LiveChart({
     <ChartErrorBoundary>
       <div className={wrapClass}>
         {/* Barre unique : sélecteur de marché + menus + statut + plein écran */}
-        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 px-1 py-0.5" data-chart-toolbar>
+        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 pl-24 sm:pl-28 pr-1 py-0.5" data-chart-toolbar>
           <span className="relative flex h-2 w-2 mr-0.5" title="Marché en direct">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />

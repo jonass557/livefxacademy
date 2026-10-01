@@ -36,7 +36,11 @@ const Login = () => {
       const res = await api.post('/auth/login', data);
       setAuth(res.data.user, res.data.accessToken);
       toast.success(t('login.successMessage'));
-      navigate('/');
+      if (res.data?.user?.role === 'admin') {
+        navigate('/dashboard');
+      } else {
+        navigate('/');
+      }
     } catch (error) {
       toast.error(t('login.errorMessage'), { description: getErrorMessage(error, t) });
     } finally {

@@ -50,8 +50,12 @@ const Home = () => {
   };
 
   useEffect(() => {
+    if (user?.role === 'admin') {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
     fetchFeedAndData();
-  }, []);
+  }, [user, navigate]);
 
   const handleVideoView = async (id) => {
     try {

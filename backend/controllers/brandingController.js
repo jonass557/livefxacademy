@@ -57,23 +57,8 @@ exports.uploadLogo = async (req, res) => {
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
-    // Synchroniser automatiquement avec logo.png si disponible pour les prévisualisations statiques
-    try {
-      const currentFilePath = req.file.path;
-      const staticTargets = [
-        path.join(__dirname, '../../frontend/public/logo.png'),
-        path.join(__dirname, '../../frontend/dist/logo.png'),
-        '/home/katdscho/livefx-trading.com/logo.png',
-        '/home/katdscho/public_html/logo.png'
-      ];
-      for (const target of staticTargets) {
-        try {
-          if (fs.existsSync(path.dirname(target))) {
-            fs.copyFileSync(currentFilePath, target);
-          }
-        } catch (_) {}
-      }
-    } catch (_) {}
+    // Synchroniser automatiquement avec logo.png statique
+    await exports.syncLogoFiles();
 
     res.status(201).json(branding);
   } catch (err) {
@@ -135,5 +120,43 @@ exports.getCurrentLogo = async (req, res) => {
   } catch (err) {
     console.error('Error serving current logo:', err);
     res.status(500).send('Error');
+  }
+};
+
+// Fonction de synchronisation du logo vers les emplacements statiques pour WhatsApp/OpenGraph
+exports.syncLogoFiles = async () => {
+  try {
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const relUrl = branding?.navbar_logo_url || branding?.chart_logo_url;
+    let sourcePath = null;
+    if (relUrl) {
+      const fullPath = path.join(__dirname, '..', relUrl);
+      if (fs.existsSync(fullPath)) sourcePath = fullPath;
+    }
+    if (!sourcePath) {
+      const brandingDir = path.join(__dirname, '../uploads/branding');
+      if (fs.existsSync(brandingDir)) {
+        const files = fs.readdirSync(brandingDir).filter(f => !f.startsWith('.'));
+        if (files.length > 0) sourcePath = path.join(brandingDir, files[files.length - 1]);
+      }
+    }
+    if (sourcePath && fs.existsSync(sourcePath)) {
+      const staticTargets = [
+        path.join(__dirname, '../../frontend/public/logo.png'),
+        path.join(__dirname, '../../frontend/dist/logo.png'),
+        '/home/katdscho/livefx-trading.com/logo.png',
+        '/home/katdscho/public_html/logo.png'
+      ];
+      for (const target of staticTargets) {
+        try {
+          if (fs.existsSync(path.dirname(target))) {
+            fs.copyFileSync(sourcePath, target);
+          }
+        } catch (_) {}
+      }
+      console.log('[branding] Logo synchronisé avec succès vers logo.png depuis', sourcePath);
+    }
+  } catch (err) {
+    console.warn('[branding] syncLogoFiles warning:', err.message);
   }
 };
