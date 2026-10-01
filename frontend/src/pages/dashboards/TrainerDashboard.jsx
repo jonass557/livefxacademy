@@ -9,6 +9,7 @@ import api from '../../lib/api';
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Plus,
   Edit2,
@@ -34,14 +35,29 @@ import {
 } from 'lucide-react';
 
 const TrainerDashboard = () => {
-  const [activeSection, setActiveSection] = useState('dashboard');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const urlSection = searchParams.get('section');
+  const activeSection = urlSection || 'dashboard';
   const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuthStore();
 
   // Increment refresh key when section changes to force data reload
   const handleSectionChange = (section) => {
-    setActiveSection(section);
+    if (section && section !== 'dashboard') {
+      setSearchParams({ section });
+    } else {
+      setSearchParams({});
+    }
     setRefreshKey(prev => prev + 1);
+  };
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      handleSectionChange('dashboard');
+    }
   };
 
   // Feature buttons shown on the main page (replaces the sidebar)
@@ -97,7 +113,7 @@ const TrainerDashboard = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              <Button variant="ghost" className="gap-2" onClick={() => handleSectionChange('dashboard')}>
+              <Button variant="ghost" className="gap-2" onClick={handleGoBack}>
                 <ArrowLeft className="h-4 w-4" /> Retour
               </Button>
               {activeSection === 'profile' && <ProfileSection key={`profile-${refreshKey}`} />}

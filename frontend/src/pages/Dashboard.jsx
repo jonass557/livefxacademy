@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/authStore';
 import ClientDashboard from './dashboards/ClientDashboard';
 import TrainerDashboard from './dashboards/TrainerDashboard';
 import AdminDashboard from './dashboards/AdminDashboard';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const { user } = useAuthStore();
@@ -33,7 +33,7 @@ const Dashboard = () => {
   // Client dashboard
   if (user.role === 'client') {
     if (!section) {
-      return <Navigate to="/dashboard?section=trading-demo" replace />;
+      return <Navigate to="/" replace />;
     }
     return <ClientDashboard />;
   }

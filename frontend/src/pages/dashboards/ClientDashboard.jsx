@@ -37,6 +37,21 @@ const ClientDashboard = () => {
   const activeSection = searchParams.get('section') || 'dashboard';
   const setActiveSection = (id) =>
     setSearchParams(id && id !== 'dashboard' ? { section: id } : {});
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'dashboard') {
+      navigate('/', { replace: true });
+    }
+  }, [activeSection, navigate]);
+
   const [loading, setLoading] = useState(true);
   
   // Consultation form state
@@ -1109,8 +1124,8 @@ const ClientDashboard = () => {
                 <>
                   {/* Bouton retour discret superposé en haut à gauche pour les graphiques */}
                   <button
-                    onClick={() => setActiveSection('dashboard')}
-                    className="fixed top-4 left-4 z-50 flex items-center gap-1 rounded-lg bg-background/90 backdrop-blur border px-3 py-1.5 text-sm hover:bg-accent transition-colors shadow-lg"
+                    onClick={handleGoBack}
+                    className="fixed top-4 left-4 z-50 flex items-center gap-1 rounded-lg bg-background/90 backdrop-blur border px-3 py-1.5 text-sm hover:bg-accent transition-colors shadow-lg cursor-pointer"
                   >
                     <ArrowLeft className="h-4 w-4" /> Retour
                   </button>
@@ -1118,7 +1133,7 @@ const ClientDashboard = () => {
                 </>
               ) : (
                 <>
-                  <Button variant="ghost" className="gap-2" onClick={() => setActiveSection('dashboard')}>
+                  <Button variant="ghost" className="gap-2" onClick={handleGoBack}>
                     <ArrowLeft className="h-4 w-4" /> Retour
                   </Button>
                   {renderContent()}
