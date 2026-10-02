@@ -63,6 +63,7 @@ const AdminDashboard = () => {
   const [mediaType, setMediaType] = useState('video'); // 'video' | 'image'
   const [mediaUrlInput, setMediaUrlInput] = useState('');
   const videoFileInputRef = useRef(null);
+  const mainRef = useRef(null);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
 
   // Detailed Stats state
@@ -669,6 +670,9 @@ const AdminDashboard = () => {
   useEffect(() => {
     document.body.style.overflow = 'auto';
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
   }, [activeSection]);
 
   useEffect(() => {
@@ -3613,7 +3617,7 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
+    <div className="flex h-full w-full overflow-hidden relative">
       {/* Sidebar */}
       <AdminSidebar 
         activeSection={activeSection}
@@ -3624,9 +3628,12 @@ const AdminDashboard = () => {
         setMobileOpen={setMobileOpen}
       />
       
-      {/* Main Content */}
-      <main className={`flex-1 transition-all duration-300 w-full ${mobileOpen ? '' : 'ml-0 lg:ml-64'} ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
-        <div className="p-4 md:p-6">
+      {/* Main Content avec défilement autonome */}
+      <main 
+        ref={mainRef}
+        className={`flex-1 h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain transition-all duration-300 ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}
+      >
+        <div className="p-4 md:p-6 pb-28 max-w-full">
           {/* Header */}
           <div className="mb-4 md:mb-6">
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dashboard.title')}</h1>

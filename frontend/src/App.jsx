@@ -28,8 +28,20 @@ function AppLayout({ children }) {
   const section = searchParams.get('section');
   const isChartSection = section === 'trading-demo' || section === 'backtesting';
 
-  // Admin, Trainer and Client dashboard have their own full-width layout with sidebar
-  if (isDashboard && (isAdmin || isTrainer || user?.role === 'client')) {
+  // Admin dashboard layout: Navbar fixe + contenu avec défilement autonome indestructible
+  if (isDashboard && isAdmin) {
+    return (
+      <div className="h-screen w-full overflow-hidden flex flex-col p-0 m-0 bg-background text-foreground">
+        <Navbar />
+        <div className="flex-1 min-h-0 w-full overflow-hidden">
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  // Trainer and Client dashboard have their own full-width layout with sidebar
+  if (isDashboard && (isTrainer || user?.role === 'client')) {
     return (
       <div className={isChartSection ? "h-screen w-screen max-w-full overflow-hidden flex flex-col p-0 m-0 bg-background text-foreground" : "min-h-screen bg-background text-foreground"}>
         {!isChartSection && <Navbar />}
