@@ -9,12 +9,18 @@ import {
   Palmtree, Link as LinkIcon, Phone, Send, Facebook, CheckCircle, ExternalLink,
   MapPin, Users, GraduationCap, Mail, Award
 } from 'lucide-react';
-import api from '../lib/api';
+import api, { API_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '../store/languageStore';
 import ReactPlayer from 'react-player';
 import { cloudinaryVideoThumb } from '../lib/video';
 import AnnouncementInteractions from '../components/AnnouncementInteractions';
+
+const getMediaUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `${API_URL}${url}`;
+};
 
 const isImageFile = (post) => {
   if (post.media_type === 'image') return true;
@@ -218,10 +224,10 @@ const Home = () => {
                     {isImg ? (
                       <div
                         className="relative group cursor-pointer overflow-hidden rounded-xl bg-muted border mx-4 sm:mx-0 max-h-[540px] flex items-center justify-center"
-                        onClick={() => setSelectedImage(post.cloudinary_url)}
+                        onClick={() => setSelectedImage(getMediaUrl(post.cloudinary_url))}
                       >
                         <img
-                          src={post.cloudinary_url}
+                          src={getMediaUrl(post.cloudinary_url)}
                           alt={post.title}
                           className="w-full h-auto max-h-[540px] object-contain transition-transform duration-300 group-hover:scale-[1.01]"
                           loading="lazy"
@@ -235,11 +241,11 @@ const Home = () => {
                     ) : (
                       <div className="relative aspect-video w-full overflow-hidden bg-black rounded-none sm:rounded-xl mx-0">
                         <ReactPlayer
-                          url={post.cloudinary_url}
+                          url={getMediaUrl(post.cloudinary_url)}
                           width="100%"
                           height="100%"
                           controls
-                          light={cloudinaryVideoThumb(post.cloudinary_url) || true}
+                          light={cloudinaryVideoThumb(getMediaUrl(post.cloudinary_url)) || true}
                           onPlay={() => handleVideoView(post.id)}
                         />
                       </div>

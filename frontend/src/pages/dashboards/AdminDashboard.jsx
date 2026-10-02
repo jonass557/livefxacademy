@@ -13,6 +13,8 @@ import EconomicCalendar from '../EconomicCalendar';
 import { getServiceIcon, SERVICE_ICON_NAMES } from '../../lib/serviceIcons';
 import { cloudinaryVideoThumb } from '../../lib/video';
 
+const formatMediaUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
+
 const AdminDashboard = () => {
   const { user } = useAuthStore();
   const { t } = useLanguageStore();
@@ -2494,14 +2496,14 @@ const AdminDashboard = () => {
                     <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">
                       {isImg ? (
                         <img
-                          src={post.cloudinary_url}
+                          src={formatMediaUrl(post.cloudinary_url)}
                           alt={post.title}
                           className="w-full h-full object-cover"
                         />
                       ) : (
                         <video
-                          src={post.cloudinary_url}
-                          poster={cloudinaryVideoThumb(post.cloudinary_url) || undefined}
+                          src={formatMediaUrl(post.cloudinary_url)}
+                          poster={cloudinaryVideoThumb(formatMediaUrl(post.cloudinary_url)) || undefined}
                           preload="none"
                           className="w-full h-full object-cover"
                           controls

@@ -1,31 +1,39 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
 const { AnnouncementVideo, VideoView, User, AnnouncementLike, AnnouncementComment } = require('../models');
 const jwt = require('jsonwebtoken');
 const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
 
 // Config Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: async (req, file) => {
-    return {
-      folder: 'livefx_announcements',
-      resource_type: 'auto',
-    };
-  },
+// Dossier de stockage local fiable pour éviter tout crash en streaming
+const uploadDir = path.join(__dirname, '../uploads/announcements');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const diskStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '') || '';
+    const safeName = `announcement-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    cb(null, safeName);
+  }
 });
 
 const upload = multer({
-  storage: storage,
+  storage: diskStorage,
   limits: { fileSize: 100 * 1024 * 1024 } // 100 MB max
 });
 
@@ -169,7 +177,10 @@ router.get('/admin/stats', adminOnly, async (req, res) => {
  */
 router.post('/admin/upload', adminOnly, (req, res, next) => {
   upload.any()(req, res, (err) => {
-    if (err) return res.status(400).json({ message: err.message || 'Erreur lors du téléchargement' });
+    if (err) {
+      console.error('Multer upload error:', err);
+      return res.status(400).json({ message: err.message || 'Erreur lors du téléchargement du fichier' });
+    }
     next();
   });
 }, async (req, res) => {
@@ -178,7 +189,7 @@ router.post('/admin/upload', adminOnly, (req, res, next) => {
     const { title, description, priority = 0, media_type, media_url } = req.body;
     const adminId = req.user?.id || req.user?._id;
     
-    if (!title) {
+    if (!title || !title.trim()) {
       return res.status(400).json({ message: 'Le titre est requis' });
     }
 
@@ -187,14 +198,43 @@ router.post('/admin/upload', adminOnly, (req, res, next) => {
     }
 
     let resolvedMediaType = (media_type === 'image' || media_type === 'video') ? media_type : null;
-    let finalUrl = media_url;
+    let finalUrl = media_url || '';
     let publicId = '';
 
     if (file) {
-      const isVideo = file.mimetype ? file.mimetype.startsWith('video') : /\.(mp4|mov|avi|webm|mkv|m4v)(\?.*)?$/i.test(file.path || file.originalname || '');
+      const isVideo = file.mimetype
+        ? file.mimetype.startsWith('video')
+        : /\.(mp4|mov|avi|webm|mkv|m4v)(\?.*)?$/i.test(file.originalname || file.filename || '');
       resolvedMediaType = resolvedMediaType || (isVideo ? 'video' : 'image');
-      finalUrl = file.path;
-      publicId = file.filename || '';
+
+      const serverBase = process.env.API_PUBLIC_URL || (process.env.NODE_ENV === 'production' ? 'https://api.livefx-trading.com' : `http://localhost:${process.env.PORT || 5000}`);
+      let uploadedToCloudinary = false;
+
+      // Upload Cloudinary si configuré
+      const canUseCloudinary = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+      if (canUseCloudinary) {
+        try {
+          const cRes = await cloudinary.uploader.upload(file.path, {
+            folder: 'livefx_announcements',
+            resource_type: resolvedMediaType === 'video' ? 'video' : 'image'
+          });
+          if (cRes && cRes.secure_url) {
+            finalUrl = cRes.secure_url;
+            publicId = cRes.public_id;
+            uploadedToCloudinary = true;
+            // Nettoyage du fichier local temporaire
+            try { fs.unlinkSync(file.path); } catch (_) {}
+          }
+        } catch (cloudErr) {
+          console.warn('Cloudinary upload warning, fallback to local storage:', cloudErr.message);
+        }
+      }
+
+      // Si Cloudinary échoue ou non configuré, le fichier reste disponible en stockage local
+      if (!uploadedToCloudinary) {
+        finalUrl = `${serverBase}/uploads/announcements/${file.filename}`;
+        publicId = file.filename;
+      }
     } else {
       const isVideo = resolvedMediaType === 'video' || /\.(mp4|mov|avi|webm|mkv|m4v)(\?.*)?$/i.test(media_url || '');
       resolvedMediaType = resolvedMediaType || (isVideo ? 'video' : 'image');
@@ -269,13 +309,21 @@ router.delete('/admin/:id', adminOnly, async (req, res) => {
     }
     
     // Delete from Cloudinary
-    if (video.cloudinary_public_id) {
+    if (video.cloudinary_public_id && !video.cloudinary_public_id.startsWith('announcement-')) {
       try {
         await cloudinary.uploader.destroy(video.cloudinary_public_id, {
           resource_type: video.media_type === 'image' ? 'image' : 'video'
         });
       } catch (cloudErr) {
         console.error('Cloudinary delete error:', cloudErr);
+      }
+    }
+
+    // Delete from local disk if local
+    if (video.cloudinary_public_id && video.cloudinary_public_id.startsWith('announcement-')) {
+      const localFilePath = path.join(uploadDir, video.cloudinary_public_id);
+      if (fs.existsSync(localFilePath)) {
+        try { fs.unlinkSync(localFilePath); } catch (_) {}
       }
     }
     
