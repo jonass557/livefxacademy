@@ -187,9 +187,10 @@ export default function LiveChart({
             onReset={resetDefault}
           />
 
-          {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
+          {/* Barre d'action contextuelle au clic sur un outil de dessin (Paramètres & Suppression) */}
           <SelectedOverlayBar
             overlay={overlayManager.selectedOverlay}
+            chartRef={chartRef}
             onDelete={overlayManager.deleteSelected}
             onDeselect={() => overlayManager.setSelectedOverlay(null)}
           />

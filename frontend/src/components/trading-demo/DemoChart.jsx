@@ -50,6 +50,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     ensureCustomOverlaysAndIndicators();
     const chart = init(el);
     chart.setStyles(buildKLineStyles(chartColors));
+    chart.setBarSpace?.(9);
     const unbindMT4 = configureMT4Chart(chart);
     chartRef.current = chart;
     return () => {
@@ -69,15 +70,38 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
       try {
         const data = await demoApi.candles(symbol, timeframe, 300);
         if (cancelled || !chartRef.current) return;
-        const kline = (data.candles || []).map((c) => ({
-          timestamp: c.time * 1000, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume || 0,
-        }));
-        if (!digitsSetRef.current && data.candles?.length) {
-          const d = detectPriceDigits(data.candles);
+        const raw = data.candles || [];
+        const kline = raw
+          .map((c) => ({
+            timestamp: c.time * 1000,
+            open: Number(c.open),
+            high: Number(c.high),
+            low: Number(c.low),
+            close: Number(c.close),
+            volume: Number(c.volume || 0),
+          }))
+          .filter((c) => (
+            Number.isFinite(c.timestamp) &&
+            Number.isFinite(c.open) &&
+            Number.isFinite(c.high) &&
+            Number.isFinite(c.low) &&
+            Number.isFinite(c.close) &&
+            c.open > 0 &&
+            c.close > 0 &&
+            c.high >= c.low
+          ))
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        if (kline.length) {
+          const d = detectPriceDigits(kline);
           chartRef.current.setPriceVolumePrecision?.(d, 0);
-          setDigits(d); digitsSetRef.current = true;
+          setDigits(d);
+          digitsSetRef.current = true;
         }
         chartRef.current.applyNewData(kline);
+        // Garantit des chandeliers lisibles et épais avec un corps net sur tous les timeframes
+        chartRef.current.setBarSpace?.(9);
+        chartRef.current.scrollToRealTime?.();
         lastRef.current = kline[kline.length - 1] || null;
         setError(null);
       } catch (err) {
@@ -99,15 +123,19 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     const chart = chartRef.current;
     const last = lastRef.current;
     if (!chart || !last || !liveQuote || !(liveQuote.mid > 0)) return;
+    if (liveQuote.symbol && liveQuote.symbol !== symbol) return;
+    const mid = Number(liveQuote.mid);
+    if (!Number.isFinite(mid) || mid <= 0) return;
+    if (last.close > 0 && Math.abs(mid - last.close) / last.close > 0.15) return;
     const updated = {
       ...last,
-      close: liveQuote.mid,
-      high: Math.max(last.high, liveQuote.mid),
-      low: Math.min(last.low, liveQuote.mid),
+      close: mid,
+      high: Math.max(last.high, mid),
+      low: Math.min(last.low, mid),
     };
     lastRef.current = updated;
     chart.updateData(updated);
-  }, [liveQuote]);
+  }, [liveQuote, symbol]);
 
   useEffect(() => {
     const resize = () => chartRef.current?.resize();
@@ -169,9 +197,10 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             onReset={resetDefault}
           />
 
-          {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
+          {/* Barre d'action contextuelle au clic sur un outil de dessin (Paramètres couleur/épaisseur/style & Suppression) */}
           <SelectedOverlayBar
             overlay={overlayManager.selectedOverlay}
+            chartRef={chartRef}
             onDelete={overlayManager.deleteSelected}
             onDeselect={() => overlayManager.setSelectedOverlay(null)}
           />

@@ -9,7 +9,7 @@ import {
   Equal, AlignJustify, Square, Type, Eraser, ChevronDown, Pencil, FunctionSquare,
   ArrowRight, ArrowUpRight, MapPin, ArrowUp, ArrowDown, TrendingUp, TrendingDown,
   Paintbrush, Waves, GitCommit, Grid, Palette, RotateCcw, Settings, X, Check,
-  Trash2, Clock,
+  Trash2, Clock, Route,
 } from 'lucide-react';
 
 // ---- Constantes et Thèmes (façon MT4 / MT5 & TradingView) ----
@@ -130,18 +130,23 @@ export function buildKLineStyles(settings = {}) {
       vertical: { color: s.gridColor || 'rgba(148,163,184,0.1)' },
     },
     candle: {
+      type: 'candle_solid',
       bar: {
         upColor: s.upColor,
         downColor: s.downColor,
+        noChangeColor: s.upColor,
         upBorderColor: s.upBorderColor,
         downBorderColor: s.downBorderColor,
+        noChangeBorderColor: s.upBorderColor,
         upWickColor: s.upWickColor,
         downWickColor: s.downWickColor,
+        noChangeWickColor: s.upWickColor,
       },
       priceMark: {
         last: {
           upColor: s.upColor,
           downColor: s.downColor,
+          noChangeColor: s.upColor,
         },
       },
       tooltip: { showRule: 'none' },
@@ -227,6 +232,7 @@ export const CHART_STYLES = buildKLineStyles(getStoredChartStyles());
 export const DRAW_TOOLS = [
   // Lignes & Canaux
   { name: 'segment', label: 'Ligne de tendance', Icon: Slash, group: 'Lignes' },
+  { name: 'path', label: 'Trajectoire / Path (TradingView)', Icon: Route, group: 'Lignes' },
   { name: 'horizontalRayLine', label: 'Demi-droite horizontale', Icon: ArrowRight, group: 'Lignes' },
   { name: 'rayLine', label: 'Demi-droite orientée', Icon: MoveUpRight, group: 'Lignes' },
   { name: 'horizontalStraightLine', label: 'Ligne horizontale', Icon: Minus, group: 'Lignes' },
@@ -271,6 +277,58 @@ let customOverlaysRegistered = false;
 export function ensureCustomOverlaysAndIndicators() {
   if (customOverlaysRegistered) return;
   try {
+  // 0. Trajectoire / Path façon TradingView (multi-segments consécutifs avec flèche de fin)
+  registerOverlay({
+    name: 'path',
+    totalStep: 30,
+    needDefaultPointFigure: true,
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 1) return [];
+      const lineColor = overlay?.styles?.line?.color || '#3b82f6';
+      const lineSize = overlay?.styles?.line?.size || 2.5;
+      const lineStyle = overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.line?.dashedValue || (lineStyle === 'dashed' ? [6, 4] : undefined);
+
+      const figures = [
+        {
+          type: 'line',
+          attrs: { coordinates },
+          styles: {
+            color: lineColor,
+            size: lineSize,
+            style: lineStyle,
+            dashedValue,
+          },
+        },
+      ];
+
+      if (coordinates.length >= 2) {
+        const p1 = coordinates[coordinates.length - 2];
+        const p2 = coordinates[coordinates.length - 1];
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const headLen = Math.max(12, lineSize * 4.5);
+        const w1 = {
+          x: p2.x - headLen * Math.cos(angle - Math.PI / 6),
+          y: p2.y - headLen * Math.sin(angle - Math.PI / 6),
+        };
+        const w2 = {
+          x: p2.x - headLen * Math.cos(angle + Math.PI / 6),
+          y: p2.y - headLen * Math.sin(angle + Math.PI / 6),
+        };
+        figures.push({
+          type: 'polygon',
+          attrs: { coordinates: [p2, w1, w2] },
+          styles: {
+            style: 'fill',
+            color: lineColor,
+          },
+        });
+      }
+
+      return figures;
+    },
+  });
+
   registerOverlay({
     name: 'rect',
     totalStep: 3,
@@ -1349,6 +1407,7 @@ export class ChartErrorBoundary extends React.Component {
 export function getToolLabel(name) {
   const tool = DRAW_TOOLS.find((t) => t.name === name);
   if (tool) return tool.label;
+  if (name === 'path') return 'Trajectoire / Path';
   if (name === 'segment') return 'Ligne de tendance';
   if (name === 'rect') return 'Rectangle / Zone';
   if (name === 'text') return 'Annotation texte';
@@ -1403,7 +1462,7 @@ export function useChartOverlayManager(chartRef) {
     setSelectedOverlay(null);
   }, [chartRef]);
 
-  // Raccourci clavier Suppr / Backspace pour supprimer l'outil actif
+  // Raccourci clavier Suppr / Backspace pour supprimer l'outil actif, ou Echap/Entrée pour finaliser le tracé
   useEffect(() => {
     if (!selectedOverlay) return;
     const handleKeyDown = (e) => {
@@ -1412,15 +1471,19 @@ export function useChartOverlayManager(chartRef) {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         deleteSelected();
-      } else if (e.key === 'Escape') {
-        setSelectedOverlay(null);
+      } else if (e.key === 'Escape' || e.key === 'Enter') {
+        if (selectedOverlay?.isDrawing?.()) {
+          selectedOverlay.forceComplete?.();
+        } else {
+          setSelectedOverlay(null);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedOverlay, deleteSelected]);
 
-  // Création enrichie avec liaison automatique des événements de clic, sélection et suppression
+  // Création enrichie avec liaison automatique des événements de clic, sélection et finalisation
   const createDrawing = useCallback((name, extra = {}) => {
     const chart = chartRef?.current;
     if (!chart) return null;
@@ -1438,16 +1501,29 @@ export function useChartOverlayManager(chartRef) {
         return true;
       },
       onDoubleClick: ({ overlay }) => {
+        if (overlay?.isDrawing?.()) {
+          overlay.forceComplete?.();
+          return true;
+        }
         deleteOverlay(overlay);
         return true;
       },
       onRightClick: ({ overlay }) => {
+        if (overlay?.isDrawing?.()) {
+          overlay.forceComplete?.();
+          return true;
+        }
         deleteOverlay(overlay);
         return true;
       },
     };
 
-    return chart.createOverlay(overlayConfig);
+    const id = chart.createOverlay(overlayConfig);
+    if (id) {
+      const created = chart.getOverlayById?.(id);
+      if (created) setSelectedOverlay(created);
+    }
+    return id;
   }, [chartRef, deleteOverlay]);
 
   return {
@@ -1460,40 +1536,254 @@ export function useChartOverlayManager(chartRef) {
   };
 }
 
-// Barre d'action flottante qui apparaît au clic sur un outil/dessin avec bouton Supprimer
-export function SelectedOverlayBar({ overlay, onDelete, onDeselect, className = '' }) {
+// Barre d'action flottante qui apparaît au clic sur un outil/dessin avec bouton Engrenage (paramètres) et Supprimer
+export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, onUpdateStyle, className = '' }) {
   if (!overlay) return null;
   const label = getToolLabel(overlay.name);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Style local pour l'édition et la synchronisation immédiate
+  const currentLineStyle = overlay.styles?.line || {};
+  const [color, setColor] = useState(currentLineStyle.color || '#3b82f6');
+  const [size, setSize] = useState(currentLineStyle.size || 2.5);
+  const [dashStyle, setDashStyle] = useState(currentLineStyle.style || 'solid');
+
+  useEffect(() => {
+    const s = overlay.styles?.line || {};
+    if (s.color) setColor(s.color);
+    if (s.size) setSize(s.size);
+    if (s.style) setDashStyle(s.style);
+    setSettingsOpen(false);
+  }, [overlay.id]);
+
+  const applyOverlayStyle = (newColor, newSize, newDashStyle) => {
+    setColor(newColor);
+    setSize(newSize);
+    setDashStyle(newDashStyle);
+
+    const chart = chartRef?.current;
+    if (!chart || !overlay?.id) return;
+    const dashedValue = newDashStyle === 'dashed' ? [6, 4] : undefined;
+    try {
+      chart.overrideOverlay({
+        id: overlay.id,
+        styles: {
+          line: {
+            color: newColor,
+            size: newSize,
+            style: newDashStyle,
+            dashedValue,
+          },
+          polygon: {
+            borderColor: newColor,
+            borderSize: newSize,
+            borderStyle: newDashStyle,
+            borderDashedValue: dashedValue,
+          },
+          rect: {
+            borderColor: newColor,
+            borderSize: newSize,
+            borderStyle: newDashStyle,
+            borderDashedValue: dashedValue,
+          },
+          circle: {
+            borderColor: newColor,
+            borderSize: newSize,
+            borderStyle: newDashStyle,
+            borderDashedValue: dashedValue,
+          },
+          arc: {
+            color: newColor,
+            size: newSize,
+          },
+        },
+      });
+      onUpdateStyle?.({ color: newColor, size: newSize, style: newDashStyle });
+    } catch (e) {
+      console.warn('overrideOverlay error:', e);
+    }
+  };
+
+  const handleFinishDrawing = () => {
+    if (overlay.forceComplete) {
+      overlay.forceComplete();
+    }
+  };
+
+  const isDrawing = overlay.isDrawing?.();
 
   return (
-    <div
-      className={`pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/95 border border-primary/50 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-150 ${className}`}
-    >
-      <div className="flex items-center gap-1.5">
-        <span className="h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
-        <span className="text-xs font-semibold text-foreground max-w-[130px] sm:max-w-[220px] truncate">
-          {label}
-        </span>
+    <div className={`pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center ${className}`}>
+      {/* Barre principale */}
+      <div className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-card/95 border border-primary/50 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
+          <span className="text-xs font-semibold text-foreground max-w-[120px] sm:max-w-[200px] truncate">
+            {label}
+          </span>
+        </div>
+
+        {/* Pastille indiquant la couleur active */}
+        <span
+          className="h-3 w-3 rounded-full border border-white/40 shadow-xs shrink-0"
+          style={{ backgroundColor: color }}
+          title={`Couleur: ${color}`}
+        />
+
+        <div className="h-3.5 w-px bg-border mx-0.5" />
+
+        {/* Bouton Terminer le tracé (si en cours de dessin) */}
+        {isDrawing && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-[11px] gap-1 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500/10 cursor-pointer"
+            onClick={handleFinishDrawing}
+            title="Terminer la trajectoire (ou double-clic)"
+          >
+            <Check className="h-3 w-3" />
+            <span>Terminer</span>
+          </Button>
+        )}
+
+        {/* Bouton Engrenage : paramètres couleur, épaisseur, trait continu/discontinu */}
+        <Button
+          size="sm"
+          variant="ghost"
+          className={`h-6 w-6 p-0 hover:bg-muted cursor-pointer transition-colors ${settingsOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setSettingsOpen((prev) => !prev)}
+          title="Paramètres de l'outil (Couleur, Épaisseur, Trait continu / discontinu)"
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </Button>
+
+        {/* Bouton Supprimer */}
+        <Button
+          size="sm"
+          variant="destructive"
+          className="h-6 px-2.5 text-xs gap-1 shadow-xs hover:bg-destructive/90 cursor-pointer"
+          onClick={() => onDelete?.(overlay)}
+          title="Supprimer cet outil (ou touche Suppr / Backspace)"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          <span>Supprimer</span>
+        </Button>
+
+        {/* Bouton Désélectionner */}
+        <button
+          type="button"
+          onClick={onDeselect}
+          className="p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+          title="Désélectionner"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <div className="h-3.5 w-px bg-border mx-0.5" />
-      <Button
-        size="sm"
-        variant="destructive"
-        className="h-6 px-2.5 text-xs gap-1 shadow-xs hover:bg-destructive/90 cursor-pointer"
-        onClick={() => onDelete?.(overlay)}
-        title="Supprimer cet outil (ou touche Suppr / Backspace)"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        <span>Supprimer</span>
-      </Button>
-      <button
-        type="button"
-        onClick={onDeselect}
-        className="p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-        title="Désélectionner"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+
+      {/* Popover Paramètres de l'outil */}
+      {settingsOpen && (
+        <div className="mt-1.5 p-3 rounded-xl bg-card/98 border border-border shadow-2xl backdrop-blur-md w-72 max-w-[90vw] animate-in fade-in slide-in-from-top-1 duration-150 text-xs flex flex-col gap-3">
+          {/* Section 1 : Couleur */}
+          <div>
+            <div className="flex items-center justify-between text-muted-foreground font-semibold mb-1.5 text-[11px]">
+              <span>Couleur</span>
+              <span className="font-mono text-[10px] uppercase text-foreground">{color}</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                '#3b82f6', // Bleu
+                '#22c55e', // Vert
+                '#ef4444', // Rouge
+                '#f97316', // Orange
+                '#eab308', // Jaune
+                '#a855f7', // Violet
+                '#06b6d4', // Cyan
+                '#ec4899', // Rose
+                '#ffffff', // Blanc
+                '#64748b', // Gris
+              ].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => applyOverlayStyle(c, size, dashStyle)}
+                  className={`h-5 w-5 rounded-md border transition-transform cursor-pointer hover:scale-110 ${color === c ? 'ring-2 ring-primary ring-offset-1 ring-offset-background scale-110' : 'border-white/20'}`}
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+              {/* Pipette / Sélecteur personnalisé */}
+              <label
+                className="h-5 w-5 rounded-md border border-white/20 flex items-center justify-center cursor-pointer hover:bg-muted transition-colors relative overflow-hidden"
+                title="Couleur personnalisée"
+              >
+                <Palette className="h-3 w-3 text-muted-foreground" />
+                <input
+                  type="color"
+                  value={color.startsWith('#') && color.length === 7 ? color : '#3b82f6'}
+                  onChange={(e) => applyOverlayStyle(e.target.value, size, dashStyle)}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="h-px bg-border/60" />
+
+          {/* Section 2 : Épaisseur */}
+          <div>
+            <div className="flex items-center justify-between text-muted-foreground font-semibold mb-1.5 text-[11px]">
+              <span>Épaisseur</span>
+              <span className="text-foreground">{size} px</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {[1, 2, 3, 4, 5].map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => applyOverlayStyle(color, w, dashStyle)}
+                  className={`h-7 rounded-md border flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${size === w ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                  title={`${w}px`}
+                >
+                  <span
+                    className="w-4 rounded-full bg-current"
+                    style={{ height: `${w}px` }}
+                  />
+                  <span className="text-[10px] leading-none">{w}px</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-px bg-border/60" />
+
+          {/* Section 3 : Type de trait (Continu vs Discontinu) */}
+          <div>
+            <div className="text-muted-foreground font-semibold mb-1.5 text-[11px]">
+              Type de trait
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => applyOverlayStyle(color, size, 'solid')}
+                className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${dashStyle === 'solid' ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                title="Trait continu"
+              >
+                <span className="w-5 h-[2px] bg-current inline-block" />
+                <span className="text-[11px]">Continu</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyOverlayStyle(color, size, 'dashed')}
+                className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${dashStyle === 'dashed' ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                title="Trait discontinu"
+              >
+                <span className="w-5 h-[2px] border-b-2 border-dashed border-current inline-block" />
+                <span className="text-[11px]">Discontinu</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

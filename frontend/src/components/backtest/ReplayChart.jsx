@@ -1115,6 +1115,7 @@ export default function ReplayChart({
 
           <SelectedOverlayBar
             overlay={overlayManager.selectedOverlay}
+            chartRef={chartRef}
             onDelete={overlayManager.deleteSelected}
             onDeselect={() => overlayManager.setSelectedOverlay(null)}
           />
