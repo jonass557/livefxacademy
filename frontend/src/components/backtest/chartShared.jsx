@@ -684,6 +684,322 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
+  // 14. Ligne d'Entrée Backtest (Bleu sur le graphique & Badge bleu sans texte sur l'axe Y)
+  registerOverlay({
+    name: 'backtestEntryLine',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, bounding }) => {
+      if (!coordinates.length) return [];
+      const y = coordinates[0].y;
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: 0, y },
+              { x: bounding.width, y }
+            ]
+          },
+          styles: {
+            style: 'dashed',
+            color: '#2563eb',
+            size: 1.5,
+            dashedValue: [6, 4]
+          },
+          ignoreEvent: true
+        }
+      ];
+    },
+    createYAxisFigures: ({ overlay, coordinates, bounding, precision }) => {
+      if (!coordinates.length || !overlay.points?.length) return [];
+      const priceVal = overlay.points[0]?.value;
+      if (priceVal == null || isNaN(priceVal)) return [];
+      const digits = overlay.extendData?.digits ?? precision?.price ?? 4;
+      const text = Number(priceVal).toFixed(digits);
+      const y = coordinates[0].y;
+      const w = bounding.width || 72;
+      const h = 18;
+      return [
+        {
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: 0, y: y - h / 2 },
+              { x: w, y: y - h / 2 },
+              { x: w, y: y + h / 2 },
+              { x: 0, y: y + h / 2 }
+            ]
+          },
+          styles: {
+            style: 'fill',
+            color: '#2563eb'
+          },
+          ignoreEvent: true
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: w / 2,
+            y,
+            text,
+            align: 'center',
+            baseline: 'middle'
+          },
+          styles: {
+            color: '#ffffff',
+            size: 11,
+            weight: 'bold',
+            family: 'sans-serif'
+          },
+          ignoreEvent: true
+        }
+      ];
+    }
+  });
+
+  // 15. Ligne de Stop Loss Backtest (Rouge sur le graphique & Badge rouge sans texte sur l'axe Y)
+  registerOverlay({
+    name: 'backtestSlLine',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, bounding }) => {
+      if (!coordinates.length) return [];
+      const y = coordinates[0].y;
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: 0, y },
+              { x: bounding.width, y }
+            ]
+          },
+          styles: {
+            style: 'dashed',
+            color: '#ef4444',
+            size: 1.5,
+            dashedValue: [6, 4]
+          },
+          ignoreEvent: true
+        }
+      ];
+    },
+    createYAxisFigures: ({ overlay, coordinates, bounding, precision }) => {
+      if (!coordinates.length || !overlay.points?.length) return [];
+      const priceVal = overlay.points[0]?.value;
+      if (priceVal == null || isNaN(priceVal)) return [];
+      const digits = overlay.extendData?.digits ?? precision?.price ?? 4;
+      const text = Number(priceVal).toFixed(digits);
+      const y = coordinates[0].y;
+      const w = bounding.width || 72;
+      const h = 18;
+      return [
+        {
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: 0, y: y - h / 2 },
+              { x: w, y: y - h / 2 },
+              { x: w, y: y + h / 2 },
+              { x: 0, y: y + h / 2 }
+            ]
+          },
+          styles: {
+            style: 'fill',
+            color: '#ef4444'
+          },
+          ignoreEvent: true
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: w / 2,
+            y,
+            text,
+            align: 'center',
+            baseline: 'middle'
+          },
+          styles: {
+            color: '#ffffff',
+            size: 11,
+            weight: 'bold',
+            family: 'sans-serif'
+          },
+          ignoreEvent: true
+        }
+      ];
+    }
+  });
+
+  // 16. Ligne de Take Profit Backtest (Vert sur le graphique & Badge vert sans texte sur l'axe Y)
+  registerOverlay({
+    name: 'backtestTpLine',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ coordinates, bounding }) => {
+      if (!coordinates.length) return [];
+      const y = coordinates[0].y;
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: 0, y },
+              { x: bounding.width, y }
+            ]
+          },
+          styles: {
+            style: 'dashed',
+            color: '#16a34a',
+            size: 1.5,
+            dashedValue: [6, 4]
+          },
+          ignoreEvent: true
+        }
+      ];
+    },
+    createYAxisFigures: ({ overlay, coordinates, bounding, precision }) => {
+      if (!coordinates.length || !overlay.points?.length) return [];
+      const priceVal = overlay.points[0]?.value;
+      if (priceVal == null || isNaN(priceVal)) return [];
+      const digits = overlay.extendData?.digits ?? precision?.price ?? 4;
+      const text = Number(priceVal).toFixed(digits);
+      const y = coordinates[0].y;
+      const w = bounding.width || 72;
+      const h = 18;
+      return [
+        {
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: 0, y: y - h / 2 },
+              { x: w, y: y - h / 2 },
+              { x: w, y: y + h / 2 },
+              { x: 0, y: y + h / 2 }
+            ]
+          },
+          styles: {
+            style: 'fill',
+            color: '#16a34a'
+          },
+          ignoreEvent: true
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: w / 2,
+            y,
+            text,
+            align: 'center',
+            baseline: 'middle'
+          },
+          styles: {
+            color: '#ffffff',
+            size: 11,
+            weight: 'bold',
+            family: 'sans-serif'
+          },
+          ignoreEvent: true
+        }
+      ];
+    }
+  });
+
+  // 17. Ligne de Coupure Backtest (Orange/Ambre verticale avec tag ciseaux)
+  registerOverlay({
+    name: 'backtestCutLine',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    createPointFigures: ({ coordinates, bounding }) => {
+      if (!coordinates.length) return [];
+      const x = coordinates[0].x;
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x, y: 0 },
+              { x, y: bounding.height }
+            ]
+          },
+          styles: {
+            style: 'dashed',
+            color: '#f59e0b',
+            size: 2,
+            dashedValue: [6, 4]
+          },
+          ignoreEvent: true
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: x + 6,
+            y: 24,
+            text: '✂️ Coupure',
+            align: 'left',
+            baseline: 'top'
+          },
+          styles: {
+            color: '#ffffff',
+            backgroundColor: 'rgba(217, 119, 6, 0.95)',
+            size: 11,
+            weight: 'bold',
+            paddingLeft: 6,
+            paddingRight: 6,
+            paddingTop: 3,
+            paddingBottom: 3,
+            borderRadius: 4
+          },
+          ignoreEvent: true
+        }
+      ];
+    },
+    createXAxisFigures: ({ coordinates, bounding }) => {
+      if (!coordinates.length) return [];
+      const x = coordinates[0].x;
+      const w = 32;
+      return [
+        {
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: x - w / 2, y: 0 },
+              { x: x + w / 2, y: 0 },
+              { x: x + w / 2, y: bounding.height },
+              { x: x - w / 2, y: bounding.height }
+            ]
+          },
+          styles: {
+            style: 'fill',
+            color: '#d97706'
+          },
+          ignoreEvent: true
+        },
+        {
+          type: 'text',
+          attrs: {
+            x,
+            y: bounding.height / 2,
+            text: '✂️ CUT',
+            align: 'center',
+            baseline: 'middle'
+          },
+          styles: {
+            color: '#ffffff',
+            size: 10,
+            weight: 'bold'
+          },
+          ignoreEvent: true
+        }
+      ];
+    }
+  });
+
     customOverlaysRegistered = true;
   } catch (err) {
     console.warn('Erreur lors de l\'enregistrement des indicateurs/overlays personnalisés:', err);

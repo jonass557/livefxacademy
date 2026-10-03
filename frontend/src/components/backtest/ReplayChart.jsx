@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { init, dispose } from 'klinecharts';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
@@ -12,30 +12,34 @@ import {
   ChartErrorBoundary,
 } from './chartShared';
 import {
-  Play, Pause, RotateCcw, SkipForward, Film, Eye, Loader2,
-  Maximize2, Minimize2, ArrowUpCircle, ArrowDownCircle, XCircle,
+  Play, Pause, RotateCcw, SkipForward, SkipBack, Film, Eye, Loader2,
+  Maximize2, Minimize2, ArrowUpCircle, ArrowDownCircle, XCircle, Scissors,
+  Trash2, Plus, Minus, Tag, Check, ChevronDown, ChevronUp, AlertCircle,
 } from 'lucide-react';
 
-const SPEEDS = [
-  { key: 1, label: 'x1', delay: 1000 },
-  { key: 2, label: 'x2', delay: 500 },
-  { key: 5, label: 'x5', delay: 200 },
-  { key: 10, label: 'x10', delay: 100 },
-  { key: 25, label: 'x25', delay: 40 },
+const REPLAY_SPEEDS = [
+  { key: -3, label: '×-3', dir: -1, delay: 180 },
+  { key: -2, label: '×-2', dir: -1, delay: 450 },
+  { key: -1, label: '×-1', dir: -1, delay: 1000 },
+  { key: 1,  label: '×+1', dir: 1,  delay: 1000 },
+  { key: 2,  label: '×+2', dir: 1,  delay: 450 },
+  { key: 3,  label: '×+3', dir: 1,  delay: 180 },
 ];
 
-const PIP_VALUE_PER_LOT = 10; // $ par pip et par lot (standard)
+const ORDER_TYPES = [
+  { key: 'market', label: 'Au Marché' },
+  { key: 'buy_limit', label: 'Buy Limit' },
+  { key: 'sell_limit', label: 'Sell Limit' },
+  { key: 'buy_stop', label: 'Buy Stop' },
+  { key: 'sell_stop', label: 'Sell Stop' },
+];
+
+const PIP_VALUE_PER_LOT = 10; // $ par pip et par lot standard (1.00 lot)
 
 const fmtDateLong = (t) =>
   new Date(t * 1000).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
-const fmt$ = (n) => `${n >= 0 ? '+' : ''}${n.toFixed(2)} $`;
+const fmt$ = (n) => `${n >= 0 ? '+' : ''}${Number(n).toFixed(2)} $`;
 
-/**
- * Simulateur de replay manuel : le graphique rejoue la période délimitée
- * bougie par bougie (de la date de début à la date de fin, arrêt automatique)
- * et le trader prend lui-même ses positions Buy/Sell pour tester sa stratégie.
- * Aucune position n'est prise automatiquement.
- */
 export default function ReplayChart({
   candles, symbolName, timeframe, periodBounds,
   pip = 0.0001, lot = 0.1, initialBalance = 10000,
@@ -45,19 +49,38 @@ export default function ReplayChart({
   const chartRef = useRef(null);
   const timerRef = useRef(null);
   const indexRef = useRef(0);
-  const positionRef = useRef(null);   // { side, entryPrice, entryTime }
+  const cutIndexRef = useRef(null);
+  const isCuttingRef = useRef(false);
+  const hoveredCandleRef = useRef(null);
+
+  const positionRef = useRef(null);         // { id, side, entryPrice, entryTime, lot, sl, tp }
+  const pendingOrdersRef = useRef([]);     // Array<{ id, type, price, lot, sl, tp, createdAtTime }>
   const balanceRef = useRef(initialBalance);
   const indicatorPanesRef = useRef({});
 
   const [mode, setMode] = useState('full');       // 'full' | 'replay'
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(5);
+  const [speed, setSpeed] = useState(1);          // default ×+1
   const [index, setIndex] = useState(0);
-  const [activeIndicators, setActiveIndicators] = useState({});
-  const [fullscreen, setFullscreen] = useFullscreen();
+  const [cutIndex, setCutIndex] = useState(null);
+  const [isCutting, setIsCutting] = useState(false);
+
+  // Positions et Ordres
   const [position, setPosition] = useState(null);
+  const [pendingOrders, setPendingOrders] = useState([]);
   const [balance, setBalance] = useState(initialBalance);
   const [closedTrades, setClosedTrades] = useState(0);
+
+  // Formulaire de prise d'ordre
+  const [orderType, setOrderType] = useState('market');
+  const [orderLot, setOrderLot] = useState(lot || 0.1);
+  const [orderPrice, setOrderPrice] = useState('');
+  const [orderSl, setOrderSl] = useState('');
+  const [orderTp, setOrderTp] = useState('');
+  const [orderPanelOpen, setOrderPanelOpen] = useState(true);
+
+  const [activeIndicators, setActiveIndicators] = useState({});
+  const [fullscreen, setFullscreen] = useFullscreen();
 
   const {
     styles: chartColors,
@@ -71,12 +94,26 @@ export default function ReplayChart({
   const overlayManager = useChartOverlayManager(chartRef);
 
   const klineData = useMemo(
-    () => (candles || []).map((c) => ({ timestamp: c.time * 1000, open: c.open, high: c.high, low: c.low, close: c.close })),
+    () => (candles || []).map((c) => ({
+      timestamp: c.time * 1000,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      time: c.time,
+    })),
     [candles]
   );
   const priceDigits = useMemo(() => detectPriceDigits(candles), [candles]);
 
-  // Bornes du replay : premier / dernier index dans la période délimitée.
+  // Synchronisation lot initial prop
+  useEffect(() => {
+    if (lot && Number(lot) > 0) {
+      setOrderLot(Number(lot));
+    }
+  }, [lot]);
+
+  // Bornes de période
   const { startIdx, endIdx } = useMemo(() => {
     let s = 0, e = (candles?.length || 1) - 1;
     if (candles?.length && periodBounds) {
@@ -90,76 +127,259 @@ export default function ReplayChart({
     return { startIdx: s, endIdx: e };
   }, [candles, periodBounds]);
 
-  // ---- Trading manuel ----
-  const profitOf = (pos, price) => {
-    const diff = (price - pos.entryPrice) * (pos.side === 'buy' ? 1 : -1);
-    return (diff / pip) * PIP_VALUE_PER_LOT * lot;
-  };
+  // Synchronisation des Overlays de Niveaux d'Ordre (Entrée Bleu, SL Rouge, TP Vert)
+  const syncTradingOverlays = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    try {
+      chart.removeOverlay({ groupId: 'order_levels' });
 
-  const annotate = (text, time, price, color) => {
+      // 1. Position active
+      const pos = positionRef.current;
+      if (pos) {
+        chart.createOverlay({
+          name: 'backtestEntryLine',
+          groupId: 'order_levels',
+          lock: true,
+          points: [{ value: pos.entryPrice }],
+          extendData: { digits: priceDigits },
+        });
+        if (pos.sl != null && !isNaN(pos.sl) && pos.sl > 0) {
+          chart.createOverlay({
+            name: 'backtestSlLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: pos.sl }],
+            extendData: { digits: priceDigits },
+          });
+        }
+        if (pos.tp != null && !isNaN(pos.tp) && pos.tp > 0) {
+          chart.createOverlay({
+            name: 'backtestTpLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: pos.tp }],
+            extendData: { digits: priceDigits },
+          });
+        }
+      }
+
+      // 2. Ordres en attente
+      const pOrders = pendingOrdersRef.current || [];
+      for (const ord of pOrders) {
+        chart.createOverlay({
+          name: 'backtestEntryLine',
+          groupId: 'order_levels',
+          lock: true,
+          points: [{ value: ord.price }],
+          extendData: { digits: priceDigits },
+        });
+        if (ord.sl != null && !isNaN(ord.sl) && ord.sl > 0) {
+          chart.createOverlay({
+            name: 'backtestSlLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: ord.sl }],
+            extendData: { digits: priceDigits },
+          });
+        }
+        if (ord.tp != null && !isNaN(ord.tp) && ord.tp > 0) {
+          chart.createOverlay({
+            name: 'backtestTpLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: ord.tp }],
+            extendData: { digits: priceDigits },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('syncTradingOverlays error:', err);
+    }
+  }, [priceDigits]);
+
+  // Calcul du profit flottant ou réalisé
+  const profitOf = useCallback((pos, price) => {
+    if (!pos || price == null) return 0;
+    const diff = (price - pos.entryPrice) * (pos.side === 'buy' ? 1 : -1);
+    return (diff / pip) * PIP_VALUE_PER_LOT * (pos.lot || 0.1);
+  }, [pip]);
+
+  const annotate = useCallback((text, time, price, color) => {
     chartRef.current?.createOverlay({
       name: 'simpleAnnotation', groupId: 'trades', lock: true,
       points: [{ timestamp: time * 1000, value: price }],
       extendData: text, styles: { text: { color } },
     });
-  };
+  }, []);
 
-  const openPosition = (side) => {
-    if (positionRef.current) return;
-    const c = candles[indexRef.current];
-    if (!c) return;
-    const pos = { side, entryPrice: c.close, entryTime: c.time };
-    positionRef.current = pos;
-    setPosition(pos);
-    annotate(side === 'buy' ? `▲ Buy ${lot}` : `▼ Sell ${lot}`, c.time, c.close, side === 'buy' ? '#22c55e' : '#ef4444');
-    chartRef.current?.createOverlay({
-      name: 'priceLine', groupId: 'position', lock: true,
-      points: [{ timestamp: c.time * 1000, value: c.close }],
-      styles: { line: { color: side === 'buy' ? '#22c55e' : '#ef4444', style: 'dashed', size: 1 } },
-    });
-  };
-
-  const closePosition = (price, time) => {
-    const pos = positionRef.current;
-    if (!pos) return;
-    const profit = profitOf(pos, price);
-    balanceRef.current += profit;
-    setBalance(balanceRef.current);
-    positionRef.current = null;
-    setPosition(null);
-    setClosedTrades((n) => n + 1);
-    chartRef.current?.removeOverlay({ groupId: 'position' });
-    annotate(`✕ ${fmt$(profit)}`, time, price, profit >= 0 ? '#22c55e' : '#ef4444');
-    toast[profit >= 0 ? 'success' : 'error'](`Position fermée : ${fmt$(profit)}`);
-  };
-
-  const resetSession = () => {
-    positionRef.current = null;
-    setPosition(null);
-    balanceRef.current = initialBalance;
-    setBalance(initialBalance);
-    setClosedTrades(0);
-    chartRef.current?.removeOverlay({ groupId: 'trades' });
-    chartRef.current?.removeOverlay({ groupId: 'position' });
-  };
-
-  // Lignes verticales délimitant la période (début bleu, fin violet).
-  const drawPeriodBounds = () => {
+  // Délimitation verticale de la période
+  const drawPeriodBounds = useCallback(() => {
     const chart = chartRef.current;
     if (!chart || !periodBounds || !candles?.length) return;
-    chart.removeOverlay({ groupId: 'bounds' });
-    const first = candles[0].time, lastT = candles[candles.length - 1].time;
-    for (const [key, t] of [['start', periodBounds.start], ['end', periodBounds.end]]) {
-      if (t < first || t > lastT) continue;
-      chart.createOverlay({
-        name: 'verticalStraightLine', groupId: 'bounds', lock: true,
-        points: [{ timestamp: t * 1000 }],
-        styles: { line: { color: key === 'start' ? '#3b82f6' : '#a855f7', size: 1, style: 'dashed' } },
-      });
-    }
-  };
+    try {
+      chart.removeOverlay({ groupId: 'bounds' });
+      const first = candles[0].time, lastT = candles[candles.length - 1].time;
+      for (const [key, t] of [['start', periodBounds.start], ['end', periodBounds.end]]) {
+        if (t < first || t > lastT) continue;
+        chart.createOverlay({
+          name: 'verticalStraightLine', groupId: 'bounds', lock: true,
+          points: [{ timestamp: t * 1000 }],
+          styles: { line: { color: key === 'start' ? '#3b82f6' : '#a855f7', size: 1, style: 'dashed' } },
+        });
+      }
+    } catch (_) {}
+  }, [periodBounds, candles]);
 
-  // ---- Initialisation ----
+  // Traitement à chaque nouvelle bougie : exécution ordres limites + SL/TP
+  const processCandleTick = useCallback((candle) => {
+    if (!candle) return;
+    const cLow = candle.low;
+    const cHigh = candle.high;
+    const cTime = candle.time || (candle.timestamp / 1000);
+
+    // 1. Déclenchement des ordres en attente (Pending Orders)
+    const currentOrders = [...pendingOrdersRef.current];
+    let triggeredAny = false;
+
+    for (let i = currentOrders.length - 1; i >= 0; i--) {
+      const ord = currentOrders[i];
+      let triggered = false;
+
+      if (ord.type === 'buy_limit' && cLow <= ord.price) triggered = true;
+      else if (ord.type === 'sell_limit' && cHigh >= ord.price) triggered = true;
+      else if (ord.type === 'buy_stop' && cHigh >= ord.price) triggered = true;
+      else if (ord.type === 'sell_stop' && cLow <= ord.price) triggered = true;
+
+      if (triggered) {
+        if (!positionRef.current) {
+          const side = ord.type.includes('buy') ? 'buy' : 'sell';
+          const newPos = {
+            id: Date.now(),
+            side,
+            entryPrice: ord.price,
+            entryTime: cTime,
+            lot: ord.lot,
+            sl: ord.sl,
+            tp: ord.tp,
+          };
+          positionRef.current = newPos;
+          setPosition(newPos);
+          annotate(
+            `⚡ ${ord.type.replace('_', ' ').toUpperCase()} @ ${ord.price.toFixed(priceDigits)}`,
+            cTime,
+            ord.price,
+            side === 'buy' ? '#22c55e' : '#ef4444'
+          );
+          toast.success(`⚡ Ordre ${ord.type.replace('_', ' ').toUpperCase()} exécuté à ${ord.price.toFixed(priceDigits)}`);
+          currentOrders.splice(i, 1);
+          triggeredAny = true;
+        }
+      }
+    }
+
+    if (triggeredAny) {
+      pendingOrdersRef.current = currentOrders;
+      setPendingOrders(currentOrders);
+    }
+
+    // 2. Détection du Stop Loss et Take Profit sur la position active
+    const pos = positionRef.current;
+    if (pos) {
+      let closed = false;
+      let exitPrice = 0;
+      let isSl = false;
+      let isTp = false;
+
+      if (pos.side === 'buy') {
+        if (pos.sl != null && !isNaN(pos.sl) && pos.sl > 0 && cLow <= pos.sl) {
+          closed = true;
+          exitPrice = pos.sl;
+          isSl = true;
+        } else if (pos.tp != null && !isNaN(pos.tp) && pos.tp > 0 && cHigh >= pos.tp) {
+          closed = true;
+          exitPrice = pos.tp;
+          isTp = true;
+        }
+      } else {
+        // sell
+        if (pos.sl != null && !isNaN(pos.sl) && pos.sl > 0 && cHigh >= pos.sl) {
+          closed = true;
+          exitPrice = pos.sl;
+          isSl = true;
+        } else if (pos.tp != null && !isNaN(pos.tp) && pos.tp > 0 && cLow <= pos.tp) {
+          closed = true;
+          exitPrice = pos.tp;
+          isTp = true;
+        }
+      }
+
+      if (closed) {
+        const profit = profitOf(pos, exitPrice);
+        balanceRef.current += profit;
+        setBalance(balanceRef.current);
+        positionRef.current = null;
+        setPosition(null);
+        setClosedTrades((n) => n + 1);
+
+        annotate(
+          isTp ? `🎯 TP ${fmt$(profit)}` : `🛑 SL ${fmt$(profit)}`,
+          cTime,
+          exitPrice,
+          profit >= 0 ? '#22c55e' : '#ef4444'
+        );
+
+        if (isTp) {
+          toast.success(`🎯 Take Profit touché à ${exitPrice.toFixed(priceDigits)} : ${fmt$(profit)}`);
+        } else {
+          toast.error(`🛑 Stop Loss touché à ${exitPrice.toFixed(priceDigits)} : ${fmt$(profit)}`);
+        }
+      }
+    }
+
+    syncTradingOverlays();
+  }, [annotate, priceDigits, profitOf, syncTradingOverlays]);
+
+  // Exécution de la coupe à une bougie donnée
+  const executeCutAtCandle = useCallback((targetCandle) => {
+    const chart = chartRef.current;
+    if (!chart || !targetCandle || !klineData.length) return;
+
+    const targetTimestamp = targetCandle.timestamp || (targetCandle.time * 1000);
+    const targetIdx = klineData.findIndex((c) => c.timestamp === targetTimestamp);
+    if (targetIdx < 0) return;
+
+    // Troncature du graphique
+    chart.applyNewData(klineData.slice(0, targetIdx + 1));
+    cutIndexRef.current = targetIdx;
+    setCutIndex(targetIdx);
+    indexRef.current = targetIdx;
+    setIndex(targetIdx);
+
+    // Suppression preview et dessin marqueur fixe de coupure
+    chart.removeOverlay({ groupId: 'cut_preview' });
+    chart.removeOverlay({ groupId: 'cut_marker' });
+    chart.createOverlay({
+      name: 'backtestCutLine',
+      groupId: 'cut_marker',
+      lock: true,
+      points: [{ timestamp: targetTimestamp }],
+    });
+
+    isCuttingRef.current = false;
+    setIsCutting(false);
+    setMode('replay');
+    setPlaying(false);
+
+    drawPeriodBounds();
+    syncTradingOverlays();
+
+    toast.success(
+      `✂️ Graphique coupé au ${fmtDateLong(targetTimestamp / 1000)}. Vous pouvez faire votre analyse, puis lancer le Replay.`
+    );
+  }, [drawPeriodBounds, klineData, syncTradingOverlays]);
+
+  // Initialisation du graphique KLineCharts
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !klineData.length) return;
@@ -171,15 +391,51 @@ export default function ReplayChart({
     chart.setPriceVolumePrecision?.(priceDigits, 0);
     chart.applyNewData(klineData);
     drawPeriodBounds();
+
     indexRef.current = klineData.length - 1;
     setIndex(klineData.length - 1);
     setMode('full');
     setPlaying(false);
+    setCutIndex(null);
+    cutIndexRef.current = null;
+    setIsCutting(false);
+    isCuttingRef.current = false;
+
     setActiveIndicators({});
     indicatorPanesRef.current = {};
-    resetSession();
+
+    // Écouteur pour la prévisualisation de la ligne de coupe verticale mobile
+    const crosshairUnsub = chart.subscribeAction('onCrosshairChange', (data) => {
+      if (!isCuttingRef.current) return;
+      if (data?.kLineData?.timestamp) {
+        hoveredCandleRef.current = data.kLineData;
+        chart.removeOverlay({ groupId: 'cut_preview' });
+        chart.createOverlay({
+          name: 'verticalStraightLine',
+          groupId: 'cut_preview',
+          lock: true,
+          points: [{ timestamp: data.kLineData.timestamp }],
+          styles: { line: { color: '#f59e0b', size: 1.5, style: 'dashed', dashedValue: [5, 4] } },
+        });
+      }
+    });
+
+    // Écouteur pour le clic sur une bougie pour exécuter la coupe
+    const candleClickUnsub = chart.subscribeAction('onCandleBarClick', (data) => {
+      if (isCuttingRef.current) {
+        const clicked = data?.data || hoveredCandleRef.current;
+        if (clicked) {
+          executeCutAtCandle(clicked);
+        }
+      }
+    });
+
     return () => {
       unbindMT4?.();
+      try {
+        crosshairUnsub?.();
+        candleClickUnsub?.();
+      } catch (_) {}
       clearInterval(timerRef.current);
       dispose(el);
       chartRef.current = null;
@@ -187,6 +443,14 @@ export default function ReplayChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [klineData]);
 
+  // Clic direct sur le conteneur pour assurer la coupe même si le clic n'atteint pas le corps de la bougie
+  const handleContainerClick = () => {
+    if (isCuttingRef.current && hoveredCandleRef.current) {
+      executeCutAtCandle(hoveredCandleRef.current);
+    }
+  };
+
+  // Redimensionnement
   useEffect(() => {
     const resize = () => chartRef.current?.resize();
     const timer = setTimeout(resize, 60);
@@ -197,81 +461,275 @@ export default function ReplayChart({
       window.removeEventListener('resize', resize);
       window.removeEventListener('orientationchange', resize);
     };
-  }, [fullscreen, activeIndicators]);
+  }, [fullscreen, activeIndicators, orderPanelOpen]);
 
-  // ---- Démarrage du replay : exactement à la date de début ----
-  const enterReplay = () => {
-    const chart = chartRef.current;
-    if (!chart || !klineData.length) return;
-    resetSession();
-    const from = Math.max(startIdx, 0);
-    // Contexte : les bougies de marge avant la date de début.
-    chart.applyNewData(klineData.slice(0, from + 1));
-    drawPeriodBounds();
-    indexRef.current = from;
-    setIndex(from);
-    setMode('replay');
-    setPlaying(true);
+  // Basculer l'outil Coupe
+  const toggleCut = () => {
+    if (isCutting) {
+      setIsCutting(false);
+      isCuttingRef.current = false;
+      chartRef.current?.removeOverlay({ groupId: 'cut_preview' });
+      toast.info('Mode Coupe désactivé');
+    } else {
+      setIsCutting(true);
+      isCuttingRef.current = true;
+      setPlaying(false);
+      toast.info('✂️ Mode Coupe activé : survolez et cliquez sur la bougie souhaitée pour couper le graphique.');
+    }
   };
 
-  // Déclenchement externe (bouton Replay de la barre de réglages).
-  useEffect(() => {
-    if (replaySignal > 0 && klineData.length) enterReplay();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replaySignal]);
-
-  const exitReplay = () => {
-    setPlaying(false);
-    clearInterval(timerRef.current);
+  // Revenir au graphique complet
+  const resetToFull = () => {
     const chart = chartRef.current;
     if (!chart) return;
+    setPlaying(false);
+    clearInterval(timerRef.current);
+    setIsCutting(false);
+    isCuttingRef.current = false;
+    setCutIndex(null);
+    cutIndexRef.current = null;
+
+    chart.removeOverlay({ groupId: 'cut_preview' });
+    chart.removeOverlay({ groupId: 'cut_marker' });
+
     chart.applyNewData(klineData);
     drawPeriodBounds();
     indexRef.current = klineData.length - 1;
     setIndex(klineData.length - 1);
     setMode('full');
+    syncTradingOverlays();
+    toast.info('Affichage complet restauré');
   };
 
+  // Entrer en replay classique depuis la date de début
+  const enterReplay = () => {
+    const chart = chartRef.current;
+    if (!chart || !klineData.length) return;
+    const from = Math.max(startIdx, 0);
+    chart.applyNewData(klineData.slice(0, from + 1));
+    drawPeriodBounds();
+    indexRef.current = from;
+    setIndex(from);
+    setCutIndex(from);
+    cutIndexRef.current = from;
+    setMode('replay');
+    setPlaying(true);
+  };
+
+  // Déclencheur Replay externe
+  useEffect(() => {
+    if (replaySignal > 0 && klineData.length) enterReplay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaySignal]);
+
+  // Boucle de lecture Replay (avancer / reculer selon vitesse choisie)
+  useEffect(() => {
+    if (!playing) return;
+    const currentSpeedObj = REPLAY_SPEEDS.find((s) => s.key === speed) || REPLAY_SPEEDS[3];
+    const delay = currentSpeedObj.delay;
+    const dir = currentSpeedObj.dir;
+
+    timerRef.current = setInterval(() => {
+      const next = indexRef.current + dir;
+
+      if (dir > 0) {
+        // Avance dans le futur
+        if (next > endIdx) {
+          setPlaying(false);
+          toast.info('Fin de la période de replay atteinte');
+          return;
+        }
+        indexRef.current = next;
+        chartRef.current?.updateData(klineData[next]);
+        setIndex(next);
+        processCandleTick(klineData[next]);
+      } else {
+        // Rembobinage dans le passé
+        const minLimit = 0;
+        if (next < minLimit) {
+          setPlaying(false);
+          toast.info('Début de l\'historique atteint');
+          return;
+        }
+        indexRef.current = next;
+        chartRef.current?.applyNewData(klineData.slice(0, next + 1));
+        setIndex(next);
+        drawPeriodBounds();
+        syncTradingOverlays();
+      }
+    }, delay);
+
+    return () => clearInterval(timerRef.current);
+  }, [playing, speed, klineData, endIdx, drawPeriodBounds, processCandleTick, syncTradingOverlays]);
+
+  // Avance pas à pas (1 bougie)
   const stepForward = () => {
     const next = indexRef.current + 1;
-    if (next > endIdx) return;
+    if (next > endIdx) {
+      toast.info('Fin de période atteinte');
+      return;
+    }
     indexRef.current = next;
     chartRef.current?.updateData(klineData[next]);
     setIndex(next);
+    processCandleTick(klineData[next]);
   };
 
-  // ---- Boucle : arrêt automatique à la date de fin ----
-  useEffect(() => {
-    if (!playing) return;
-    const delay = SPEEDS.find((s) => s.key === speed)?.delay ?? 200;
-    timerRef.current = setInterval(() => {
-      const next = indexRef.current + 1;
-      if (next > endIdx) {
-        setPlaying(false);
-        // Fin de période : fermeture automatique de la position restante.
-        if (positionRef.current) {
-          const last = candles[endIdx];
-          closePosition(last.close, last.time);
-        }
-        toast.info('Fin de la période de replay');
+  // Recul pas à pas (1 bougie)
+  const stepBackward = () => {
+    const next = indexRef.current - 1;
+    if (next < 0) {
+      toast.info('Début atteint');
+      return;
+    }
+    indexRef.current = next;
+    chartRef.current?.applyNewData(klineData.slice(0, next + 1));
+    setIndex(next);
+    drawPeriodBounds();
+    syncTradingOverlays();
+  };
+
+  // Recommencer le replay depuis la coupe ou le début
+  const resetReplay = () => {
+    const chart = chartRef.current;
+    if (!chart || !klineData.length) return;
+    setPlaying(false);
+    clearInterval(timerRef.current);
+
+    const from = cutIndexRef.current != null ? cutIndexRef.current : Math.max(startIdx, 0);
+    chart.applyNewData(klineData.slice(0, from + 1));
+    drawPeriodBounds();
+    indexRef.current = from;
+    setIndex(from);
+    toast.info('Replay réinitialisé au point de départ');
+  };
+
+  // Ouvrir un trade au marché (Buy ou Sell avec SL & TP)
+  const handleOpenMarket = (side) => {
+    if (positionRef.current) {
+      toast.error('Une position est déjà ouverte. Clôturez-la avant d\'en ouvrir une nouvelle.');
+      return;
+    }
+    const cur = klineData[indexRef.current];
+    if (!cur) return;
+
+    const entryPrice = cur.close;
+    const parsedLot = Number(orderLot) > 0 ? Number(orderLot) : (lot || 0.1);
+    const parsedSl = orderSl !== '' ? parseFloat(orderSl) : null;
+    const parsedTp = orderTp !== '' ? parseFloat(orderTp) : null;
+
+    if (parsedSl != null && !isNaN(parsedSl)) {
+      if (side === 'buy' && parsedSl >= entryPrice) {
+        toast.error('Pour un Buy, le Stop Loss doit être inférieur au prix d\'entrée.');
         return;
       }
-      indexRef.current = next;
-      chartRef.current?.updateData(klineData[next]);
-      setIndex(next);
-    }, delay);
-    return () => clearInterval(timerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, speed, klineData, endIdx]);
+      if (side === 'sell' && parsedSl <= entryPrice) {
+        toast.error('Pour un Sell, le Stop Loss doit être supérieur au prix d\'entrée.');
+        return;
+      }
+    }
+    if (parsedTp != null && !isNaN(parsedTp)) {
+      if (side === 'buy' && parsedTp <= entryPrice) {
+        toast.error('Pour un Buy, le Take Profit doit être supérieur au prix d\'entrée.');
+        return;
+      }
+      if (side === 'sell' && parsedTp >= entryPrice) {
+        toast.error('Pour un Sell, le Take Profit doit être inférieur au prix d\'entrée.');
+        return;
+      }
+    }
 
-  const seek = (i) => {
-    const chart = chartRef.current;
-    if (!chart) return;
-    i = Math.max(startIdx, Math.min(Number(i), endIdx));
-    chart.applyNewData(klineData.slice(0, i + 1));
-    drawPeriodBounds();
-    indexRef.current = i;
-    setIndex(i);
+    const newPos = {
+      id: Date.now(),
+      side,
+      entryPrice,
+      entryTime: cur.time || (cur.timestamp / 1000),
+      lot: parsedLot,
+      sl: parsedSl,
+      tp: parsedTp,
+    };
+
+    positionRef.current = newPos;
+    setPosition(newPos);
+    annotate(
+      side === 'buy' ? `▲ Buy ${parsedLot}` : `▼ Sell ${parsedLot}`,
+      cur.time || (cur.timestamp / 1000),
+      entryPrice,
+      side === 'buy' ? '#22c55e' : '#ef4444'
+    );
+    syncTradingOverlays();
+    toast.success(`Position ${side.toUpperCase()} ouverte à ${entryPrice.toFixed(priceDigits)}`);
+  };
+
+  // Placer un ordre en attente (Buy Limit, Sell Limit, Buy Stop, Sell Stop avec SL & TP)
+  const handlePlacePendingOrder = () => {
+    if (!orderPrice || isNaN(parseFloat(orderPrice))) {
+      toast.error('Veuillez spécifier un prix valide pour l\'ordre en attente.');
+      return;
+    }
+    const price = parseFloat(orderPrice);
+    const parsedLot = Number(orderLot) > 0 ? Number(orderLot) : (lot || 0.1);
+    const parsedSl = orderSl !== '' ? parseFloat(orderSl) : null;
+    const parsedTp = orderTp !== '' ? parseFloat(orderTp) : null;
+
+    const cur = klineData[indexRef.current];
+    const newOrder = {
+      id: Date.now(),
+      type: orderType,
+      price,
+      lot: parsedLot,
+      sl: parsedSl,
+      tp: parsedTp,
+      createdAtTime: cur?.time || Date.now() / 1000,
+    };
+
+    const nextPending = [...pendingOrdersRef.current, newOrder];
+    pendingOrdersRef.current = nextPending;
+    setPendingOrders(nextPending);
+    syncTradingOverlays();
+    toast.success(`Ordre ${orderType.replace('_', ' ').toUpperCase()} placé à ${price.toFixed(priceDigits)}`);
+  };
+
+  // Annuler un ordre en attente
+  const handleCancelPendingOrder = (id) => {
+    const nextPending = pendingOrdersRef.current.filter((o) => o.id !== id);
+    pendingOrdersRef.current = nextPending;
+    setPendingOrders(nextPending);
+    syncTradingOverlays();
+    toast.info('Ordre en attente annulé');
+  };
+
+  // Fermeture manuelle de position
+  const handleClosePosition = () => {
+    const pos = positionRef.current;
+    if (!pos) return;
+    const cur = klineData[indexRef.current];
+    if (!cur) return;
+    const profit = profitOf(pos, cur.close);
+    balanceRef.current += profit;
+    setBalance(balanceRef.current);
+    positionRef.current = null;
+    setPosition(null);
+    setClosedTrades((n) => n + 1);
+
+    const t = cur.time || (cur.timestamp / 1000);
+    annotate(`✕ ${fmt$(profit)}`, t, cur.close, profit >= 0 ? '#22c55e' : '#ef4444');
+    syncTradingOverlays();
+    toast[profit >= 0 ? 'success' : 'error'](`Position fermée : ${fmt$(profit)}`);
+  };
+
+  // Réinitialiser la session de trading
+  const resetSession = () => {
+    positionRef.current = null;
+    setPosition(null);
+    pendingOrdersRef.current = [];
+    setPendingOrders([]);
+    balanceRef.current = initialBalance;
+    setBalance(initialBalance);
+    setClosedTrades(0);
+    chartRef.current?.removeOverlay({ groupId: 'trades' });
+    chartRef.current?.removeOverlay({ groupId: 'order_levels' });
+    toast.info('Solde et trades réinitialisés');
   };
 
   if (loading) {
@@ -307,15 +765,13 @@ export default function ReplayChart({
     );
   }
 
-  const cur = candles[index];
-  const inReplay = mode === 'replay';
+  const cur = klineData[index] || klineData[klineData.length - 1];
   const floating = position && cur ? profitOf(position, cur.close) : 0;
   const equity = balance + floating;
   const spanTotal = Math.max(endIdx - startIdx, 1);
   const progressPct = Math.round(((Math.min(Math.max(index, startIdx), endIdx) - startIdx) / spanTotal) * 100);
   const digits = priceDigits;
 
-  // z-[60] : au-dessus du bouton menu flottant du sidebar mobile (z-50).
   const wrapClass = fullscreen
     ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
     : 'flex-1 min-h-0 w-full flex flex-col gap-1.5 overflow-hidden';
@@ -324,139 +780,368 @@ export default function ReplayChart({
   return (
     <ChartErrorBoundary>
       <div className={wrapClass}>
-      {/* ==================== BARRE DE CONTRÔLE ==================== */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2" data-chart-toolbar data-replay-controls>
-        {!inReplay ? (
-          <>
-            <Button size="sm" onClick={enterReplay} className="gap-1.5">
-              <Film className="h-4 w-4" /> Replay
-            </Button>
-            <span className="hidden text-xs text-muted-foreground xs:flex items-center gap-2">
-              <span className="inline-block h-2.5 w-0.5 bg-blue-500" /> début
-              <span className="inline-block h-2.5 w-0.5 bg-purple-500" /> fin
-              <span className="hidden lg:inline">— le replay démarre à la date de début et s'arrête à la date de fin.</span>
-            </span>
-          </>
-        ) : (
-          <>
-            <Button size="sm" variant={playing ? 'secondary' : 'default'} onClick={() => setPlaying((p) => !p)} className="gap-1">
-              {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              <span className="hidden xs:inline">{playing ? 'Pause' : 'Reprendre'}</span>
-            </Button>
-            <Button size="sm" variant="outline" onClick={stepForward} title="Bougie suivante">
-              <SkipForward className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="outline" onClick={enterReplay} title="Recommencer (remet le solde à zéro)">
-              <RotateCcw className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-0.5 sm:gap-1 ml-1">
-              {SPEEDS.map((s) => (
-                <Button key={s.key} size="sm" variant={speed === s.key ? 'default' : 'ghost'} className="px-1.5 h-7 text-xs sm:px-2" onClick={() => setSpeed(s.key)}>
+        {/* ==================== BARRE DE CONTRÔLE (TOOLBAR) ==================== */}
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2" data-chart-toolbar data-replay-controls>
+          {/* 1. Bouton CUT (Couper) */}
+          <Button
+            size="sm"
+            variant={isCutting ? 'destructive' : cutIndex !== null ? 'secondary' : 'default'}
+            onClick={toggleCut}
+            className={`gap-1.5 font-semibold transition-all ${
+              isCutting ? 'animate-pulse ring-2 ring-destructive' : cutIndex !== null ? 'border-amber-500/50 text-amber-500' : ''
+            }`}
+            title={isCutting ? 'Cliquez sur une bougie pour couper ou ré-appuyez pour annuler' : 'Activer la coupe mobile du graphique'}
+          >
+            <Scissors className="h-4 w-4" />
+            <span>{isCutting ? 'Annuler' : cutIndex !== null ? 'Recouper' : 'Couper'}</span>
+          </Button>
+
+          {/* 2. Boutons VITESSES (×-3; ×-2; ×-1; ×+1; ×+2; ×+3) */}
+          <div className="flex items-center gap-0.5 rounded-md border bg-muted/40 p-0.5" title="Vitesse et direction de rejeu">
+            {REPLAY_SPEEDS.map((s) => {
+              const isSelected = speed === s.key;
+              const isNegative = s.dir < 0;
+              return (
+                <Button
+                  key={s.key}
+                  size="sm"
+                  variant={isSelected ? 'default' : 'ghost'}
+                  className={`h-7 px-1.5 text-xs font-bold tabular-nums sm:px-2 ${
+                    isSelected
+                      ? isNegative
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
+                        : 'bg-primary text-primary-foreground shadow-xs'
+                      : isNegative
+                      ? 'text-amber-500 hover:text-amber-400 hover:bg-amber-500/10'
+                      : 'text-muted-foreground'
+                  }`}
+                  onClick={() => setSpeed(s.key)}
+                  title={isNegative ? `Rembobiner en arrière (${s.label})` : `Avancer (${s.label})`}
+                >
                   {s.label}
                 </Button>
+              );
+            })}
+          </div>
+
+          {/* 3. Bouton PLAY / PAUSE */}
+          <Button
+            size="sm"
+            variant={playing ? 'secondary' : 'default'}
+            onClick={() => {
+              if (!playing && mode === 'full' && cutIndex === null) {
+                enterReplay();
+              } else {
+                setPlaying((p) => !p);
+              }
+            }}
+            className="gap-1.5 font-bold px-3 shadow-xs"
+          >
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            <span>{playing ? 'Pause' : 'Play'}</span>
+          </Button>
+
+          {/* Bougie précédente & Bougie suivante */}
+          <Button size="sm" variant="outline" onClick={stepBackward} title="Reculer d'une bougie" className="px-2 h-8">
+            <SkipBack className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="outline" onClick={stepForward} title="Avancer d'une bougie" className="px-2 h-8">
+            <SkipForward className="h-4 w-4" />
+          </Button>
+
+          {/* Recommencer */}
+          <Button size="sm" variant="outline" onClick={resetReplay} title="Recommencer depuis le point de départ" className="px-2 h-8">
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+
+          {/* Vue complète (si coupé) */}
+          {cutIndex !== null && (
+            <Button size="sm" variant="ghost" onClick={resetToFull} className="gap-1 text-xs h-8">
+              <Eye className="h-3.5 w-3.5" /> <span className="hidden md:inline">Vue complète</span>
+            </Button>
+          )}
+
+          {/* Informations Paire & Timeframe */}
+          <span className="text-xs text-muted-foreground ml-auto hidden lg:inline font-mono">
+            {symbolName} • {timeframe}
+          </span>
+
+          {/* Contrôles du graphique */}
+          <ChartZoomControls chartRef={chartRef} />
+          <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
+          <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={indicatorPanesRef} />
+          <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
+          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'} className="px-2 h-8">
+            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        {/* Message d'aide si Coupe activée */}
+        {isCutting && (
+          <div className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-xs text-amber-500 animate-fadeIn">
+            <Scissors className="h-4 w-4 shrink-0" />
+            <span>Déplacez le curseur sur le graphique et cliquez sur la bougie où vous voulez couper l'historique pour commencer l'analyse.</span>
+          </div>
+        )}
+
+        {/* ==================== PANNEAU DE TRADING & ORDRES ==================== */}
+        <div className={`rounded-lg border bg-card transition-all ${fullscreen ? 'p-2 space-y-1.5' : 'p-2.5 space-y-2'}`}>
+          {/* Ligne 1 : Date, Progression, Solde, Équité & Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1.5">
+            <div className="flex items-center gap-2">
+              <p className="font-semibold tabular-nums text-xs sm:text-sm font-mono">
+                📅 {cur?.time ? fmtDateLong(cur.time) : '—'}
+              </p>
+              <span className="text-xs text-muted-foreground tabular-nums">({progressPct} %)</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span>Solde <b className="text-foreground tabular-nums">{balance.toFixed(2)} $</b></span>
+              <span>Équité <b className={`tabular-nums ${equity >= initialBalance ? 'text-green-500' : 'text-red-500'}`}>{equity.toFixed(2)} $</b></span>
+              <span>Trades <b className="text-foreground">{closedTrades}</b></span>
+              <button
+                onClick={() => setOrderPanelOpen((o) => !o)}
+                className="text-xs text-primary hover:underline flex items-center gap-0.5 ml-1"
+                title="Masquer/Afficher les options d'ordre"
+              >
+                {orderPanelOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {orderPanelOpen ? 'Masquer' : 'Ordres'}
+              </button>
+            </div>
+          </div>
+
+          {/* Ligne 2 : Position active (si ouverte) */}
+          {position && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/60 p-2 border border-primary/20">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className={`px-2 py-0.5 rounded font-bold uppercase text-[11px] ${position.side === 'buy' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                  {position.side} {position.lot}
+                </span>
+                <span>Entrée : <b className="font-mono text-blue-500">{position.entryPrice.toFixed(digits)}</b></span>
+                {position.sl && <span>SL : <b className="font-mono text-red-500">{Number(position.sl).toFixed(digits)}</b></span>}
+                {position.tp && <span>TP : <b className="font-mono text-green-500">{Number(position.tp).toFixed(digits)}</b></span>}
+                <span className="ml-1 font-semibold">
+                  P&L : <span className={`tabular-nums ${floating >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fmt$(floating)}</span>
+                </span>
+              </div>
+              <Button size="sm" variant="destructive" onClick={handleClosePosition} className="h-7 px-2.5 text-xs gap-1 ml-auto">
+                <XCircle className="h-3.5 w-3.5" /> Fermer Position
+              </Button>
+            </div>
+          )}
+
+          {/* Ligne 3 : Ordres en attente (Pending Orders) */}
+          {pendingOrders.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase">Ordres en attente :</span>
+              {pendingOrders.map((ord) => (
+                <div key={ord.id} className="inline-flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-0.5 text-xs font-mono">
+                  <span className="font-bold text-primary">{ord.type.replace('_', ' ').toUpperCase()}</span>
+                  <span>{ord.lot} @ {ord.price.toFixed(digits)}</span>
+                  {ord.sl && <span className="text-red-500">SL {ord.sl.toFixed(digits)}</span>}
+                  {ord.tp && <span className="text-green-500">TP {ord.tp.toFixed(digits)}</span>}
+                  <button
+                    onClick={() => handleCancelPendingOrder(ord.id)}
+                    className="text-muted-foreground hover:text-destructive p-0.5 rounded"
+                    title="Annuler l'ordre"
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
             </div>
-            <Button size="sm" variant="ghost" onClick={exitReplay} className="gap-1 hidden sm:flex">
-              <Eye className="h-4 w-4" /> Vue complète
-            </Button>
-          </>
-        )}
-        <span className="text-xs text-muted-foreground ml-auto hidden lg:inline">
-          {symbolName} • {timeframe}
-        </span>
-        <ChartZoomControls chartRef={chartRef} />
-        <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
-        <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={indicatorPanesRef} />
-        <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
-        <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'}>
-          {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </Button>
-      </div>
+          )}
 
-      {/* ==================== TRADING MANUEL + DATE (replay) ==================== */}
-      {inReplay && (
-        <div className={`rounded-lg border bg-card ${fullscreen ? 'px-2 py-1 space-y-1' : 'p-2 space-y-2 sm:p-3'}`}>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className={`font-semibold tabular-nums ${fullscreen ? 'text-sm' : 'text-sm sm:text-base'}`}>
-              📅 {cur ? fmtDateLong(cur.time) : '—'}
-            </p>
-            <span className="text-xs text-muted-foreground tabular-nums">({progressPct} %)</span>
-            <div className="flex items-center gap-1.5 ml-auto sm:gap-2">
-              {!position ? (
-                <>
-                  <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700 text-white px-2 sm:px-3" onClick={() => openPosition('buy')}>
-                    <ArrowUpCircle className="h-4 w-4" /> <span className="hidden xs:inline">Buy</span>
+          {/* Ligne 4 : Formulaire de prise d'ordre */}
+          {orderPanelOpen && (
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+              {/* Sélecteur de Type d'Ordre */}
+              <div className="flex items-center gap-0.5 rounded-md border bg-muted/30 p-0.5">
+                {ORDER_TYPES.map((t) => (
+                  <Button
+                    key={t.key}
+                    size="sm"
+                    variant={orderType === t.key ? 'default' : 'ghost'}
+                    className={`h-7 px-2 text-[11px] font-medium ${orderType === t.key ? 'shadow-xs' : ''}`}
+                    onClick={() => {
+                      setOrderType(t.key);
+                      if (t.key !== 'market' && !orderPrice && cur) {
+                        setOrderPrice(cur.close.toFixed(digits));
+                      }
+                    }}
+                  >
+                    {t.label}
                   </Button>
-                  <Button size="sm" className="gap-1 bg-red-600 hover:bg-red-700 text-white px-2 sm:px-3" onClick={() => openPosition('sell')}>
-                    <ArrowDownCircle className="h-4 w-4" /> <span className="hidden xs:inline">Sell</span>
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" variant="outline" className="gap-1" onClick={() => cur && closePosition(cur.close, cur.time)}>
-                  <XCircle className="h-4 w-4" />
-                  <span className="hidden xs:inline">Fermer</span> {position.side === 'buy' ? 'Buy' : 'Sell'}
-                  <span className={floating >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{fmt$(floating)}</span>
-                </Button>
+                ))}
+              </div>
+
+              {/* Champ Prix (si ordre en attente) */}
+              {orderType !== 'market' && (
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground font-semibold">Prix :</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={orderPrice}
+                    onChange={(e) => setOrderPrice(e.target.value)}
+                    placeholder="Prix déclenchement"
+                    className="h-7 w-24 rounded border bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
               )}
+
+              {/* Champ Lot */}
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground font-semibold">Lot :</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={orderLot}
+                  onChange={(e) => setOrderLot(e.target.value)}
+                  className="h-7 w-16 rounded border bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              {/* Champ Stop Loss (SL) */}
+              <div className="flex items-center gap-1">
+                <span className="text-red-500 font-bold">SL :</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={orderSl}
+                  onChange={(e) => setOrderSl(e.target.value)}
+                  placeholder="Prix SL"
+                  className="h-7 w-22 rounded border border-red-500/40 bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-red-500"
+                />
+                {orderSl && (
+                  <button onClick={() => setOrderSl('')} className="text-muted-foreground hover:text-foreground text-[10px]" title="Effacer SL">
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Champ Take Profit (TP) */}
+              <div className="flex items-center gap-1">
+                <span className="text-green-500 font-bold">TP :</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={orderTp}
+                  onChange={(e) => setOrderTp(e.target.value)}
+                  placeholder="Prix TP"
+                  className="h-7 w-22 rounded border border-green-500/40 bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+                {orderTp && (
+                  <button onClick={() => setOrderTp('')} className="text-muted-foreground hover:text-foreground text-[10px]" title="Effacer TP">
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Boutons d'Action */}
+              <div className="flex items-center gap-1.5 ml-auto">
+                {orderType === 'market' ? (
+                  <>
+                    <Button
+                      size="sm"
+                      className="h-7 gap-1 bg-green-600 hover:bg-green-700 text-white px-3 font-bold"
+                      onClick={() => handleOpenMarket('buy')}
+                      disabled={!!position}
+                    >
+                      <ArrowUpCircle className="h-3.5 w-3.5" /> Buy {cur ? cur.close.toFixed(digits) : ''}
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 gap-1 bg-red-600 hover:bg-red-700 text-white px-3 font-bold"
+                      onClick={() => handleOpenMarket('sell')}
+                      disabled={!!position}
+                    >
+                      <ArrowDownCircle className="h-3.5 w-3.5" /> Sell {cur ? cur.close.toFixed(digits) : ''}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    className={`h-7 px-3 font-bold ${
+                      orderType.includes('buy') ? 'bg-primary hover:bg-primary/90 text-primary-foreground' : 'bg-amber-600 hover:bg-amber-700 text-white'
+                    }`}
+                    onClick={handlePlacePendingOrder}
+                  >
+                    Placer {orderType.replace('_', ' ').toUpperCase()}
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:gap-x-4">
-            <span>Solde <b className="text-foreground tabular-nums">{balance.toFixed(2)} $</b></span>
-            <span>Équité <b className={`tabular-nums ${equity >= initialBalance ? 'text-green-500' : 'text-red-500'}`}>{equity.toFixed(2)} $</b></span>
-            {position && <span className="hidden sm:inline">Position <b className={position.side === 'buy' ? 'text-green-500' : 'text-red-500'}>{position.side.toUpperCase()} {lot}</b> @ {position.entryPrice.toFixed(digits)}</span>}
-            <span>Trades <b className="text-foreground">{closedTrades}</b></span>
-          </div>
+          )}
+
+          {/* Curseur de progression temporelle */}
           <input
-            type="range" min={startIdx} max={endIdx} value={Math.min(Math.max(index, startIdx), endIdx)}
-            onChange={(e) => seek(e.target.value)}
+            type="range"
+            min={startIdx}
+            max={endIdx}
+            value={Math.min(Math.max(index, startIdx), endIdx)}
+            onChange={(e) => {
+              const i = Number(e.target.value);
+              const chart = chartRef.current;
+              if (!chart) return;
+              chart.applyNewData(klineData.slice(0, i + 1));
+              drawPeriodBounds();
+              indexRef.current = i;
+              setIndex(i);
+              syncTradingOverlays();
+            }}
             className="w-full h-1.5 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
           />
         </div>
-      )}
 
-      {/* ==================== GRAPHIQUE ==================== */}
-      <div
-        className="relative flex-1 min-h-[350px] w-full rounded-none border-0 overflow-hidden transition-colors"
-        style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
-        data-chart-container
-      >
-        <ChartStyleSettingsModal
-          open={styleModalOpen}
-          onClose={() => setStyleModalOpen(false)}
-          styles={chartColors}
-          onApplyStyles={applyStyles}
-          onApplyPreset={applyPreset}
-          onReset={resetDefault}
-        />
+        {/* ==================== CONTENEUR DU GRAPHIQUE ==================== */}
+        <div
+          className={`relative flex-1 min-h-[350px] w-full rounded-none border-0 overflow-hidden transition-colors ${
+            isCutting ? 'cursor-crosshair' : ''
+          }`}
+          style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
+          data-chart-container
+          onClick={handleContainerClick}
+        >
+          <ChartStyleSettingsModal
+            open={styleModalOpen}
+            onClose={() => setStyleModalOpen(false)}
+            styles={chartColors}
+            onApplyStyles={applyStyles}
+            onApplyPreset={applyPreset}
+            onReset={resetDefault}
+          />
 
-        {/* Barre d'action contextuelle au clic sur un outil de dessin (Suppression rapide) */}
-        <SelectedOverlayBar
-          overlay={overlayManager.selectedOverlay}
-          onDelete={overlayManager.deleteSelected}
-          onDeselect={() => overlayManager.setSelectedOverlay(null)}
-        />
+          <SelectedOverlayBar
+            overlay={overlayManager.selectedOverlay}
+            onDelete={overlayManager.deleteSelected}
+            onDeselect={() => overlayManager.setSelectedOverlay(null)}
+          />
 
-        <div className="pointer-events-none absolute left-1 top-1 z-20 flex items-center gap-2 rounded-md bg-background/90 backdrop-blur-sm border px-2 py-1 shadow-sm sm:left-2 sm:top-2">
-          <div>
-            <p className="text-[10px] font-semibold text-primary sm:text-xs leading-none mb-0.5">
-              {symbolName} <span className="text-foreground">{timeframe}</span>
-            </p>
-            {cur && typeof cur.close === 'number' && typeof cur.open === 'number' && (
-              <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px] leading-tight">
-                O {cur.open.toFixed(digits)} H {(cur.high ?? cur.open).toFixed(digits)} L {(cur.low ?? cur.close).toFixed(digits)}{' '}
-                <span className={cur.close >= cur.open ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
-                  C {cur.close.toFixed(digits)}
-                </span>
+          {/* En-tête flottant du graphique */}
+          <div className="pointer-events-none absolute left-1 top-1 z-20 flex items-center gap-2 rounded-md bg-background/90 backdrop-blur-sm border px-2 py-1 shadow-sm sm:left-2 sm:top-2">
+            <div>
+              <p className="text-[10px] font-semibold text-primary sm:text-xs leading-none mb-0.5">
+                {symbolName} <span className="text-foreground">{timeframe}</span>
               </p>
-            )}
+              {cur && typeof cur.close === 'number' && typeof cur.open === 'number' && (
+                <p className="text-[9px] tabular-nums text-muted-foreground sm:text-[11px] leading-tight">
+                  O {cur.open.toFixed(digits)} H {(cur.high ?? cur.open).toFixed(digits)} L {(cur.low ?? cur.close).toFixed(digits)}{' '}
+                  <span className={cur.close >= cur.open ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
+                    C {cur.close.toFixed(digits)}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div className="h-6 w-px bg-border mx-0.5 hidden xs:block" />
+            <CandleCountdownBadge timeframe={timeframe} referenceTime={cur?.time ? cur.time * 1000 : null} />
           </div>
-          <div className="h-6 w-px bg-border mx-0.5 hidden xs:block" />
-          <CandleCountdownBadge timeframe={timeframe} referenceTime={cur?.time ? cur.time * 1000 : null} />
+
+          <div ref={containerRef} className="w-full h-full" />
+          <ChartWatermark />
         </div>
-        <div ref={containerRef} className="w-full h-full" />
-        <ChartWatermark />
       </div>
-    </div>
     </ChartErrorBoundary>
   );
 }
