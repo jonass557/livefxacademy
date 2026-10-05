@@ -122,6 +122,27 @@ export function saveStoredChartStyles(styles) {
   } catch (_) {}
 }
 
+export function hexToRgba(color, alpha = 0.2) {
+  if (!color) return `rgba(59, 130, 246, ${alpha})`;
+  if (color.startsWith('rgba')) {
+    return color.replace(/[\d.]+\)$/, `${alpha})`);
+  }
+  if (color.startsWith('rgb(')) {
+    return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+  }
+  let hex = color.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex.split('').map((c) => c + c).join('');
+  }
+  if (hex.length === 6) {
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return color;
+}
+
 export function buildKLineStyles(settings = {}) {
   const s = { ...DEFAULT_CHART_PRESETS.tradingview_dark, ...settings };
   return {
@@ -169,12 +190,12 @@ export function buildKLineStyles(settings = {}) {
       point: {
         color: '#2563eb',
         borderColor: '#ffffff',
-        borderSize: 2.5,
-        radius: 7.5,
+        borderSize: 1.5,
+        radius: 4,
         activeColor: '#ef4444',
         activeBorderColor: '#ffffff',
-        activeBorderSize: 3,
-        activeRadius: 11,
+        activeBorderSize: 2,
+        activeRadius: 5.5,
       },
       line: {
         style: 'solid',
@@ -277,7 +298,64 @@ let customOverlaysRegistered = false;
 export function ensureCustomOverlaysAndIndicators() {
   if (customOverlaysRegistered) return;
   try {
-  // 0. Trajectoire / Path façon TradingView (multi-segments consécutifs avec flèche de fin)
+  // 0. Segment / Ligne de tendance personnalisée avec large zone de capture tactile pour mobile
+  registerOverlay({
+    name: 'segment',
+    totalStep: 3,
+    needDefaultPointFigure: true,
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 2) return [];
+      const [p1, p2] = coordinates;
+      const lineColor = overlay?.styles?.line?.color || '#3b82f6';
+      const lineSize = overlay?.styles?.line?.size || 2;
+      const lineStyle = overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.line?.dashedValue || (lineStyle === 'dashed' ? [6, 4] : undefined);
+
+      const figures = [
+        {
+          type: 'line',
+          attrs: { coordinates: [p1, p2] },
+          styles: {
+            color: lineColor,
+            size: lineSize,
+            style: lineStyle,
+            dashedValue,
+          },
+        },
+      ];
+
+      // Couloir tactile invisible élargi (28px de large) pour attraper/sélectionner très facilement la ligne au doigt
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.hypot(dx, dy);
+      if (len > 0) {
+        const ux = (-dy / len) * 14;
+        const uy = (dx / len) * 14;
+        figures.push({
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: p1.x + ux, y: p1.y + uy },
+              { x: p2.x + ux, y: p2.y + uy },
+              { x: p2.x - ux, y: p2.y - uy },
+              { x: p1.x - ux, y: p1.y - uy },
+            ],
+          },
+          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+        });
+      }
+
+      // Cibles tactiles invisibles élargies sur les deux extrémités
+      figures.push(
+        { type: 'circle', attrs: { x: p1.x, y: p1.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: p2.x, y: p2.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
+      );
+
+      return figures;
+    },
+  });
+
+  // 1. Trajectoire / Path façon TradingView (multi-segments consécutifs avec flèche de fin)
   registerOverlay({
     name: 'path',
     totalStep: 30,
@@ -302,6 +380,41 @@ export function ensureCustomOverlaysAndIndicators() {
         },
       ];
 
+      // Couloirs tactiles invisibles élargis pour manipuler chaque segment au doigt
+      for (let i = 1; i < coordinates.length; i++) {
+        const pA = coordinates[i - 1];
+        const pB = coordinates[i];
+        const dx = pB.x - pA.x;
+        const dy = pB.y - pA.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 0) {
+          const ux = (-dy / len) * 14;
+          const uy = (dx / len) * 14;
+          figures.push({
+            type: 'polygon',
+            attrs: {
+              coordinates: [
+                { x: pA.x + ux, y: pA.y + uy },
+                { x: pB.x + ux, y: pB.y + uy },
+                { x: pB.x - ux, y: pB.y - uy },
+                { x: pA.x - ux, y: pA.y - uy },
+              ],
+            },
+            styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+          });
+        }
+      }
+
+      // Cibles tactiles invisibles sur chaque sommet
+      coordinates.forEach((pt) => {
+        figures.push({
+          type: 'circle',
+          attrs: { x: pt.x, y: pt.y, r: 18 },
+          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+        });
+      });
+
+      // Flèche terminale orientée
       if (coordinates.length >= 2) {
         const p1 = coordinates[coordinates.length - 2];
         const p2 = coordinates[coordinates.length - 1];
@@ -329,29 +442,56 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
+  // 2. Rectangle / Zone avec couleur dynamique en direct & saisie tactile facilitée
   registerOverlay({
     name: 'rect',
     totalStep: 3,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
-      if (coordinates.length < 2) return [];
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 2) return [];
       const [a, b] = coordinates;
-      return [{
-        type: 'polygon',
-        attrs: { coordinates: [{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }] },
-        styles: { style: 'stroke_fill', color: 'rgba(59,130,246,0.15)', borderColor: '#3b82f6', borderSize: 1 },
-      }];
+      const strokeColor = overlay?.styles?.polygon?.borderColor || overlay?.styles?.rect?.borderColor || overlay?.styles?.line?.color || '#3b82f6';
+      const strokeSize = overlay?.styles?.polygon?.borderSize || overlay?.styles?.rect?.borderSize || overlay?.styles?.line?.size || 1.5;
+      const strokeStyle = overlay?.styles?.polygon?.borderStyle || overlay?.styles?.rect?.borderStyle || overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.polygon?.borderDashedValue || overlay?.styles?.rect?.borderDashedValue || (strokeStyle === 'dashed' ? [6, 4] : undefined);
+      const fillColor = overlay?.styles?.polygon?.color || overlay?.styles?.rect?.color || hexToRgba(strokeColor, 0.18);
+
+      const figures = [
+        {
+          type: 'polygon',
+          attrs: { coordinates: [{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }] },
+          styles: {
+            style: 'stroke_fill',
+            color: fillColor,
+            borderColor: strokeColor,
+            borderSize: strokeSize,
+            borderStyle: strokeStyle,
+            borderDashedValue: dashedValue,
+          },
+        },
+      ];
+
+      // Cibles tactiles invisibles sur les coins pour étirer le rectangle au doigt sur mobile
+      figures.push(
+        { type: 'circle', attrs: { x: a.x, y: a.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: b.x, y: a.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: b.x, y: b.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: a.x, y: b.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
+      );
+
+      return figures;
     },
   });
 
-  // 2. Texte / Annotation
+  // 3. Texte / Annotation
   registerOverlay({
     name: 'text',
     totalStep: 2,
     needDefaultPointFigure: true,
     createPointFigures: ({ coordinates, overlay }) => {
-      if (coordinates.length < 1) return [];
+      if (!coordinates || coordinates.length < 1) return [];
       const text = typeof overlay.extendData === 'string' ? overlay.extendData : (overlay.extendData?.text || 'Note');
+      const borderColor = overlay?.styles?.text?.borderColor || overlay?.styles?.line?.color || '#3b82f6';
       return [{
         type: 'text',
         attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text, align: 'left', baseline: 'bottom' },
@@ -365,7 +505,7 @@ export function ensureCustomOverlaysAndIndicators() {
           paddingTop: 3,
           paddingBottom: 3,
           backgroundColor: 'rgba(31, 41, 55, 0.85)',
-          borderColor: '#3b82f6',
+          borderColor: borderColor,
           borderSize: 1,
           borderRadius: 4,
         },
@@ -373,65 +513,76 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
-  // 3. Arrow (Flèche orientée)
+  // 4. Arrow (Flèche orientée)
   registerOverlay({
     name: 'arrow',
     totalStep: 3,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
-      if (coordinates.length < 2) return [];
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 2) return [];
       const [p1, p2] = coordinates;
+      const color = overlay?.styles?.line?.color || '#3b82f6';
+      const size = overlay?.styles?.line?.size || 2;
+      const lineStyle = overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.line?.dashedValue || (lineStyle === 'dashed' ? [6, 4] : undefined);
       const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const headLen = 14;
+      const headLen = Math.max(14, size * 5);
       const w1 = { x: p2.x - headLen * Math.cos(angle - Math.PI / 6), y: p2.y - headLen * Math.sin(angle - Math.PI / 6) };
       const w2 = { x: p2.x - headLen * Math.cos(angle + Math.PI / 6), y: p2.y - headLen * Math.sin(angle + Math.PI / 6) };
       return [
-        { type: 'line', attrs: { coordinates: [p1, p2] }, styles: { size: 2, color: '#3b82f6' } },
-        { type: 'polygon', attrs: { coordinates: [p2, w1, w2] }, styles: { style: 'fill', color: '#3b82f6' } },
+        { type: 'line', attrs: { coordinates: [p1, p2] }, styles: { size, color, style: lineStyle, dashedValue } },
+        { type: 'polygon', attrs: { coordinates: [p2, w1, w2] }, styles: { style: 'fill', color } },
+        { type: 'circle', attrs: { x: p1.x, y: p1.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: p2.x, y: p2.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
       ];
     },
   });
 
-  // 4. Arrow Marker (Marqueur flèche)
+  // 5. Arrow Marker (Marqueur flèche)
   registerOverlay({
     name: 'arrowMarker',
     totalStep: 2,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
-      if (coordinates.length < 1) return [];
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 1) return [];
       const p = coordinates[0];
+      const color = overlay?.styles?.line?.color || '#3b82f6';
       return [
-        { type: 'circle', attrs: { x: p.x, y: p.y - 20, r: 8 }, styles: { style: 'fill', color: '#3b82f6' } },
-        { type: 'line', attrs: { coordinates: [{ x: p.x, y: p.y - 12 }, { x: p.x, y: p.y - 2 }] }, styles: { size: 2, color: '#3b82f6' } },
-        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y }, { x: p.x - 5, y: p.y - 6 }, { x: p.x + 5, y: p.y - 6 }] }, styles: { style: 'fill', color: '#3b82f6' } },
+        { type: 'circle', attrs: { x: p.x, y: p.y - 20, r: 8 }, styles: { style: 'fill', color } },
+        { type: 'line', attrs: { coordinates: [{ x: p.x, y: p.y - 12 }, { x: p.x, y: p.y - 2 }] }, styles: { size: 2, color } },
+        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y }, { x: p.x - 5, y: p.y - 6 }, { x: p.x + 5, y: p.y - 6 }] }, styles: { style: 'fill', color } },
       ];
     },
   });
 
-  // 5. Arrow Up (Signal Haussier ▲)
+  // 6. Arrow Up (Signal Haussier ▲)
   registerOverlay({
     name: 'arrowUp',
     totalStep: 2,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
-      if (coordinates.length < 1) return [];
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 1) return [];
       const p = coordinates[0];
+      const color = overlay?.styles?.line?.color || overlay?.styles?.polygon?.borderColor || '#22c55e';
       return [
-        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y - 16 }, { x: p.x - 8, y: p.y }, { x: p.x + 8, y: p.y }] }, styles: { style: 'fill', color: '#22c55e' } },
+        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y - 16 }, { x: p.x - 8, y: p.y }, { x: p.x + 8, y: p.y }] }, styles: { style: 'fill', color } },
+        { type: 'circle', attrs: { x: p.x, y: p.y - 8, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
       ];
     },
   });
 
-  // 6. Arrow Down (Signal Baissier ▼)
+  // 7. Arrow Down (Signal Baissier ▼)
   registerOverlay({
     name: 'arrowDown',
     totalStep: 2,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
-      if (coordinates.length < 1) return [];
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 1) return [];
       const p = coordinates[0];
+      const color = overlay?.styles?.line?.color || overlay?.styles?.polygon?.borderColor || '#ef4444';
       return [
-        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y + 16 }, { x: p.x - 8, y: p.y }, { x: p.x + 8, y: p.y }] }, styles: { style: 'fill', color: '#ef4444' } },
+        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y + 16 }, { x: p.x - 8, y: p.y }, { x: p.x + 8, y: p.y }] }, styles: { style: 'fill', color } },
+        { type: 'circle', attrs: { x: p.x, y: p.y + 8, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
       ];
     },
   });
@@ -488,6 +639,9 @@ export function ensureCustomOverlaysAndIndicators() {
           attrs: { x: left + 6, y: pEntry.y - 4, text: `Entrée : ${entryPrice.toFixed(dec)}` },
           styles: { color: '#93c5fd', size: 11 },
         },
+        { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
       ];
     },
   });
@@ -544,6 +698,9 @@ export function ensureCustomOverlaysAndIndicators() {
           attrs: { x: left + 6, y: pEntry.y - 4, text: `Entrée : ${entryPrice.toFixed(dec)}` },
           styles: { color: '#93c5fd', size: 11 },
         },
+        { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
       ];
     },
   });
@@ -555,11 +712,13 @@ export function ensureCustomOverlaysAndIndicators() {
     performEventMoveForDrawing: ({ points, performPoint }) => {
       points.push(performPoint);
     },
-    createPointFigures: ({ coordinates }) => {
+    createPointFigures: ({ coordinates, overlay }) => {
+      const color = overlay?.styles?.line?.color || '#f59e0b';
+      const size = overlay?.styles?.line?.size || 2.5;
       return [{
         type: 'line',
         attrs: { coordinates },
-        styles: { size: 2, color: '#f59e0b' },
+        styles: { size, color },
       }];
     },
   });
@@ -569,17 +728,23 @@ export function ensureCustomOverlaysAndIndicators() {
     name: 'elliottImpulse',
     totalStep: 7,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
+    createPointFigures: ({ coordinates, overlay }) => {
       if (coordinates.length < 2) return [];
       const labels = ['(0)', '(1)', '(2)', '(3)', '(4)', '(5)'];
+      const lineColor = overlay?.styles?.line?.color || '#eab308';
       const figures = [
-        { type: 'line', attrs: { coordinates }, styles: { size: 2, color: '#eab308' } },
+        { type: 'line', attrs: { coordinates }, styles: { size: 2, color: lineColor } },
       ];
       coordinates.forEach((pt, idx) => {
         figures.push({
           type: 'text',
           attrs: { x: pt.x, y: pt.y - 12, text: labels[idx] || `(${idx})`, align: 'center', baseline: 'middle' },
-          styles: { color: '#000000', size: 11, weight: 'bold', backgroundColor: '#eab308', borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
+          styles: { color: '#000000', size: 11, weight: 'bold', backgroundColor: lineColor, borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
+        });
+        figures.push({
+          type: 'circle',
+          attrs: { x: pt.x, y: pt.y, r: 18 },
+          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
         });
       });
       return figures;
@@ -591,17 +756,23 @@ export function ensureCustomOverlaysAndIndicators() {
     name: 'elliottCorrection',
     totalStep: 5,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
+    createPointFigures: ({ coordinates, overlay }) => {
       if (coordinates.length < 2) return [];
       const labels = ['(0)', '(A)', '(B)', '(C)'];
+      const lineColor = overlay?.styles?.line?.color || '#ec4899';
       const figures = [
-        { type: 'line', attrs: { coordinates }, styles: { size: 2, color: '#ec4899' } },
+        { type: 'line', attrs: { coordinates }, styles: { size: 2, color: lineColor } },
       ];
       coordinates.forEach((pt, idx) => {
         figures.push({
           type: 'text',
           attrs: { x: pt.x, y: pt.y - 12, text: labels[idx] || `(${idx})`, align: 'center', baseline: 'middle' },
-          styles: { color: '#ffffff', size: 11, weight: 'bold', backgroundColor: '#ec4899', borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
+          styles: { color: '#ffffff', size: 11, weight: 'bold', backgroundColor: lineColor, borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
+        });
+        figures.push({
+          type: 'circle',
+          attrs: { x: pt.x, y: pt.y, r: 18 },
+          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
         });
       });
       return figures;
@@ -613,7 +784,7 @@ export function ensureCustomOverlaysAndIndicators() {
     name: 'gannBox',
     totalStep: 3,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates }) => {
+    createPointFigures: ({ coordinates, overlay }) => {
       if (coordinates.length < 2) return [];
       const [a, b] = coordinates;
       const minX = Math.min(a.x, b.x);
@@ -623,15 +794,21 @@ export function ensureCustomOverlaysAndIndicators() {
       const dx = maxX - minX;
       const dy = maxY - minY;
 
+      const strokeColor = overlay?.styles?.polygon?.borderColor || overlay?.styles?.rect?.borderColor || overlay?.styles?.line?.color || '#10b981';
+      const strokeSize = overlay?.styles?.polygon?.borderSize || overlay?.styles?.rect?.borderSize || overlay?.styles?.line?.size || 1.5;
+      const strokeStyle = overlay?.styles?.polygon?.borderStyle || overlay?.styles?.rect?.borderStyle || overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.polygon?.borderDashedValue || overlay?.styles?.rect?.borderDashedValue || (strokeStyle === 'dashed' ? [6, 4] : undefined);
+      const fillColor = overlay?.styles?.polygon?.color || overlay?.styles?.rect?.color || hexToRgba(strokeColor, 0.08);
+
       const ratios = [0.25, 0.382, 0.5, 0.618, 0.75];
       const figures = [
         {
           type: 'polygon',
           attrs: { coordinates: [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }] },
-          styles: { style: 'stroke_fill', color: 'rgba(16, 185, 129, 0.08)', borderColor: '#10b981', borderSize: 1.5 },
+          styles: { style: 'stroke_fill', color: fillColor, borderColor: strokeColor, borderSize: strokeSize, borderStyle: strokeStyle, borderDashedValue: dashedValue },
         },
-        { type: 'line', attrs: { coordinates: [{ x: minX, y: minY }, { x: maxX, y: maxY }] }, styles: { size: 1, color: 'rgba(16, 185, 129, 0.4)' } },
-        { type: 'line', attrs: { coordinates: [{ x: minX, y: maxY }, { x: maxX, y: minY }] }, styles: { size: 1, color: 'rgba(16, 185, 129, 0.4)' } },
+        { type: 'line', attrs: { coordinates: [{ x: minX, y: minY }, { x: maxX, y: maxY }] }, styles: { size: strokeSize, color: strokeColor } },
+        { type: 'line', attrs: { coordinates: [{ x: minX, y: maxY }, { x: maxX, y: minY }] }, styles: { size: strokeSize, color: strokeColor } },
       ];
 
       ratios.forEach((r) => {
@@ -639,12 +816,12 @@ export function ensureCustomOverlaysAndIndicators() {
         figures.push({
           type: 'line',
           attrs: { coordinates: [{ x: minX, y }, { x: maxX, y }] },
-          styles: { size: 1, color: 'rgba(16, 185, 129, 0.4)', style: 'dashed', dashedValue: [4, 4] },
+          styles: { size: 1, color: strokeColor, style: 'dashed', dashedValue: [4, 4] },
         });
         figures.push({
           type: 'text',
           attrs: { x: minX + 4, y: y - 2, text: r.toString() },
-          styles: { color: '#10b981', size: 10 },
+          styles: { color: strokeColor, size: 10 },
         });
       });
 
@@ -653,9 +830,16 @@ export function ensureCustomOverlaysAndIndicators() {
         figures.push({
           type: 'line',
           attrs: { coordinates: [{ x, y: minY }, { x, y: maxY }] },
-          styles: { size: 1, color: 'rgba(16, 185, 129, 0.4)', style: 'dashed', dashedValue: [4, 4] },
+          styles: { size: 1, color: strokeColor, style: 'dashed', dashedValue: [4, 4] },
         });
       });
+
+      figures.push(
+        { type: 'circle', attrs: { x: minX, y: minY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: maxX, y: minY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: maxX, y: maxY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'circle', attrs: { x: minX, y: maxY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
+      );
 
       return figures;
     },
@@ -1427,8 +1611,12 @@ export function getToolLabel(name) {
 // - Sélection au clic
 // - Suppression via bouton flottant, touche Suppr / Backspace, ou double-clic
 // - Manipulation fluide des poignées agrandies
-export function useChartOverlayManager(chartRef) {
+// - Blocage du scroll lors de la manipulation pour éviter le conflit tactile sur mobile
+// - Étirement immédiat au premier point (tactile et souris)
+export function useChartOverlayManager(chartRef, containerRef) {
   const [selectedOverlay, setSelectedOverlay] = useState(null);
+  const drawingOverlayIdRef = useRef(null);
+  const touchDragInfoRef = useRef(null);
 
   const deleteOverlay = useCallback((target) => {
     const chart = chartRef?.current;
@@ -1461,6 +1649,25 @@ export function useChartOverlayManager(chartRef) {
     } catch (_) {}
     setSelectedOverlay(null);
   }, [chartRef]);
+
+  // Désactive le scroll du graphique lorsqu'un outil est sélectionné pour permettre
+  // à l'utilisateur de déplacer ou étirer facilement l'outil au doigt sans conflit de pan
+  useEffect(() => {
+    const chart = chartRef?.current;
+    if (!chart) return;
+    try {
+      if (selectedOverlay) {
+        chart.setScrollEnabled?.(false);
+      } else {
+        chart.setScrollEnabled?.(true);
+      }
+    } catch (_) {}
+    return () => {
+      try {
+        chart?.setScrollEnabled?.(true);
+      } catch (_) {}
+    };
+  }, [selectedOverlay, chartRef]);
 
   // Raccourci clavier Suppr / Backspace pour supprimer l'outil actif, ou Echap/Entrée pour finaliser le tracé
   useEffect(() => {
@@ -1496,6 +1703,10 @@ export function useChartOverlayManager(chartRef) {
         setSelectedOverlay(overlay);
         return true;
       },
+      onDeselected: () => {
+        setSelectedOverlay(null);
+        return true;
+      },
       onClick: ({ overlay }) => {
         setSelectedOverlay(overlay);
         return true;
@@ -1520,11 +1731,135 @@ export function useChartOverlayManager(chartRef) {
 
     const id = chart.createOverlay(overlayConfig);
     if (id) {
+      drawingOverlayIdRef.current = id;
+      try {
+        chart.setScrollEnabled?.(false);
+      } catch (_) {}
       const created = chart.getOverlayById?.(id);
       if (created) setSelectedOverlay(created);
     }
     return id;
   }, [chartRef, deleteOverlay]);
+
+  // Gestion du positionnement et étirement immédiat au doigt (mobile) ou à la souris :
+  // Dès le premier contact, l'utilisateur étire directement l'outil sans devoir faire 2 clics séparés.
+  useEffect(() => {
+    const container = containerRef?.current;
+    if (!container) return;
+
+    const handleStart = (clientX, clientY) => {
+      const chart = chartRef?.current;
+      if (!chart || !drawingOverlayIdRef.current) return;
+      const rect = container.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      const pt1 = chart.convertFromPixel?.({ x, y });
+      if (!pt1 || pt1.value == null) return;
+
+      touchDragInfoRef.current = {
+        startX: clientX,
+        startY: clientY,
+        x,
+        y,
+        pt1,
+        hasDragged: false,
+        overlayId: drawingOverlayIdRef.current,
+      };
+    };
+
+    const handleMove = (clientX, clientY, preventDef) => {
+      const chart = chartRef?.current;
+      const info = touchDragInfoRef.current;
+      if (!chart || !info) return;
+
+      const dist = Math.hypot(clientX - info.startX, clientY - info.startY);
+      if (dist > 6) {
+        info.hasDragged = true;
+        preventDef?.();
+        const rect = container.getBoundingClientRect();
+        const curX = clientX - rect.left;
+        const curY = clientY - rect.top;
+        const pt2 = chart.convertFromPixel?.({ x: curX, y: curY });
+        if (pt2 && pt2.value != null) {
+          try {
+            chart.overrideOverlay?.({
+              id: info.overlayId,
+              points: [info.pt1, pt2],
+            });
+            chart.adjustPaneViewport?.(false, true, true, true, true);
+          } catch (_) {}
+        }
+      }
+    };
+
+    const handleEnd = (clientX, clientY) => {
+      const chart = chartRef?.current;
+      const info = touchDragInfoRef.current;
+      if (!chart || !info) return;
+
+      if (info.hasDragged) {
+        const rect = container.getBoundingClientRect();
+        const endX = clientX != null ? clientX - rect.left : info.x;
+        const endY = clientY != null ? clientY - rect.top : info.y;
+        const pt2 = chart.convertFromPixel?.({ x: endX, y: endY }) || info.pt1;
+        try {
+          const overlay = chart.getOverlayById?.(info.overlayId);
+          if (overlay) {
+            chart.overrideOverlay?.({
+              id: info.overlayId,
+              points: [info.pt1, pt2],
+            });
+            overlay.forceComplete?.();
+            chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.();
+            setSelectedOverlay(overlay);
+          }
+        } catch (_) {}
+        drawingOverlayIdRef.current = null;
+      }
+      touchDragInfoRef.current = null;
+    };
+
+    // Listeners tactiles (téléphone / tablette)
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    const onTouchMove = (e) => {
+      if (e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY, () => e.preventDefault());
+    };
+    const onTouchEnd = (e) => {
+      const t = e.changedTouches?.[0] || e.touches?.[0];
+      handleEnd(t ? t.clientX : null, t ? t.clientY : null);
+    };
+
+    // Listeners souris (PC / trackpad)
+    const onMouseDown = (e) => {
+      if (e.button === 0) handleStart(e.clientX, e.clientY);
+    };
+    const onMouseMove = (e) => {
+      handleMove(e.clientX, e.clientY);
+    };
+    const onMouseUp = (e) => {
+      if (e.button === 0) handleEnd(e.clientX, e.clientY);
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    container.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
+      container.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [containerRef, chartRef]);
 
   return {
     selectedOverlay,
@@ -1542,17 +1877,22 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
   const label = getToolLabel(overlay.name);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Style local pour l'édition et la synchronisation immédiate
+  // Style local pour l'édition et la synchronisation immédiate (lit ligne ou polygone/rect)
   const currentLineStyle = overlay.styles?.line || {};
-  const [color, setColor] = useState(currentLineStyle.color || '#3b82f6');
-  const [size, setSize] = useState(currentLineStyle.size || 2.5);
-  const [dashStyle, setDashStyle] = useState(currentLineStyle.style || 'solid');
+  const currentPolyStyle = overlay.styles?.polygon || overlay.styles?.rect || {};
+  const [color, setColor] = useState(currentPolyStyle.borderColor || currentLineStyle.color || '#3b82f6');
+  const [size, setSize] = useState(currentPolyStyle.borderSize || currentLineStyle.size || 2.5);
+  const [dashStyle, setDashStyle] = useState(currentPolyStyle.borderStyle || currentLineStyle.style || 'solid');
 
   useEffect(() => {
-    const s = overlay.styles?.line || {};
-    if (s.color) setColor(s.color);
-    if (s.size) setSize(s.size);
-    if (s.style) setDashStyle(s.style);
+    const sLine = overlay.styles?.line || {};
+    const sPoly = overlay.styles?.polygon || overlay.styles?.rect || {};
+    const c = sPoly.borderColor || sLine.color;
+    if (c) setColor(c);
+    const sz = sPoly.borderSize || sLine.size;
+    if (sz) setSize(sz);
+    const st = sPoly.borderStyle || sLine.style;
+    if (st) setDashStyle(st);
     setSettingsOpen(false);
   }, [overlay.id]);
 
@@ -1564,6 +1904,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     const chart = chartRef?.current;
     if (!chart || !overlay?.id) return;
     const dashedValue = newDashStyle === 'dashed' ? [6, 4] : undefined;
+    const fillColor = hexToRgba(newColor, 0.18);
     try {
       chart.overrideOverlay({
         id: overlay.id,
@@ -1575,18 +1916,21 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
             dashedValue,
           },
           polygon: {
+            color: fillColor,
             borderColor: newColor,
             borderSize: newSize,
             borderStyle: newDashStyle,
             borderDashedValue: dashedValue,
           },
           rect: {
+            color: fillColor,
             borderColor: newColor,
             borderSize: newSize,
             borderStyle: newDashStyle,
             borderDashedValue: dashedValue,
           },
           circle: {
+            color: fillColor,
             borderColor: newColor,
             borderSize: newSize,
             borderStyle: newDashStyle,
@@ -1596,8 +1940,19 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
             color: newColor,
             size: newSize,
           },
+          text: {
+            color: '#ffffff',
+            borderColor: newColor,
+          },
         },
       });
+      // Synchronisation directe des styles de l'overlay en mémoire
+      if (overlay.styles) {
+        overlay.styles.line = { ...(overlay.styles.line || {}), color: newColor, size: newSize, style: newDashStyle, dashedValue };
+        overlay.styles.polygon = { ...(overlay.styles.polygon || {}), color: fillColor, borderColor: newColor, borderSize: newSize, borderStyle: newDashStyle, borderDashedValue: dashedValue };
+        overlay.styles.rect = { ...(overlay.styles.rect || {}), color: fillColor, borderColor: newColor, borderSize: newSize, borderStyle: newDashStyle, borderDashedValue: dashedValue };
+      }
+      chart.adjustPaneViewport?.(false, true, true, true, true);
       onUpdateStyle?.({ color: newColor, size: newSize, style: newDashStyle });
     } catch (e) {
       console.warn('overrideOverlay error:', e);

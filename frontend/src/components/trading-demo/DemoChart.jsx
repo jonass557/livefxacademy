@@ -42,7 +42,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
 
-  const overlayManager = useChartOverlayManager(chartRef);
+  const overlayManager = useChartOverlayManager(chartRef, containerRef);
 
   useEffect(() => {
     const el = containerRef.current;

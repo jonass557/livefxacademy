@@ -91,7 +91,7 @@ export default function ReplayChart({
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
 
-  const overlayManager = useChartOverlayManager(chartRef);
+  const overlayManager = useChartOverlayManager(chartRef, containerRef);
 
   const klineData = useMemo(
     () => (candles || []).map((c) => ({
