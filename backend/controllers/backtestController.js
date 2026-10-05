@@ -163,16 +163,22 @@ exports.getMarketCandles = async (req, res) => {
       // Période explicite (aperçu de la zone à backtester).
       let start = Math.floor(new Date(start_date).getTime() / 1000);
       let end = Math.floor(new Date(end_date).getTime() / 1000);
-      if (!(start < end)) return res.status(400).json({ message: 'Période invalide' });
+      if (!(start < end)) {
+        start = end - Math.max(granularity * 100, 86400 * 7);
+      }
       // Marge de contexte avant/après la période (10 % de part et d'autre).
       const margin = Math.max(Math.floor((end - start) * 0.1), granularity * 10);
       start -= margin;
       end = Math.min(end + margin, Math.floor(Date.now() / 1000));
-      candles = await provider.fetchCandles({ symbol, granularity, start, end });
+      if (start >= end) {
+        start = end - Math.max(granularity * 20, 86400);
+      }
+      candles = await provider.fetchCandles({ symbol, granularity, start, end, count });
     } else {
       const end = Math.floor(Date.now() / 1000);
+      const start = end - (count * granularity * 2);
       // Récupération directe des 'count' dernières bougies réelles sans tronquage week-end
-      candles = await provider.fetchCandles({ symbol, granularity, end, count });
+      candles = await provider.fetchCandles({ symbol, granularity, start, end, count });
     }
 
     res.json({ symbol, symbol_name: meta.name, timeframe, candles });

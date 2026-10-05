@@ -56,12 +56,21 @@ function aggregateToGranularity(hourly, targetGranularity) {
 }
 
 // Récupère les bougies OHLC de `start` à `end` (epoch secondes).
-async function fetchCandles({ symbol, granularity, start, end }) {
+async function fetchCandles({ symbol, granularity, start, end, count }) {
   const interval = INTERVAL_BY_GRANULARITY[granularity]
   if (!interval) throw new Error('Granularité non supportée par Yahoo : ' + granularity)
-  const p1 = Math.floor(start)
-  const p2 = Math.floor(end)
-  if (!(p1 < p2)) throw new Error('Période invalide (début ≥ fin)')
+  
+  const targetCount = Math.min(Math.max(Number(count) || 300, 10), MAX_CANDLES)
+  const p2 = (end && !isNaN(end)) ? Math.floor(end) : Math.floor(Date.now() / 1000)
+  let p1 = (start && !isNaN(start)) ? Math.floor(start) : null
+
+  // Si start n'est pas fourni, invalide ou supérieur/égal à end, calcul sécurisé
+  if (p1 == null || !(p1 < p2)) {
+    p1 = p2 - Math.max(targetCount * granularity * 2, 86400 * 3)
+  }
+  if (p1 >= p2) {
+    p1 = p2 - Math.max(granularity * 10, 86400)
+  }
 
   const url = `${BASE}/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${p1}&period2=${p2}&interval=${interval}`
   const res = await fetch(url, { headers: { 'User-Agent': UA } })

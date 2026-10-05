@@ -295,11 +295,16 @@ function generateSyntheticCandles({ symbol, granularity, startEpoch, endEpoch, c
 async function fetchCandles({ symbol, granularity, start, end, count }) {
   const meta = getSymbolMeta(symbol)
   if (!meta) throw new Error('Symbole non supporté : ' + symbol)
-  const endEpoch = end ? Math.floor(end) : Math.floor(Date.now() / 1000)
-  const startEpoch = start ? Math.floor(start) : null
-  if (startEpoch != null && !(startEpoch < endEpoch)) throw new Error('Période invalide (début ≥ fin)')
-
+  const endEpoch = (end && !isNaN(end)) ? Math.floor(end) : Math.floor(Date.now() / 1000)
+  let startEpoch = (start && !isNaN(start)) ? Math.floor(start) : null
   const targetCount = count || (startEpoch != null ? MAX_CANDLES : 300)
+
+  if (startEpoch != null && !(startEpoch < endEpoch)) {
+    startEpoch = endEpoch - ((targetCount || 300) * (granularity || 3600) * 2)
+  }
+  if (startEpoch != null && startEpoch >= endEpoch) {
+    startEpoch = endEpoch - Math.max((granularity || 3600) * 10, 86400)
+  }
 
   // 1. Vérification du cache mémoire (retour en 0 ms)
   const cacheKey = `${symbol}:${granularity}:${startEpoch || 'latest'}:${endEpoch}:${targetCount}`

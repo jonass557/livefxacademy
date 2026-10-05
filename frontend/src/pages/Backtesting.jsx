@@ -210,55 +210,48 @@ const Backtesting = () => {
   }), [form.start_date, form.end_date]);
 
   return (
-    <div className="h-full w-full flex-1 min-h-0 flex flex-col overflow-hidden space-y-2 p-0 sm:p-1">
-      {/* ==================== EN-TÊTE ==================== */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2 sm:text-2xl">
-            <BarChart3 className="h-5 w-5 text-primary sm:h-6 sm:w-6" /> Backtesting
-          </h2>
-          <p className="text-muted-foreground text-xs sm:text-sm">
-            Délimitez la période, choisissez la paire, le timeframe et le lot, puis cliquez sur Replay et prenez vos positions Buy/Sell.
-          </p>
-        </div>
-        {/* Solde initial bien visible */}
-        <div className="flex items-center gap-2 rounded-xl border bg-gradient-to-r from-primary/10 to-purple-500/10 px-3 py-1.5 sm:px-4 sm:py-2">
-          <Wallet className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
-          <div className="leading-tight">
-            <p className="text-[10px] uppercase text-muted-foreground sm:text-[11px]">Solde initial</p>
-            <p className="text-base font-bold tabular-nums sm:text-lg">{fmtMoney(INITIAL_BALANCE)} $</p>
+    <div className="h-full w-full flex-1 min-h-0 flex flex-col overflow-hidden space-y-1.5 p-0 sm:p-1">
+      {/* ==================== BARRE DE CONFIGURATION ULTRA-COMPACTE (MENUS DÉROULANTS) ==================== */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg border bg-card/80 px-2 py-1.5 shadow-xs shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1.5 pr-1.5 border-r border-border/60 shrink-0">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            <span className="font-bold text-xs sm:text-sm tracking-tight">Backtesting</span>
           </div>
-        </div>
-      </div>
 
-      {/* ==================== BARRE DE RÉGLAGES ==================== */}
-      {/* Mobile : grille 2 colonnes (la période prend toute la largeur) ;
-          à partir de sm on retrouve la barre sur une seule ligne. */}
-      <div className="grid grid-cols-2 gap-2 rounded-xl border bg-card/60 p-2 sm:flex sm:flex-wrap sm:items-center">
-        <PairPicker symbols={symbols} symbol={form.symbol} onSelect={(s) => set('symbol', s)} />
-        <GridPicker
-          icon={BarChart3} label="TF" value={form.timeframe} width="w-52"
-          options={(meta?.timeframes || []).map((t) => ({ key: t.key, label: t.key, active: t.key === form.timeframe }))}
-          onSelect={(t) => set('timeframe', t)}
-        />
-        <div className="col-span-2 sm:col-auto">
+          <PairPicker symbols={symbols} symbol={form.symbol} onSelect={(s) => set('symbol', s)} />
+          <GridPicker
+            icon={BarChart3} label="TF" value={form.timeframe} width="w-48"
+            options={(meta?.timeframes || []).map((t) => ({ key: t.key, label: t.key, active: t.key === form.timeframe }))}
+            onSelect={(t) => set('timeframe', t)}
+          />
           <PeriodPicker
             startDate={form.start_date} endDate={form.end_date}
             onChange={(s, e) => setForm((f) => ({ ...f, start_date: s, end_date: e }))}
           />
+          <GridPicker
+            icon={Coins} label="Lot" value={form.position_size} width="w-48"
+            options={LOTS.map((l) => ({ key: l, label: String(l), active: l === Number(form.position_size) }))}
+            onSelect={(l) => set('position_size', l)}
+          />
         </div>
-        <GridPicker
-          icon={Coins} label="Lot" value={form.position_size} width="w-52"
-          options={LOTS.map((l) => ({ key: l, label: String(l), active: l === Number(form.position_size) }))}
-          onSelect={(l) => set('position_size', l)}
-        />
-        <Button
-          onClick={() => setReplaySignal((n) => n + 1)}
-          disabled={loading || !candles?.length}
-          className="gap-2 bg-gradient-to-r from-primary to-purple-500 hover:opacity-90 sm:ml-auto"
-        >
-          <Film className="h-4 w-4" /> Replay
-        </Button>
+
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className="flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1 text-xs font-semibold tabular-nums">
+            <Wallet className="h-3.5 w-3.5 text-primary" />
+            <span className="text-muted-foreground text-[11px] hidden sm:inline">Solde :</span>
+            <span>{fmtMoney(INITIAL_BALANCE)} $</span>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => setReplaySignal((n) => n + 1)}
+            disabled={loading || !candles?.length}
+            className="h-7.5 px-3 gap-1.5 bg-gradient-to-r from-primary to-purple-600 hover:opacity-90 text-xs font-semibold shadow-xs"
+          >
+            <Film className="h-3.5 w-3.5" /> <span>Replay</span>
+          </Button>
+        </div>
       </div>
 
       {/* ==================== GRAPHIQUE / REPLAY MANUEL ==================== */}

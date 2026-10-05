@@ -30,12 +30,23 @@ function listTimeframes() { return TIMEFRAMES }
 function getSymbolMeta(symbol) { return SYMBOLS.find((s) => s.symbol === symbol) || null }
 
 // Récupère les bougies OHLC de `start` à `end` (epoch secondes), paginées en avant.
-async function fetchCandles({ symbol, granularity, start, end }) {
+async function fetchCandles({ symbol, granularity, start, end, count }) {
   const interval = INTERVAL_BY_GRANULARITY[granularity]
   if (!interval) throw new Error('Granularité non supportée par Binance : ' + granularity)
-  const startMs = Math.floor(start) * 1000
-  const endMs = Math.floor(end) * 1000
-  if (!(startMs < endMs)) throw new Error('Période invalide (début ≥ fin)')
+
+  const targetCount = Math.min(Math.max(Number(count) || 300, 10), MAX_CANDLES)
+  const endSec = (end && !isNaN(end)) ? Math.floor(end) : Math.floor(Date.now() / 1000)
+  let startSec = (start && !isNaN(start)) ? Math.floor(start) : null
+
+  if (startSec == null || !(startSec < endSec)) {
+    startSec = endSec - (targetCount * granularity * 2)
+  }
+  if (startSec >= endSec) {
+    startSec = endSec - Math.max(granularity * 10, 86400)
+  }
+
+  const startMs = startSec * 1000
+  const endMs = endSec * 1000
 
   const byTime = new Map()
   let cursor = startMs

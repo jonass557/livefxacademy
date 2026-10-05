@@ -44,14 +44,16 @@ async function getCandles(instrument, timeframeKey, count = 300) {
   // Deriv ne fournit pas W1/MN → on télécharge du D1 puis on agrège.
   if (instrument.provider === 'deriv' && (timeframeKey === 'W1' || timeframeKey === 'MN')) {
     const daysNeeded = timeframeKey === 'W1' ? n * 7 : n * 31;
-    const daily = await provider.fetchCandles({ symbol: instrument.provider_symbol, granularity: 86400, end: now, count: daysNeeded });
+    const dailyStart = now - (daysNeeded * 86400 * 2);
+    const daily = await provider.fetchCandles({ symbol: instrument.provider_symbol, granularity: 86400, start: dailyStart, end: now, count: daysNeeded });
     const agg = aggregate(daily, timeframeKey === 'W1' ? weekKey : monthKey);
     return agg.slice(-n);
   }
 
   const granularity = GRAN[timeframeKey];
   if (!granularity) throw new Error('Unité de temps invalide');
-  const candles = await provider.fetchCandles({ symbol: instrument.provider_symbol, granularity, end: now, count: n });
+  const start = now - (n * granularity * 2);
+  const candles = await provider.fetchCandles({ symbol: instrument.provider_symbol, granularity, start, end: now, count: n });
   return candles.slice(-n);
 }
 

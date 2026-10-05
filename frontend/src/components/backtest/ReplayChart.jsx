@@ -9,12 +9,13 @@ import {
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
-  ChartErrorBoundary,
+  ChartErrorBoundary, Dropdown,
 } from './chartShared';
 import {
   Play, Pause, RotateCcw, SkipForward, SkipBack, Film, Eye, Loader2,
   Maximize2, Minimize2, ArrowUpCircle, ArrowDownCircle, XCircle, Scissors,
   Trash2, Plus, Minus, Tag, Check, ChevronDown, ChevronUp, AlertCircle,
+  PlusCircle, Zap,
 } from 'lucide-react';
 
 const REPLAY_SPEEDS = [
@@ -77,7 +78,9 @@ export default function ReplayChart({
   const [orderPrice, setOrderPrice] = useState('');
   const [orderSl, setOrderSl] = useState('');
   const [orderTp, setOrderTp] = useState('');
-  const [orderPanelOpen, setOrderPanelOpen] = useState(true);
+  const [orderDropdownOpen, setOrderDropdownOpen] = useState(false);
+  const [speedDropdownOpen, setSpeedDropdownOpen] = useState(false);
+  const [pendingDropdownOpen, setPendingDropdownOpen] = useState(false);
 
   const [activeIndicators, setActiveIndicators] = useState({});
   const [fullscreen, setFullscreen] = useFullscreen();
@@ -780,49 +783,69 @@ export default function ReplayChart({
   return (
     <ChartErrorBoundary>
       <div className={wrapClass}>
-        {/* ==================== BARRE DE CONTRÔLE (TOOLBAR) ==================== */}
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2" data-chart-toolbar data-replay-controls>
+        {/* ==================== BARRE DE CONTRÔLE (TOOLBAR AVEC MENUS DÉROULANTS) ==================== */}
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2 shrink-0" data-chart-toolbar data-replay-controls>
           {/* 1. Bouton CUT (Couper) */}
           <Button
             size="sm"
             variant={isCutting ? 'destructive' : cutIndex !== null ? 'secondary' : 'default'}
             onClick={toggleCut}
-            className={`gap-1.5 font-semibold transition-all ${
+            className={`h-8 gap-1.5 font-semibold transition-all ${
               isCutting ? 'animate-pulse ring-2 ring-destructive' : cutIndex !== null ? 'border-amber-500/50 text-amber-500' : ''
             }`}
             title={isCutting ? 'Cliquez sur une bougie pour couper ou ré-appuyez pour annuler' : 'Activer la coupe mobile du graphique'}
           >
-            <Scissors className="h-4 w-4" />
-            <span>{isCutting ? 'Annuler' : cutIndex !== null ? 'Recouper' : 'Couper'}</span>
+            <Scissors className="h-3.5 w-3.5" />
+            <span className="text-xs">{isCutting ? 'Annuler' : cutIndex !== null ? 'Recouper' : 'Couper'}</span>
           </Button>
 
-          {/* 2. Boutons VITESSES (×-3; ×-2; ×-1; ×+1; ×+2; ×+3) */}
-          <div className="flex items-center gap-0.5 rounded-md border bg-muted/40 p-0.5" title="Vitesse et direction de rejeu">
-            {REPLAY_SPEEDS.map((s) => {
-              const isSelected = speed === s.key;
-              const isNegative = s.dir < 0;
-              return (
-                <Button
-                  key={s.key}
-                  size="sm"
-                  variant={isSelected ? 'default' : 'ghost'}
-                  className={`h-7 px-1.5 text-xs font-bold tabular-nums sm:px-2 ${
-                    isSelected
-                      ? isNegative
-                        ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
-                        : 'bg-primary text-primary-foreground shadow-xs'
-                      : isNegative
-                      ? 'text-amber-500 hover:text-amber-400 hover:bg-amber-500/10'
-                      : 'text-muted-foreground'
-                  }`}
-                  onClick={() => setSpeed(s.key)}
-                  title={isNegative ? `Rembobiner en arrière (${s.label})` : `Avancer (${s.label})`}
-                >
-                  {s.label}
-                </Button>
-              );
-            })}
-          </div>
+          {/* 2. Menu Déroulant VITESSE (×-3; ×-2; ×-1; ×+1; ×+2; ×+3) */}
+          <Dropdown
+            open={speedDropdownOpen}
+            setOpen={setSpeedDropdownOpen}
+            width="w-48"
+            trigger={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSpeedDropdownOpen((o) => !o)}
+                className="h-8 px-2 text-xs font-bold gap-1 tabular-nums border-muted-foreground/30 hover:bg-muted"
+                title="Vitesse et direction de rejeu"
+              >
+                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                <span>Vitesse : {REPLAY_SPEEDS.find((s) => s.key === speed)?.label || '×+1'}</span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            }
+          >
+            <div className="p-1.5 space-y-1">
+              <div className="px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Vitesse de rejeu
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {REPLAY_SPEEDS.map((s) => {
+                  const isSelected = speed === s.key;
+                  const isNegative = s.dir < 0;
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => { setSpeed(s.key); setSpeedDropdownOpen(false); }}
+                      className={`flex items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold tabular-nums transition-colors ${
+                        isSelected
+                          ? isNegative
+                            ? 'bg-amber-600 text-white font-bold'
+                            : 'bg-primary text-primary-foreground font-bold'
+                          : 'hover:bg-muted text-foreground'
+                      }`}
+                    >
+                      <span>{isNegative ? '⏪ ' : '⏩ '}{s.label}</span>
+                      {isSelected && <Check className="h-3.5 w-3.5 ml-1" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </Dropdown>
 
           {/* 3. Bouton PLAY / PAUSE */}
           <Button
@@ -835,36 +858,272 @@ export default function ReplayChart({
                 setPlaying((p) => !p);
               }
             }}
-            className="gap-1.5 font-bold px-3 shadow-xs"
+            className="h-8 gap-1.5 font-bold px-3 shadow-xs"
           >
-            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            <span>{playing ? 'Pause' : 'Play'}</span>
+            {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            <span className="text-xs">{playing ? 'Pause' : 'Play'}</span>
           </Button>
 
           {/* Bougie précédente & Bougie suivante */}
           <Button size="sm" variant="outline" onClick={stepBackward} title="Reculer d'une bougie" className="px-2 h-8">
-            <SkipBack className="h-4 w-4" />
+            <SkipBack className="h-3.5 w-3.5" />
           </Button>
           <Button size="sm" variant="outline" onClick={stepForward} title="Avancer d'une bougie" className="px-2 h-8">
-            <SkipForward className="h-4 w-4" />
+            <SkipForward className="h-3.5 w-3.5" />
           </Button>
 
           {/* Recommencer */}
           <Button size="sm" variant="outline" onClick={resetReplay} title="Recommencer depuis le point de départ" className="px-2 h-8">
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="h-3.5 w-3.5" />
           </Button>
 
           {/* Vue complète (si coupé) */}
           {cutIndex !== null && (
-            <Button size="sm" variant="ghost" onClick={resetToFull} className="gap-1 text-xs h-8">
+            <Button size="sm" variant="ghost" onClick={resetToFull} className="gap-1 text-xs h-8 px-2">
               <Eye className="h-3.5 w-3.5" /> <span className="hidden md:inline">Vue complète</span>
             </Button>
           )}
 
-          {/* Informations Paire & Timeframe */}
-          <span className="text-xs text-muted-foreground ml-auto hidden lg:inline font-mono">
-            {symbolName} • {timeframe}
-          </span>
+          {/* 4. Menu Déroulant ORDRE / TRADE */}
+          <Dropdown
+            open={orderDropdownOpen}
+            setOpen={setOrderDropdownOpen}
+            width="w-80 sm:w-96"
+            trigger={
+              <Button
+                size="sm"
+                onClick={() => setOrderDropdownOpen((o) => !o)}
+                className="h-8 gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-3 shadow-xs"
+                title="Placer un ordre Buy / Sell / Ordre Limite ou Stop"
+              >
+                <PlusCircle className="h-3.5 w-3.5" />
+                <span className="text-xs">Ordre</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            }
+          >
+            <div className="p-3 space-y-3">
+              <div className="flex items-center justify-between border-b pb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Nouveau Trade ({symbolName || 'Position'})
+                </span>
+                <span className="text-xs font-mono font-bold text-primary">
+                  {cur?.close ? cur.close.toFixed(digits) : '—'}
+                </span>
+              </div>
+
+              {/* Choix du type d'ordre */}
+              <div>
+                <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
+                  Type d'ordre
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {ORDER_TYPES.map((t) => (
+                    <Button
+                      key={t.key}
+                      size="sm"
+                      variant={orderType === t.key ? 'default' : 'outline'}
+                      className={`h-7 px-2 text-xs font-medium ${orderType === t.key ? 'shadow-xs' : ''}`}
+                      onClick={() => {
+                        setOrderType(t.key);
+                        if (t.key !== 'market' && !orderPrice && cur) {
+                          setOrderPrice(cur.close.toFixed(digits));
+                        }
+                      }}
+                    >
+                      {t.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Champ Prix si ordre en attente */}
+              {orderType !== 'market' && (
+                <div>
+                  <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
+                    Prix de déclenchement
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={orderPrice}
+                    onChange={(e) => setOrderPrice(e.target.value)}
+                    placeholder={cur ? cur.close.toFixed(digits) : 'Prix'}
+                    className="w-full h-8 rounded-md border bg-background px-2.5 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              )}
+
+              {/* Lot, SL et TP en grille 3 colonnes */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
+                    Volume (Lot)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={orderLot}
+                    onChange={(e) => setOrderLot(e.target.value)}
+                    className="w-full h-8 rounded-md border bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-red-500 block mb-1">
+                    Stop Loss (SL)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={orderSl}
+                      onChange={(e) => setOrderSl(e.target.value)}
+                      placeholder="Prix SL"
+                      className="w-full h-8 rounded-md border border-red-500/40 bg-background px-2 pr-5 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-red-500"
+                    />
+                    {orderSl && (
+                      <button
+                        onClick={() => setOrderSl('')}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-[11px]"
+                        title="Effacer SL"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-green-500 block mb-1">
+                    Take Profit (TP)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={orderTp}
+                      onChange={(e) => setOrderTp(e.target.value)}
+                      placeholder="Prix TP"
+                      className="w-full h-8 rounded-md border border-green-500/40 bg-background px-2 pr-5 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-green-500"
+                    />
+                    {orderTp && (
+                      <button
+                        onClick={() => setOrderTp('')}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-[11px]"
+                        title="Effacer TP"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Boutons d'Action */}
+              <div className="pt-1">
+                {orderType === 'market' ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      className="h-9 gap-1.5 bg-green-600 hover:bg-green-700 text-white font-bold"
+                      onClick={() => {
+                        handleOpenMarket('buy');
+                        setOrderDropdownOpen(false);
+                      }}
+                      disabled={!!position}
+                    >
+                      <ArrowUpCircle className="h-4 w-4" /> Buy {cur ? cur.close.toFixed(digits) : ''}
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-9 gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold"
+                      onClick={() => {
+                        handleOpenMarket('sell');
+                        setOrderDropdownOpen(false);
+                      }}
+                      disabled={!!position}
+                    >
+                      <ArrowDownCircle className="h-4 w-4" /> Sell {cur ? cur.close.toFixed(digits) : ''}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    className={`w-full h-9 font-bold ${
+                      orderType.includes('buy')
+                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                        : 'bg-amber-600 hover:bg-amber-700 text-white'
+                    }`}
+                    onClick={() => {
+                      handlePlacePendingOrder();
+                      setOrderDropdownOpen(false);
+                    }}
+                  >
+                    Placer {orderType.replace('_', ' ').toUpperCase()}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Dropdown>
+
+          {/* 5. Menu Déroulant Ordres en Attente (si existants) */}
+          {pendingOrders.length > 0 && (
+            <Dropdown
+              open={pendingDropdownOpen}
+              setOpen={setPendingDropdownOpen}
+              width="w-72"
+              trigger={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPendingDropdownOpen((o) => !o)}
+                  className="h-8 gap-1 border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-xs font-semibold px-2"
+                >
+                  <span>Attente ({pendingOrders.length})</span>
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              }
+            >
+              <div className="p-2 space-y-1.5 max-h-60 overflow-y-auto">
+                <div className="text-[11px] font-bold text-muted-foreground uppercase px-1">Ordres en attente</div>
+                {pendingOrders.map((ord) => (
+                  <div key={ord.id} className="flex items-center justify-between gap-2 rounded border bg-muted/40 p-1.5 text-xs font-mono">
+                    <div>
+                      <b className="text-primary">{ord.type.replace('_', ' ').toUpperCase()}</b> {ord.lot} @ {ord.price.toFixed(digits)}
+                      {(ord.sl || ord.tp) && (
+                        <div className="text-[10px] text-muted-foreground">
+                          {ord.sl && <span className="text-red-500 mr-1.5">SL {Number(ord.sl).toFixed(digits)}</span>}
+                          {ord.tp && <span className="text-green-500">TP {Number(ord.tp).toFixed(digits)}</span>}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleCancelPendingOrder(ord.id)}
+                      className="text-muted-foreground hover:text-destructive p-1"
+                      title="Annuler"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </Dropdown>
+          )}
+
+          {/* Résumé Solde, Équité, Trades */}
+          <div className="flex items-center gap-2 text-xs font-mono ml-auto">
+            <span className="hidden xl:inline text-muted-foreground">
+              📅 {cur?.time ? fmtDateLong(cur.time) : '—'}
+            </span>
+            <span className="border-l pl-2 border-border/50 hidden sm:inline">
+              Solde: <b className="text-foreground">{balance.toFixed(2)} $</b>
+            </span>
+            <span className="border-l pl-2 border-border/50">
+              Équité: <b className={equity >= initialBalance ? 'text-green-500' : 'text-red-500'}>{equity.toFixed(2)} $</b>
+            </span>
+          </div>
 
           {/* Contrôles du graphique */}
           <ChartZoomControls chartRef={chartRef} />
@@ -878,204 +1137,34 @@ export default function ReplayChart({
 
         {/* Message d'aide si Coupe activée */}
         {isCutting && (
-          <div className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-xs text-amber-500 animate-fadeIn">
+          <div className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-xs text-amber-500 shrink-0 animate-fadeIn">
             <Scissors className="h-4 w-4 shrink-0" />
             <span>Déplacez le curseur sur le graphique et cliquez sur la bougie où vous voulez couper l'historique pour commencer l'analyse.</span>
           </div>
         )}
 
-        {/* ==================== PANNEAU DE TRADING & ORDRES ==================== */}
-        <div className={`rounded-lg border bg-card transition-all ${fullscreen ? 'p-2 space-y-1.5' : 'p-2.5 space-y-2'}`}>
-          {/* Ligne 1 : Date, Progression, Solde, Équité & Toggle */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1.5">
-            <div className="flex items-center gap-2">
-              <p className="font-semibold tabular-nums text-xs sm:text-sm font-mono">
-                📅 {cur?.time ? fmtDateLong(cur.time) : '—'}
-              </p>
-              <span className="text-xs text-muted-foreground tabular-nums">({progressPct} %)</span>
+        {/* Barre ultra-fine de Position active (si position ouverte) */}
+        {position && (
+          <div className="flex items-center justify-between gap-2 rounded-md bg-muted/80 px-2.5 py-1 border border-primary/20 text-xs shrink-0">
+            <div className="flex items-center gap-2 overflow-x-auto min-w-0">
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${position.side === 'buy' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                {position.side} {position.lot}
+              </span>
+              <span className="font-mono shrink-0">Entrée : <b className="text-blue-500">{position.entryPrice.toFixed(digits)}</b></span>
+              {position.sl && <span className="font-mono shrink-0">SL : <b className="text-red-500">{Number(position.sl).toFixed(digits)}</b></span>}
+              {position.tp && <span className="font-mono shrink-0">TP : <b className="text-green-500">{Number(position.tp).toFixed(digits)}</b></span>}
+              <span className="font-semibold font-mono shrink-0">
+                P&L : <b className={floating >= 0 ? 'text-green-500' : 'text-red-500'}>{fmt$(floating)}</b>
+              </span>
             </div>
-
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span>Solde <b className="text-foreground tabular-nums">{balance.toFixed(2)} $</b></span>
-              <span>Équité <b className={`tabular-nums ${equity >= initialBalance ? 'text-green-500' : 'text-red-500'}`}>{equity.toFixed(2)} $</b></span>
-              <span>Trades <b className="text-foreground">{closedTrades}</b></span>
-              <button
-                onClick={() => setOrderPanelOpen((o) => !o)}
-                className="text-xs text-primary hover:underline flex items-center gap-0.5 ml-1"
-                title="Masquer/Afficher les options d'ordre"
-              >
-                {orderPanelOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                {orderPanelOpen ? 'Masquer' : 'Ordres'}
-              </button>
-            </div>
+            <Button size="sm" variant="destructive" onClick={handleClosePosition} className="h-6 px-2 text-[11px] gap-1 shrink-0 ml-auto">
+              <XCircle className="h-3 w-3" /> Fermer
+            </Button>
           </div>
+        )}
 
-          {/* Ligne 2 : Position active (si ouverte) */}
-          {position && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/60 p-2 border border-primary/20">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className={`px-2 py-0.5 rounded font-bold uppercase text-[11px] ${position.side === 'buy' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                  {position.side} {position.lot}
-                </span>
-                <span>Entrée : <b className="font-mono text-blue-500">{position.entryPrice.toFixed(digits)}</b></span>
-                {position.sl && <span>SL : <b className="font-mono text-red-500">{Number(position.sl).toFixed(digits)}</b></span>}
-                {position.tp && <span>TP : <b className="font-mono text-green-500">{Number(position.tp).toFixed(digits)}</b></span>}
-                <span className="ml-1 font-semibold">
-                  P&L : <span className={`tabular-nums ${floating >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fmt$(floating)}</span>
-                </span>
-              </div>
-              <Button size="sm" variant="destructive" onClick={handleClosePosition} className="h-7 px-2.5 text-xs gap-1 ml-auto">
-                <XCircle className="h-3.5 w-3.5" /> Fermer Position
-              </Button>
-            </div>
-          )}
-
-          {/* Ligne 3 : Ordres en attente (Pending Orders) */}
-          {pendingOrders.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase">Ordres en attente :</span>
-              {pendingOrders.map((ord) => (
-                <div key={ord.id} className="inline-flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-0.5 text-xs font-mono">
-                  <span className="font-bold text-primary">{ord.type.replace('_', ' ').toUpperCase()}</span>
-                  <span>{ord.lot} @ {ord.price.toFixed(digits)}</span>
-                  {ord.sl && <span className="text-red-500">SL {ord.sl.toFixed(digits)}</span>}
-                  {ord.tp && <span className="text-green-500">TP {ord.tp.toFixed(digits)}</span>}
-                  <button
-                    onClick={() => handleCancelPendingOrder(ord.id)}
-                    className="text-muted-foreground hover:text-destructive p-0.5 rounded"
-                    title="Annuler l'ordre"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Ligne 4 : Formulaire de prise d'ordre */}
-          {orderPanelOpen && (
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-              {/* Sélecteur de Type d'Ordre */}
-              <div className="flex items-center gap-0.5 rounded-md border bg-muted/30 p-0.5">
-                {ORDER_TYPES.map((t) => (
-                  <Button
-                    key={t.key}
-                    size="sm"
-                    variant={orderType === t.key ? 'default' : 'ghost'}
-                    className={`h-7 px-2 text-[11px] font-medium ${orderType === t.key ? 'shadow-xs' : ''}`}
-                    onClick={() => {
-                      setOrderType(t.key);
-                      if (t.key !== 'market' && !orderPrice && cur) {
-                        setOrderPrice(cur.close.toFixed(digits));
-                      }
-                    }}
-                  >
-                    {t.label}
-                  </Button>
-                ))}
-              </div>
-
-              {/* Champ Prix (si ordre en attente) */}
-              {orderType !== 'market' && (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground font-semibold">Prix :</span>
-                  <input
-                    type="number"
-                    step="any"
-                    value={orderPrice}
-                    onChange={(e) => setOrderPrice(e.target.value)}
-                    placeholder="Prix déclenchement"
-                    className="h-7 w-24 rounded border bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-              )}
-
-              {/* Champ Lot */}
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground font-semibold">Lot :</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={orderLot}
-                  onChange={(e) => setOrderLot(e.target.value)}
-                  className="h-7 w-16 rounded border bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              {/* Champ Stop Loss (SL) */}
-              <div className="flex items-center gap-1">
-                <span className="text-red-500 font-bold">SL :</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={orderSl}
-                  onChange={(e) => setOrderSl(e.target.value)}
-                  placeholder="Prix SL"
-                  className="h-7 w-22 rounded border border-red-500/40 bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-red-500"
-                />
-                {orderSl && (
-                  <button onClick={() => setOrderSl('')} className="text-muted-foreground hover:text-foreground text-[10px]" title="Effacer SL">
-                    ✕
-                  </button>
-                )}
-              </div>
-
-              {/* Champ Take Profit (TP) */}
-              <div className="flex items-center gap-1">
-                <span className="text-green-500 font-bold">TP :</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={orderTp}
-                  onChange={(e) => setOrderTp(e.target.value)}
-                  placeholder="Prix TP"
-                  className="h-7 w-22 rounded border border-green-500/40 bg-background px-2 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-                {orderTp && (
-                  <button onClick={() => setOrderTp('')} className="text-muted-foreground hover:text-foreground text-[10px]" title="Effacer TP">
-                    ✕
-                  </button>
-                )}
-              </div>
-
-              {/* Boutons d'Action */}
-              <div className="flex items-center gap-1.5 ml-auto">
-                {orderType === 'market' ? (
-                  <>
-                    <Button
-                      size="sm"
-                      className="h-7 gap-1 bg-green-600 hover:bg-green-700 text-white px-3 font-bold"
-                      onClick={() => handleOpenMarket('buy')}
-                      disabled={!!position}
-                    >
-                      <ArrowUpCircle className="h-3.5 w-3.5" /> Buy {cur ? cur.close.toFixed(digits) : ''}
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="h-7 gap-1 bg-red-600 hover:bg-red-700 text-white px-3 font-bold"
-                      onClick={() => handleOpenMarket('sell')}
-                      disabled={!!position}
-                    >
-                      <ArrowDownCircle className="h-3.5 w-3.5" /> Sell {cur ? cur.close.toFixed(digits) : ''}
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    size="sm"
-                    className={`h-7 px-3 font-bold ${
-                      orderType.includes('buy') ? 'bg-primary hover:bg-primary/90 text-primary-foreground' : 'bg-amber-600 hover:bg-amber-700 text-white'
-                    }`}
-                    onClick={handlePlacePendingOrder}
-                  >
-                    Placer {orderType.replace('_', ' ').toUpperCase()}
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Curseur de progression temporelle */}
+        {/* Barre de progression temporelle ultra-fine (Slider) */}
+        <div className="w-full px-1 py-0.5 flex items-center gap-2 shrink-0">
           <input
             type="range"
             min={startIdx}
@@ -1091,13 +1180,17 @@ export default function ReplayChart({
               setIndex(i);
               syncTradingOverlays();
             }}
-            className="w-full h-1.5 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+            className="w-full h-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary hover:h-1.5 transition-all"
+            title="Curseur temporel de replay"
           />
+          <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 font-mono">
+            {progressPct}%
+          </span>
         </div>
 
         {/* ==================== CONTENEUR DU GRAPHIQUE ==================== */}
         <div
-          className={`relative flex-1 min-h-[350px] w-full rounded-none border-0 overflow-hidden transition-colors ${
+          className={`relative flex-1 min-h-[480px] sm:min-h-[600px] w-full rounded-none border-0 overflow-hidden transition-colors ${
             isCutting ? 'cursor-crosshair' : ''
           }`}
           style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
