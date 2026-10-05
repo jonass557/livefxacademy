@@ -464,7 +464,7 @@ export default function ReplayChart({
       window.removeEventListener('resize', resize);
       window.removeEventListener('orientationchange', resize);
     };
-  }, [fullscreen, activeIndicators, orderPanelOpen]);
+  }, [fullscreen, activeIndicators]);
 
   // Basculer l'outil Coupe
   const toggleCut = () => {
