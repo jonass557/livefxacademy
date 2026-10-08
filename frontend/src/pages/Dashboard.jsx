@@ -20,6 +20,11 @@ const Dashboard = () => {
 
   if (!user) return <div>Loading...</div>;
 
+  // Si une section graphique ou de backtest est demandée, afficher l'interface graphique dédiée
+  if (isChartSection) {
+    return <ClientDashboard />;
+  }
+
   // Admin has its own sidebar layout
   if (user.role === 'admin') {
     return <AdminDashboard />;

@@ -166,14 +166,18 @@ exports.getMarketCandles = async (req, res) => {
       if (!(start < end)) {
         start = end - Math.max(granularity * 100, 86400 * 7);
       }
-      // Marge de contexte avant/après la période (10 % de part et d'autre).
-      const margin = Math.max(Math.floor((end - start) * 0.1), granularity * 10);
-      start -= margin;
-      end = Math.min(end + margin, Math.floor(Date.now() / 1000));
+      // Marge de contexte historique avant la date de début (au moins 60 bougies pour
+      // les indicateurs RSI/MACD/EMA et l'analyse technique) et marge après la fin.
+      const preMargin = Math.max(Math.floor((end - start) * 0.15), granularity * 60);
+      const postMargin = Math.max(Math.floor((end - start) * 0.05), granularity * 10);
+      start -= preMargin;
+      end = Math.min(end + postMargin, Math.floor(Date.now() / 1000));
       if (start >= end) {
-        start = end - Math.max(granularity * 20, 86400);
+        start = end - Math.max(granularity * 60, 86400 * 2);
       }
-      candles = await provider.fetchCandles({ symbol, granularity, start, end, count });
+      const estimatedCandles = Math.ceil((end - start) / granularity);
+      const effectiveCount = Math.max(count, Math.min(estimatedCandles + 20, 1000));
+      candles = await provider.fetchCandles({ symbol, granularity, start, end, count: effectiveCount });
     } else {
       const end = Math.floor(Date.now() / 1000);
       const start = end - (count * granularity * 2);

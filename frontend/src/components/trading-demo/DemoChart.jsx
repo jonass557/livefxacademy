@@ -2,7 +2,7 @@
 // outils de dessin et indicateurs partagés avec le module Backtesting.
 // Historique via /api/demo/candles ; la dernière bougie est mise à jour en direct
 // à partir du prix `mid` reçu par WebSocket.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { init, dispose } from 'klinecharts';
 import { Loader2, Maximize2, Minimize2, ChevronDown } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -18,6 +18,7 @@ import {
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 import { useLanguageStore } from '../../store/languageStore';
+import { useRealtimeQuote } from '../../hooks/useMarketSocket';
 
 const RELOAD_MS = 20000;
 
@@ -67,13 +68,31 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     };
   }, []);
 
+  // Helper pour convertir une unité de temps en millisecondes
+  const getTimeframeMs = (tf) => {
+    if (!tf) return 60 * 1000;
+    if (tf.startsWith('M')) {
+      const mins = parseInt(tf.slice(1), 10) || 1;
+      return mins * 60 * 1000;
+    }
+    if (tf.startsWith('H')) {
+      const hrs = parseInt(tf.slice(1), 10) || 1;
+      return hrs * 3600 * 1000;
+    }
+    if (tf === 'D1') return 86400 * 1000;
+    if (tf === 'W1') return 7 * 86400 * 1000;
+    if (tf === 'MN') return 30 * 86400 * 1000;
+    return 60 * 1000;
+  };
+
   useEffect(() => {
     if (!symbol || !timeframe) return;
     let cancelled = false;
     digitsSetRef.current = false;
 
-    const load = async () => {
+    const load = async (isBackground = false) => {
       try {
+        if (!isBackground) setLoading(true);
         const data = await demoApi.candles(symbol, timeframe, 300);
         if (cancelled || !chartRef.current) return;
         const raw = data.candles || [];
@@ -99,48 +118,79 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
           .sort((a, b) => a.timestamp - b.timestamp);
 
         if (kline.length) {
-          const d = detectPriceDigits(kline);
-          chartRef.current.setPriceVolumePrecision?.(d, 0);
-          setDigits(d);
-          digitsSetRef.current = true;
+          if (!digitsSetRef.current) {
+            const d = detectPriceDigits(kline);
+            chartRef.current.setPriceVolumePrecision?.(d, 0);
+            setDigits(d);
+            digitsSetRef.current = true;
+          }
+          if (!isBackground) {
+            chartRef.current.applyNewData(kline);
+            chartRef.current.setBarSpace?.(9);
+            chartRef.current.scrollToRealTime?.();
+            lastRef.current = kline[kline.length - 1] || null;
+          } else {
+            // Background sync silencieux : ne pas perturber le zoom/scroll ni réinitialiser
+            const latest = kline[kline.length - 1];
+            if (latest && (!lastRef.current || latest.timestamp >= lastRef.current.timestamp)) {
+              chartRef.current.updateData(latest);
+            }
+          }
         }
-        chartRef.current.applyNewData(kline);
-        // Garantit des chandeliers lisibles et épais avec un corps net sur tous les timeframes
-        chartRef.current.setBarSpace?.(9);
-        chartRef.current.scrollToRealTime?.();
-        lastRef.current = kline[kline.length - 1] || null;
         setError(null);
       } catch (err) {
-        if (!cancelled) setError(err.response?.data?.message || 'Données indisponibles');
+        if (!cancelled && !isBackground) setError(err.response?.data?.message || 'Données indisponibles');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !isBackground) setLoading(false);
       }
     };
 
-    setLoading(true);
-    load();
+    load(false);
     clearInterval(timerRef.current);
-    timerRef.current = setInterval(load, RELOAD_MS);
+    timerRef.current = setInterval(() => load(true), RELOAD_MS);
     return () => { cancelled = true; clearInterval(timerRef.current); };
   }, [symbol, timeframe]);
 
-  // Mise à jour temps réel de la dernière bougie avec le prix mid reçu par WS.
-  useEffect(() => {
+  // Traitement instantané du tick de prix (ouverture nouvelle bougie ou mise à jour courante)
+  const processLivePriceTick = useCallback((q) => {
     const chart = chartRef.current;
-    const last = lastRef.current;
-    if (!chart || !last || !liveQuote || !(liveQuote.mid > 0)) return;
-    if (liveQuote.symbol && liveQuote.symbol !== symbol) return;
-    const mid = Number(liveQuote.mid);
+    if (!chart || !q || !(q.mid > 0)) return;
+    if (q.symbol && q.symbol !== symbol) return;
+
+    const mid = Number(q.mid);
     if (!Number.isFinite(mid) || mid <= 0) return;
-    if (last.close > 0 && Math.abs(mid - last.close) / last.close > 0.15) return;
-    const updated = {
-      ...last,
-      close: mid,
-      high: Math.max(last.high, mid),
-      low: Math.min(last.low, mid),
-    };
-    lastRef.current = updated;
-    chart.updateData(updated);
+
+    const last = lastRef.current;
+    if (!last) return;
+
+    const tfMs = getTimeframeMs(timeframe);
+    const tickTime = Number(q.ts) || Date.now();
+    const currentBucket = Math.floor(tickTime / tfMs) * tfMs;
+
+    if (currentBucket > last.timestamp) {
+      // Nouvelle bougie en temps réel synchronisée avec l'intervalle de temps (TradingView style)
+      const newCandle = {
+        timestamp: currentBucket,
+        open: mid,
+        high: mid,
+        low: mid,
+        close: mid,
+        volume: 0,
+      };
+      lastRef.current = newCandle;
+      chart.updateData(newCandle);
+    } else {
+      // Mise à jour continue de la bougie en cours
+      if (last.close > 0 && Math.abs(mid - last.close) / last.close > 0.15) return;
+      const updated = {
+        ...last,
+        close: mid,
+        high: Math.max(last.high, mid),
+        low: Math.min(last.low, mid),
+      };
+      lastRef.current = updated;
+      chart.updateData(updated);
+    }
 
     // Détection immédiate d'alertes de prix (TradingView / MT5)
     const triggered = alertsManager.checkLivePrice(mid);
@@ -154,7 +204,15 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
         );
       });
     }
-  }, [liveQuote, symbol, symbolName, alertsManager, isEnglish]);
+  }, [symbol, timeframe, alertsManager, isEnglish, symbolName]);
+
+  // Abonnement direct 0 ms de latence sans re-render React du parent
+  useRealtimeQuote(symbol, processLivePriceTick);
+
+  // Fallback si prop liveQuote reçue
+  useEffect(() => {
+    if (liveQuote) processLivePriceTick(liveQuote);
+  }, [liveQuote, processLivePriceTick]);
 
   useEffect(() => {
     const resize = () => chartRef.current?.resize();
@@ -225,7 +283,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             onDeselect={() => overlayManager.setSelectedOverlay(null)}
           />
 
-          <div ref={containerRef} className="w-full h-full" />
+          <div ref={containerRef} className="w-full h-full" style={{ width: '100%', height: '100%', minHeight: '300px' }} />
           <ChartWatermark />
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">

@@ -3,7 +3,7 @@ import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
 import api from '../lib/api';
 import ReplayChart from '../components/backtest/ReplayChart';
-import { Dropdown } from '../components/backtest/chartShared';
+import { Dropdown, ChartErrorBoundary } from '../components/backtest/chartShared';
 import {
   Film, BarChart3, ChevronDown, CalendarRange, Coins, LineChart, Wallet,
 } from 'lucide-react';
@@ -270,19 +270,21 @@ const Backtesting = () => {
       </div>
 
       {/* ==================== GRAPHIQUE / REPLAY MANUEL ==================== */}
-      <ReplayChart
-        candles={candles}
-        symbolName={currentSymbol?.name}
-        timeframe={form.timeframe}
-        periodBounds={periodBounds}
-        pip={currentSymbol?.pip || 0.0001}
-        lot={Number(form.position_size)}
-        initialBalance={INITIAL_BALANCE}
-        loading={loading}
-        replaySignal={replaySignal}
-        error={error}
-        onRetry={() => setReloadKey((k) => k + 1)}
-      />
+      <ChartErrorBoundary>
+        <ReplayChart
+          candles={candles}
+          symbolName={currentSymbol?.name}
+          timeframe={form.timeframe}
+          periodBounds={periodBounds}
+          pip={currentSymbol?.pip || 0.0001}
+          lot={Number(form.position_size)}
+          initialBalance={INITIAL_BALANCE}
+          loading={loading}
+          replaySignal={replaySignal}
+          error={error}
+          onRetry={() => setReloadKey((k) => k + 1)}
+        />
+      </ChartErrorBoundary>
     </div>
   );
 };

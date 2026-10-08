@@ -445,7 +445,7 @@ export default function ReplayChart({
     // Écouteur pour le clic sur une bougie pour exécuter la coupe
     const candleClickUnsub = chart.subscribeAction('onCandleBarClick', (data) => {
       if (isCuttingRef.current) {
-        const clicked = data?.data || hoveredCandleRef.current;
+        const clicked = data?.data || (data?.dataIndex != null ? klineData[data.dataIndex] : hoveredCandleRef.current);
         if (clicked) {
           executeCutAtCandle(clicked);
         }
@@ -465,14 +465,29 @@ export default function ReplayChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [klineData]);
 
-  // Clic direct sur le conteneur pour assurer la coupe même si le clic n'atteint pas le corps de la bougie
-  const handleContainerClick = () => {
-    if (isCuttingRef.current && hoveredCandleRef.current) {
+  // Clic direct sur le conteneur pour assurer la coupe même si le clic n'atteint pas le corps de la bougie (tactile & souris)
+  const handleContainerClick = (e) => {
+    if (!isCuttingRef.current) return;
+    if (hoveredCandleRef.current) {
       executeCutAtCandle(hoveredCandleRef.current);
+      return;
+    }
+    // Fallback tactile / mobile : calculer la bougie la plus proche du point cliqué
+    const el = containerRef.current;
+    if (el && klineData.length && e) {
+      const rect = el.getBoundingClientRect();
+      const clientX = e.clientX ?? (e.touches && e.touches[0]?.clientX);
+      if (clientX != null && rect.width > 0) {
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const idx = Math.min(Math.floor(ratio * klineData.length), klineData.length - 1);
+        if (klineData[idx]) {
+          executeCutAtCandle(klineData[idx]);
+        }
+      }
     }
   };
 
-  // Redimensionnement
+  // Redimensionnement réactif (ResizeObserver & window resize pour mobile et desktop)
   useEffect(() => {
     const resize = () => chartRef.current?.resize();
     const timer = setTimeout(resize, 60);
@@ -485,6 +500,16 @@ export default function ReplayChart({
     };
   }, [fullscreen, activeIndicators]);
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      chartRef.current?.resize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Basculer l'outil Coupe
   const toggleCut = () => {
     if (isCutting) {
@@ -496,7 +521,7 @@ export default function ReplayChart({
       setIsCutting(true);
       isCuttingRef.current = true;
       setPlaying(false);
-      toast.info('✂️ Mode Coupe activé : survolez et cliquez sur la bougie souhaitée pour couper le graphique.');
+      toast.info('✂️ Mode Coupe activé : survolez ou touchez la bougie souhaitée pour couper le graphique.');
     }
   };
 
@@ -515,6 +540,8 @@ export default function ReplayChart({
     chart.removeOverlay({ groupId: 'cut_marker' });
 
     chart.applyNewData(klineData);
+    chart.setBarSpace?.(9);
+    chart.scrollToRealTime?.();
     drawPeriodBounds();
     indexRef.current = klineData.length - 1;
     setIndex(klineData.length - 1);
@@ -527,8 +554,13 @@ export default function ReplayChart({
   const enterReplay = () => {
     const chart = chartRef.current;
     if (!chart || !klineData.length) return;
-    const from = Math.max(startIdx, 0);
+    // S'assurer qu'au moins 30 bougies d'historique (ou la taille max disponible) restent visibles
+    // pour éviter la division par zéro du canvas et la page vide
+    const minSafeBars = Math.min(30, klineData.length - 1);
+    const from = Math.max(startIdx, minSafeBars);
     chart.applyNewData(klineData.slice(0, from + 1));
+    chart.setBarSpace?.(9);
+    chart.scrollToRealTime?.();
     drawPeriodBounds();
     indexRef.current = from;
     setIndex(from);
@@ -567,7 +599,7 @@ export default function ReplayChart({
         processCandleTick(klineData[next]);
       } else {
         // Rembobinage dans le passé
-        const minLimit = 0;
+        const minLimit = Math.min(5, klineData.length - 1);
         if (next < minLimit) {
           setPlaying(false);
           toast.info('Début de l\'historique atteint');
@@ -599,8 +631,9 @@ export default function ReplayChart({
 
   // Recul pas à pas (1 bougie)
   const stepBackward = () => {
+    const minSafeBars = Math.min(5, klineData.length - 1);
     const next = indexRef.current - 1;
-    if (next < 0) {
+    if (next < minSafeBars) {
       toast.info('Début atteint');
       return;
     }
@@ -618,8 +651,11 @@ export default function ReplayChart({
     setPlaying(false);
     clearInterval(timerRef.current);
 
-    const from = cutIndexRef.current != null ? cutIndexRef.current : Math.max(startIdx, 0);
+    const minSafeBars = Math.min(30, klineData.length - 1);
+    const from = cutIndexRef.current != null ? cutIndexRef.current : Math.max(startIdx, minSafeBars);
     chart.applyNewData(klineData.slice(0, from + 1));
+    chart.setBarSpace?.(9);
+    chart.scrollToRealTime?.();
     drawPeriodBounds();
     indexRef.current = from;
     setIndex(from);
@@ -1252,8 +1288,25 @@ export default function ReplayChart({
             <CandleCountdownBadge timeframe={timeframe} referenceTime={cur?.time ? cur.time * 1000 : null} />
           </div>
 
-          <div ref={containerRef} className="w-full h-full" />
+          <div ref={containerRef} className="w-full h-full" style={{ width: '100%', height: '100%', minHeight: '420px' }} />
           <ChartWatermark />
+          {loading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/70 backdrop-blur-[2px] z-30 gap-2">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground font-medium">Chargement des données du marché...</p>
+            </div>
+          )}
+          {error && !loading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/85 z-30 p-4 text-center gap-2">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+              <p className="text-sm font-semibold text-destructive">{error}</p>
+              {onRetry && (
+                <Button size="sm" variant="outline" onClick={onRetry} className="mt-1 gap-1.5">
+                  <RotateCcw className="h-3.5 w-3.5" /> Réessayer
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </ChartErrorBoundary>

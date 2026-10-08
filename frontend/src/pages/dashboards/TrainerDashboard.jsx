@@ -9,6 +9,7 @@ import api from '../../lib/api';
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
+import TradingDemo from '../TradingDemo';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -120,6 +121,7 @@ const TrainerDashboard = () => {
               {activeSection === 'registration' && <RegistrationDetails key={`registration-${refreshKey}`} />}
               {activeSection === 'strategies' && <StrategiesSection key={`strategies-${refreshKey}`} />}
               {activeSection === 'economics' && <EconomicCalendar key={`economics-${refreshKey}`} />}
+              {activeSection === 'trading-demo' && <TradingDemo key={`trading-demo-${refreshKey}`} />}
               {activeSection === 'backtesting' && <Backtesting key={`backtesting-${refreshKey}`} />}
               {activeSection === 'backtest-history' && <BacktestHistory key={`backtest-history-${refreshKey}`} />}
             </div>
