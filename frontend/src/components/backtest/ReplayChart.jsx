@@ -9,8 +9,9 @@ import {
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
-  ChartErrorBoundary, Dropdown,
+  ChartErrorBoundary, Dropdown, usePriceAlerts, ChartAlertsMenu,
 } from './chartShared';
+import { useLanguageStore } from '../../store/languageStore';
 import {
   Play, Pause, RotateCcw, SkipForward, SkipBack, Film, Eye, Loader2,
   Maximize2, Minimize2, ArrowUpCircle, ArrowDownCircle, XCircle, Scissors,
@@ -65,6 +66,10 @@ export default function ReplayChart({
   const [index, setIndex] = useState(0);
   const [cutIndex, setCutIndex] = useState(null);
   const [isCutting, setIsCutting] = useState(false);
+
+  const { language, t } = useLanguageStore();
+  const isEnglish = language === 'en';
+  const alertsManager = usePriceAlerts(symbolName || 'BACKTEST', chartRef);
 
   // Positions et Ordres
   const [position, setPosition] = useState(null);
@@ -340,8 +345,22 @@ export default function ReplayChart({
       }
     }
 
+    // 3. Détection des alertes de prix (TradingView / MT5 Replay)
+    const triggeredAlerts = alertsManager.checkCandle(candle);
+    if (triggeredAlerts && triggeredAlerts.length > 0) {
+      setPlaying(false);
+      triggeredAlerts.forEach((al) => {
+        toast.warning(
+          isEnglish
+            ? `🔔 ALERT: ${symbolName || 'Price'} reached ${al.targetPrice}${al.note ? ` (${al.note})` : ''}! Replay paused.`
+            : `🔔 ALERTE : ${symbolName || 'Prix'} a atteint ${al.targetPrice}${al.note ? ` (${al.note})` : ''} ! Replay mis en pause.`,
+          { duration: 8000 }
+        );
+      });
+    }
+
     syncTradingOverlays();
-  }, [annotate, priceDigits, profitOf, syncTradingOverlays]);
+  }, [annotate, priceDigits, profitOf, syncTradingOverlays, alertsManager, isEnglish, symbolName]);
 
   // Exécution de la coupe à une bougie donnée
   const executeCutAtCandle = useCallback((targetCandle) => {
@@ -793,10 +812,10 @@ export default function ReplayChart({
             className={`h-8 gap-1.5 font-semibold transition-all ${
               isCutting ? 'animate-pulse ring-2 ring-destructive' : cutIndex !== null ? 'border-amber-500/50 text-amber-500' : ''
             }`}
-            title={isCutting ? 'Cliquez sur une bougie pour couper ou ré-appuyez pour annuler' : 'Activer la coupe mobile du graphique'}
+            title={isCutting ? (isEnglish ? 'Click on a candle to cut or click again to cancel' : 'Cliquez sur une bougie pour couper ou ré-appuyez pour annuler') : (isEnglish ? 'Activate chart cut replay' : 'Activer la coupe mobile du graphique')}
           >
             <Scissors className="h-3.5 w-3.5" />
-            <span className="text-xs">{isCutting ? 'Annuler' : cutIndex !== null ? 'Recouper' : 'Couper'}</span>
+            <span className="text-xs">{isCutting ? (isEnglish ? 'Cancel' : 'Annuler') : cutIndex !== null ? (isEnglish ? 'Recut' : 'Recouper') : (isEnglish ? 'Cut' : 'Couper')}</span>
           </Button>
 
           {/* 2. Menu Déroulant VITESSE (×-3; ×-2; ×-1; ×+1; ×+2; ×+3) */}
@@ -810,17 +829,17 @@ export default function ReplayChart({
                 variant="outline"
                 onClick={() => setSpeedDropdownOpen((o) => !o)}
                 className="h-8 px-2 text-xs font-bold gap-1 tabular-nums border-muted-foreground/30 hover:bg-muted"
-                title="Vitesse et direction de rejeu"
+                title={isEnglish ? 'Replay speed and direction' : 'Vitesse et direction de rejeu'}
               >
                 <Zap className="h-3.5 w-3.5 text-amber-500" />
-                <span>Vitesse : {REPLAY_SPEEDS.find((s) => s.key === speed)?.label || '×+1'}</span>
+                <span>{isEnglish ? 'Speed:' : 'Vitesse :'} {REPLAY_SPEEDS.find((s) => s.key === speed)?.label || '×+1'}</span>
                 <ChevronDown className="h-3 w-3 text-muted-foreground" />
               </Button>
             }
           >
             <div className="p-1.5 space-y-1">
               <div className="px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Vitesse de rejeu
+                {isEnglish ? 'Replay Speed' : 'Vitesse de rejeu'}
               </div>
               <div className="grid grid-cols-2 gap-1">
                 {REPLAY_SPEEDS.map((s) => {
@@ -865,22 +884,22 @@ export default function ReplayChart({
           </Button>
 
           {/* Bougie précédente & Bougie suivante */}
-          <Button size="sm" variant="outline" onClick={stepBackward} title="Reculer d'une bougie" className="px-2 h-8">
+          <Button size="sm" variant="outline" onClick={stepBackward} title={isEnglish ? 'Step back one candle' : "Reculer d'une bougie"} className="px-2 h-8">
             <SkipBack className="h-3.5 w-3.5" />
           </Button>
-          <Button size="sm" variant="outline" onClick={stepForward} title="Avancer d'une bougie" className="px-2 h-8">
+          <Button size="sm" variant="outline" onClick={stepForward} title={isEnglish ? 'Step forward one candle' : "Avancer d'une bougie"} className="px-2 h-8">
             <SkipForward className="h-3.5 w-3.5" />
           </Button>
 
           {/* Recommencer */}
-          <Button size="sm" variant="outline" onClick={resetReplay} title="Recommencer depuis le point de départ" className="px-2 h-8">
+          <Button size="sm" variant="outline" onClick={resetReplay} title={isEnglish ? 'Restart from beginning' : 'Recommencer depuis le point de départ'} className="px-2 h-8">
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
 
           {/* Vue complète (si coupé) */}
           {cutIndex !== null && (
             <Button size="sm" variant="ghost" onClick={resetToFull} className="gap-1 text-xs h-8 px-2">
-              <Eye className="h-3.5 w-3.5" /> <span className="hidden md:inline">Vue complète</span>
+              <Eye className="h-3.5 w-3.5" /> <span className="hidden md:inline">{isEnglish ? 'Full view' : 'Vue complète'}</span>
             </Button>
           )}
 
@@ -894,10 +913,10 @@ export default function ReplayChart({
                 size="sm"
                 onClick={() => setOrderDropdownOpen((o) => !o)}
                 className="h-8 gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-3 shadow-xs"
-                title="Placer un ordre Buy / Sell / Ordre Limite ou Stop"
+                title={isEnglish ? 'Place Buy / Sell / Limit or Stop order' : 'Placer un ordre Buy / Sell / Ordre Limite ou Stop'}
               >
                 <PlusCircle className="h-3.5 w-3.5" />
-                <span className="text-xs">Ordre</span>
+                <span className="text-xs">{isEnglish ? 'Order' : 'Ordre'}</span>
                 <ChevronDown className="h-3 w-3" />
               </Button>
             }
@@ -905,7 +924,7 @@ export default function ReplayChart({
             <div className="p-3 space-y-3">
               <div className="flex items-center justify-between border-b pb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-                  Nouveau Trade ({symbolName || 'Position'})
+                  {isEnglish ? 'New Trade' : 'Nouveau Trade'} ({symbolName || 'Position'})
                 </span>
                 <span className="text-xs font-mono font-bold text-primary">
                   {cur?.close ? cur.close.toFixed(digits) : '—'}
@@ -915,7 +934,7 @@ export default function ReplayChart({
               {/* Choix du type d'ordre */}
               <div>
                 <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-                  Type d'ordre
+                  {isEnglish ? 'Order Type' : "Type d'ordre"}
                 </label>
                 <div className="flex flex-wrap gap-1">
                   {ORDER_TYPES.map((t) => (
@@ -1118,10 +1137,10 @@ export default function ReplayChart({
               📅 {cur?.time ? fmtDateLong(cur.time) : '—'}
             </span>
             <span className="border-l pl-2 border-border/50 hidden sm:inline">
-              Solde: <b className="text-foreground">{balance.toFixed(2)} $</b>
+              {isEnglish ? 'Balance:' : 'Solde:'} <b className="text-foreground">{balance.toFixed(2)} $</b>
             </span>
             <span className="border-l pl-2 border-border/50">
-              Équité: <b className={equity >= initialBalance ? 'text-green-500' : 'text-red-500'}>{equity.toFixed(2)} $</b>
+              {isEnglish ? 'Equity:' : 'Équité:'} <b className={equity >= initialBalance ? 'text-green-500' : 'text-red-500'}>{equity.toFixed(2)} $</b>
             </span>
           </div>
 
@@ -1129,8 +1148,9 @@ export default function ReplayChart({
           <ChartZoomControls chartRef={chartRef} />
           <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
           <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={indicatorPanesRef} />
+          <ChartAlertsMenu alertsManager={alertsManager} currentPrice={cur?.close} symbol={symbolName} isEnglish={isEnglish} />
           <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
-          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran'} className="px-2 h-8">
+          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? (isEnglish ? 'Exit fullscreen (Esc)' : 'Quitter le plein écran (Échap)') : (isEnglish ? 'Fullscreen' : 'Plein écran')} className="px-2 h-8">
             {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>
@@ -1139,7 +1159,7 @@ export default function ReplayChart({
         {isCutting && (
           <div className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-xs text-amber-500 shrink-0 animate-fadeIn">
             <Scissors className="h-4 w-4 shrink-0" />
-            <span>Déplacez le curseur sur le graphique et cliquez sur la bougie où vous voulez couper l'historique pour commencer l'analyse.</span>
+            <span>{isEnglish ? 'Move cursor over the chart and click the candle where you want to cut historical data to start analysis.' : "Déplacez le curseur sur le graphique et cliquez sur la bougie où vous voulez couper l'historique pour commencer l'analyse."}</span>
           </div>
         )}
 
@@ -1150,15 +1170,15 @@ export default function ReplayChart({
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${position.side === 'buy' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                 {position.side} {position.lot}
               </span>
-              <span className="font-mono shrink-0">Entrée : <b className="text-blue-500">{position.entryPrice.toFixed(digits)}</b></span>
-              {position.sl && <span className="font-mono shrink-0">SL : <b className="text-red-500">{Number(position.sl).toFixed(digits)}</b></span>}
-              {position.tp && <span className="font-mono shrink-0">TP : <b className="text-green-500">{Number(position.tp).toFixed(digits)}</b></span>}
+              <span className="font-mono shrink-0">{isEnglish ? 'Entry: ' : 'Entrée : '}<b className="text-blue-500">{position.entryPrice.toFixed(digits)}</b></span>
+              {position.sl && <span className="font-mono shrink-0">SL: <b className="text-red-500">{Number(position.sl).toFixed(digits)}</b></span>}
+              {position.tp && <span className="font-mono shrink-0">TP: <b className="text-green-500">{Number(position.tp).toFixed(digits)}</b></span>}
               <span className="font-semibold font-mono shrink-0">
                 P&L : <b className={floating >= 0 ? 'text-green-500' : 'text-red-500'}>{fmt$(floating)}</b>
               </span>
             </div>
             <Button size="sm" variant="destructive" onClick={handleClosePosition} className="h-6 px-2 text-[11px] gap-1 shrink-0 ml-auto">
-              <XCircle className="h-3 w-3" /> Fermer
+              <XCircle className="h-3 w-3" /> {isEnglish ? 'Close' : 'Fermer'}
             </Button>
           </div>
         )}
@@ -1181,7 +1201,7 @@ export default function ReplayChart({
               syncTradingOverlays();
             }}
             className="w-full h-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary hover:h-1.5 transition-all"
-            title="Curseur temporel de replay"
+            title={isEnglish ? 'Replay time slider' : 'Curseur temporel de replay'}
           />
           <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 font-mono">
             {progressPct}%

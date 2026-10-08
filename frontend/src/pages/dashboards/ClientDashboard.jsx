@@ -25,7 +25,8 @@ import TradingDemo from '../TradingDemo';
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
+  const isEn = language === 'en';
   const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
   // La navigation entre les fonctions du tableau de bord passe par l'URL
@@ -1059,10 +1060,10 @@ const ClientDashboard = () => {
 
   // Boutons de fonctionnalités affichés sur la page d'accueil (outils de trading en tête)
   const navItems = [
-    { id: 'trading-demo', icon: LineChart, label: 'Graphique (Trading Démo)' },
-    { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
-    { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
-    { id: 'economics', icon: Calendar, label: 'Annonces éco' },
+    { id: 'trading-demo', icon: LineChart, label: `${t('features.chart', 'Graphique')} (${isEn ? 'Demo Trading' : 'Trading Démo'})` },
+    { id: 'backtesting', icon: BarChart3, label: t('features.backtesting', 'Backtesting') },
+    { id: 'backtest-history', icon: History, label: t('features.backtestHistory', 'Historique de backtest') },
+    { id: 'economics', icon: Calendar, label: t('features.economics', 'Annonces éco') },
     { id: 'services', icon: Briefcase, label: t('sidebar.services') },
     { id: 'trading', icon: TrendingUp, label: t('sidebar.tradingInfo') },
     { id: 'academy', icon: GraduationCap, label: t('sidebar.academy') },
@@ -1126,16 +1127,16 @@ const ClientDashboard = () => {
                   <button
                     onClick={handleGoBack}
                     className="fixed top-2.5 left-2.5 sm:top-3 sm:left-3 z-[75] flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground font-bold px-3.5 py-1.5 text-xs sm:text-sm hover:bg-primary/90 active:scale-95 transition-all shadow-2xl border border-primary-foreground/20 cursor-pointer"
-                    title="Retour à la page précédente"
+                    title={isEn ? "Back to previous page" : "Retour à la page précédente"}
                   >
-                    <ArrowLeft className="h-4 w-4" /> Retour
+                    <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back' : 'Retour'}
                   </button>
                   {renderContent()}
                 </>
               ) : (
                 <>
                   <Button variant="ghost" className="gap-2" onClick={handleGoBack}>
-                    <ArrowLeft className="h-4 w-4" /> Retour
+                    <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back' : 'Retour'}
                   </Button>
                   {renderContent()}
                 </>

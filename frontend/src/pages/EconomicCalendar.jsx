@@ -11,6 +11,7 @@ import CalendarView from '../components/economic/CalendarView';
 import CentralBankView from '../components/economic/CentralBankView';
 import EconomicChat from '../components/economic/EconomicChat';
 import NotificationBell from '../components/economic/NotificationBell';
+import { useLanguageStore } from '../store/languageStore';
 
 class MacroErrorBoundary extends React.Component {
   constructor(props) {
@@ -54,6 +55,8 @@ class BellBoundary extends React.Component {
 export default function EconomicCalendar() {
   const [tab, setTab] = useState('calendar');
   const [aiEnabled, setAiEnabled] = useState(true);
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
 
   useEffect(() => {
     let alive = true;
@@ -72,11 +75,12 @@ export default function EconomicCalendar() {
           <div className="relative flex items-start justify-between gap-4">
             <div>
               <h1 className="text-xl md:text-2xl font-extrabold tracking-tight flex items-center gap-2">
-                <TrendingUp className="h-6 w-6 text-primary" /> Annonces économiques
+                <TrendingUp className="h-6 w-6 text-primary" /> {isEn ? 'Economic News & Macro' : 'Annonces économiques'}
               </h1>
               <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-                Calendrier macro en temps réel, analyses IA (avant / après publication), résumés des banques
-                centrales et assistant pédagogique pour comprendre l'impact sur les marchés.
+                {isEn
+                  ? 'Real-time macro calendar, AI insights (pre / post release), central bank summaries and educational assistant to master market impact.'
+                  : "Calendrier macro en temps réel, analyses IA (avant / après publication), résumés des banques centrales et assistant pédagogique pour comprendre l'impact sur les marchés."}
               </p>
             </div>
             <BellBoundary>
@@ -88,9 +92,9 @@ export default function EconomicCalendar() {
         {/* Onglets */}
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="w-full sm:w-auto flex-wrap h-auto">
-            <TabsTrigger value="calendar" className="gap-1.5"><CalendarDays className="h-4 w-4" /> Calendrier</TabsTrigger>
-            <TabsTrigger value="central-banks" className="gap-1.5"><Landmark className="h-4 w-4" /> Banques centrales</TabsTrigger>
-            <TabsTrigger value="assistant" className="gap-1.5"><MessageCircle className="h-4 w-4" /> Assistant</TabsTrigger>
+            <TabsTrigger value="calendar" className="gap-1.5"><CalendarDays className="h-4 w-4" /> {isEn ? 'Calendar' : 'Calendrier'}</TabsTrigger>
+            <TabsTrigger value="central-banks" className="gap-1.5"><Landmark className="h-4 w-4" /> {isEn ? 'Central Banks' : 'Banques centrales'}</TabsTrigger>
+            <TabsTrigger value="assistant" className="gap-1.5"><MessageCircle className="h-4 w-4" /> {isEn ? 'AI Assistant' : 'Assistant'}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="calendar"><CalendarView aiEnabled={aiEnabled} /></TabsContent>

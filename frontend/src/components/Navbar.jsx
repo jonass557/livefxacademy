@@ -18,18 +18,36 @@ const fallbackLogoUrl = '/logo.png';
 // Graphique, Backtesting, Historique de backtesting, Annonces éco, Services,
 // Le Trading, Inscription Académie, Lien Brokers, Contact, Fiche consultation, Programme de vacances
 export const MENU_FEATURES = [
-  { label: 'Graphique', path: '/dashboard?section=trading-demo', icon: LineChart },
-  { label: 'Backtesting', path: '/dashboard?section=backtesting', icon: BarChart3 },
-  { label: 'Historique de backtesting', path: '/dashboard?section=backtest-history', icon: History },
-  { label: 'Annonces éco', path: '/dashboard?section=economics', icon: Calendar },
-  { label: 'Services', path: '/dashboard?section=services', icon: Briefcase },
-  { label: 'Le Trading', path: '/trading-info', icon: TrendingUp },
-  { label: 'Inscription Académie', path: '/dashboard?section=academy', icon: GraduationCap },
-  { label: 'Lien Brokers', path: '/dashboard?section=broker', icon: LinkIcon },
-  { label: 'Contact', path: '/dashboard?section=contact', icon: MessageSquare },
-  { label: 'Fiche consultation', path: '/consultation', icon: ClipboardList },
-  { label: 'Programme de vacances', path: '/vacation-program', icon: Palmtree },
+  { key: 'trading-demo', label: 'Graphique', path: '/dashboard?section=trading-demo', icon: LineChart },
+  { key: 'backtesting', label: 'Backtesting', path: '/dashboard?section=backtesting', icon: BarChart3 },
+  { key: 'backtest-history', label: 'Historique de backtesting', path: '/dashboard?section=backtest-history', icon: History },
+  { key: 'economics', label: 'Annonces éco', path: '/dashboard?section=economics', icon: Calendar },
+  { key: 'services', label: 'Services', path: '/dashboard?section=services', icon: Briefcase },
+  { key: 'trading-info', label: 'Le Trading', path: '/trading-info', icon: TrendingUp },
+  { key: 'academy', label: 'Inscription Académie', path: '/dashboard?section=academy', icon: GraduationCap },
+  { key: 'broker', label: 'Lien Brokers', path: '/dashboard?section=broker', icon: LinkIcon },
+  { key: 'contact', label: 'Contact', path: '/dashboard?section=contact', icon: MessageSquare },
+  { key: 'consultation', label: 'Fiche consultation', path: '/consultation', icon: ClipboardList },
+  { key: 'vacation', label: 'Programme de vacances', path: '/vacation-program', icon: Palmtree },
 ];
+
+export const getFeatureLabel = (key, language) => {
+  const isEn = language === 'en';
+  const labels = {
+    'trading-demo': isEn ? 'Chart' : 'Graphique',
+    'backtesting': isEn ? 'Backtesting' : 'Backtesting',
+    'backtest-history': isEn ? 'Backtest History' : 'Historique de backtesting',
+    'economics': isEn ? 'Economic News' : 'Annonces éco',
+    'services': isEn ? 'Services' : 'Services',
+    'trading-info': isEn ? 'Trading' : 'Le Trading',
+    'academy': isEn ? 'Academy Registration' : 'Inscription Académie',
+    'broker': isEn ? 'Broker Links' : 'Lien Brokers',
+    'contact': isEn ? 'Contact' : 'Contact',
+    'consultation': isEn ? 'Consultation Form' : 'Fiche consultation',
+    'vacation': isEn ? 'Vacation Program' : 'Programme de vacances',
+  };
+  return labels[key] || key;
+};
 
 const Navbar = () => {
   const { user, logout } = useAuthStore();
@@ -108,14 +126,14 @@ const Navbar = () => {
                     : 'bg-card border text-foreground hover:border-primary/50 hover:bg-accent'
                 }`}
               >
-                <span>Fonctionnalités</span>
+                <span>{language === 'en' ? 'Features' : 'Fonctionnalités'}</span>
                 <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isDropdownOpen && (
                 <div className="absolute left-0 mt-2 w-64 rounded-xl border bg-card p-1.5 shadow-xl animate-in fade-in-0 zoom-in-95 z-50">
                   <div className="px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b mb-1">
-                    Accès rapide aux outils
+                    {language === 'en' ? 'Quick Tools Access' : 'Accès rapide aux outils'}
                   </div>
                   <div className="max-h-[75vh] overflow-y-auto space-y-0.5">
                     {MENU_FEATURES.map((item, idx) => {
@@ -130,7 +148,7 @@ const Navbar = () => {
                           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-primary">
                             <Icon className="h-3.5 w-3.5" />
                           </div>
-                          <span className="truncate">{item.label}</span>
+                          <span className="truncate">{getFeatureLabel(item.key, language)}</span>
                         </Link>
                       );
                     })}
@@ -200,7 +218,7 @@ const Navbar = () => {
                 onClick={() => setMobileFeaturesOpen(!mobileFeaturesOpen)}
                 className="flex items-center justify-between w-full text-sm font-semibold text-primary"
               >
-                <span>Fonctionnalités LiveFX</span>
+                <span>{language === 'en' ? 'LiveFX Features' : 'Fonctionnalités LiveFX'}</span>
                 <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileFeaturesOpen ? 'rotate-180' : ''}`} />
               </button>
 
@@ -216,7 +234,7 @@ const Navbar = () => {
                         className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-xs font-medium text-foreground hover:bg-muted"
                       >
                         <Icon className="h-4 w-4 text-primary shrink-0" />
-                        <span>{item.label}</span>
+                        <span>{getFeatureLabel(item.key, language)}</span>
                       </Link>
                     );
                   })}

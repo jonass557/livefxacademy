@@ -31,7 +31,8 @@ const isImageFile = (post) => {
 
 const Home = () => {
   const { user } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { language, t } = useLanguageStore();
+  const isEn = language === 'en';
   const navigate = useNavigate();
 
   const [posts, setPosts] = useState([]);
@@ -82,13 +83,15 @@ const Home = () => {
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/15 text-primary mb-1">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Espace Membre Connecté</span>
+              <span>{isEn ? 'Connected Member Area' : 'Espace Membre Connecté'}</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-              Bienvenue, <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-500">{user?.full_name || 'Trader'}</span> 👋
+              {isEn ? 'Welcome,' : 'Bienvenue,'} <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-500">{user?.full_name || 'Trader'}</span> 👋
             </h1>
             <p className="text-sm text-muted-foreground max-w-xl">
-              Retrouvez ci-dessous les dernières publications, le fil d'actualité en direct, les programmes de vacances, nos brokers recommandés et nos coordonnées de contact.
+              {isEn
+                ? 'Find below the latest publications, live news feed, vacation programs, recommended brokers and contact info.'
+                : "Retrouvez ci-dessous les dernières publications, le fil d'actualité en direct, les programmes de vacances, nos brokers recommandés et nos coordonnées de contact."}
             </p>
           </div>
 
@@ -97,19 +100,19 @@ const Home = () => {
             <Link to="/dashboard?section=trading-demo">
               <Button size="sm" className="gap-1.5 shadow-sm">
                 <LineChart className="h-4 w-4" />
-                <span>Graphique</span>
+                <span>{t('features.chart', 'Graphique')}</span>
               </Button>
             </Link>
             <Link to="/dashboard?section=backtesting">
               <Button size="sm" variant="outline" className="gap-1.5 bg-card">
                 <BarChart3 className="h-4 w-4" />
-                <span>Backtesting</span>
+                <span>{t('features.backtesting', 'Backtesting')}</span>
               </Button>
             </Link>
             <Link to="/dashboard?section=economics">
               <Button size="sm" variant="outline" className="gap-1.5 bg-card">
                 <Calendar className="h-4 w-4" />
-                <span>Annonces éco</span>
+                <span>{t('features.economics', 'Annonces éco')}</span>
               </Button>
             </Link>
           </div>
@@ -124,8 +127,8 @@ const Home = () => {
               <Compass className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight">Fil d'actualité LiveFX</h2>
-              <p className="text-xs text-muted-foreground">Publications vidéos et images en temps réel</p>
+              <h2 className="text-xl font-bold tracking-tight">{isEn ? 'LiveFX News Feed' : "Fil d'actualité LiveFX"}</h2>
+              <p className="text-xs text-muted-foreground">{isEn ? 'Real-time video & image posts' : 'Publications vidéos et images en temps réel'}</p>
             </div>
           </div>
 
@@ -137,7 +140,7 @@ const Home = () => {
             className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Actualiser</span>
+            <span>{t('common.refresh', 'Actualiser')}</span>
           </Button>
         </div>
 
@@ -273,19 +276,19 @@ const Home = () => {
 
       {/* ==================== 3. PROGRAMMES DE VACANCES ==================== */}
       <div className="space-y-4 pt-4 border-t">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
               <Palmtree className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight">Programme de vacances LiveFX</h2>
-              <p className="text-xs text-muted-foreground">Sessions de formation intensive et coaching sur mesure</p>
+              <h2 className="text-xl font-bold tracking-tight">{isEn ? 'LiveFX Vacation Program' : 'Programme de vacances LiveFX'}</h2>
+              <p className="text-xs text-muted-foreground">{isEn ? 'Intensive coaching sessions & tailored training' : 'Sessions de formation intensive et coaching sur mesure'}</p>
             </div>
           </div>
           <Link to="/vacation-program">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-              <span>Voir tout</span>
+              <span>{isEn ? 'View all' : 'Voir tout'}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </Link>
@@ -297,16 +300,18 @@ const Home = () => {
               <div className="space-y-2 text-center md:text-left">
                 <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600">
                   <GraduationCap className="h-3.5 w-3.5" />
-                  <span>Session Junior & Étudiants</span>
+                  <span>{isEn ? 'Junior & Student Sessions' : 'Session Junior & Étudiants'}</span>
                 </div>
-                <h3 className="text-lg font-bold">Programme Spécial Vacances & Immersion Trading</h3>
+                <h3 className="text-lg font-bold">{isEn ? 'Special Vacation & Trading Immersion Program' : 'Programme Spécial Vacances & Immersion Trading'}</h3>
                 <p className="text-sm text-muted-foreground max-w-xl">
-                  Rejoignez notre programme intensif conçu pour apprendre le trading pas à pas avec nos experts certifiés, exercices pratiques et certificat de fin de formation.
+                  {isEn
+                    ? 'Join our intensive program designed to learn trading step by step with our certified experts, practical exercises and completion certificate.'
+                    : 'Rejoignez notre programme intensif conçu pour apprendre le trading pas à pas avec nos experts certifiés, exercices pratiques et certificat de fin de formation.'}
                 </p>
               </div>
               <Link to="/vacation-program">
                 <Button className="bg-amber-600 hover:bg-amber-700 text-white gap-2 shrink-0 shadow-md">
-                  <Palmtree className="h-4 w-4" /> Découvrir le programme
+                  <Palmtree className="h-4 w-4" /> {isEn ? 'Discover program' : 'Découvrir le programme'}
                 </Button>
               </Link>
             </CardContent>
@@ -319,7 +324,7 @@ const Home = () => {
                   <div className="flex justify-between items-start">
                     <div>
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2.5 py-0.5 text-xs font-bold mb-1">
-                        <GraduationCap className="h-3 w-3" /> Programme Vacances
+                        <GraduationCap className="h-3 w-3" /> {isEn ? 'Vacation Program' : 'Programme Vacances'}
                       </span>
                       <CardTitle className="text-base sm:text-lg">{prog.title}</CardTitle>
                     </div>
@@ -337,7 +342,7 @@ const Home = () => {
                   <div className="space-y-1.5 text-xs text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Calendar className="h-3.5 w-3.5 text-primary" />
-                      <span>{new Date(prog.start_date).toLocaleDateString('fr-FR')} au {new Date(prog.end_date).toLocaleDateString('fr-FR')}</span>
+                      <span>{new Date(prog.start_date).toLocaleDateString(isEn ? 'en-US' : 'fr-FR')} {isEn ? 'to' : 'au'} {new Date(prog.end_date).toLocaleDateString(isEn ? 'en-US' : 'fr-FR')}</span>
                     </div>
                     {prog.location && (
                       <div className="flex items-center gap-2">
@@ -347,17 +352,17 @@ const Home = () => {
                     )}
                     <div className="flex items-center gap-2">
                       <Users className="h-3.5 w-3.5 text-primary" />
-                      <span>{prog.current_participants || 0} / {prog.max_participants || 20} places</span>
+                      <span>{prog.current_participants || 0} / {prog.max_participants || 20} {isEn ? 'spots' : 'places'}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t">
-                    <span className="text-lg font-bold text-primary">{prog.price ? `${prog.price} €` : 'Sur demande'}</span>
+                    <span className="text-lg font-bold text-primary">{prog.price ? `${prog.price} €` : (isEn ? 'On request' : 'Sur demande')}</span>
                     <Button
                       size="sm"
                       onClick={() => navigate('/vacation-program', { state: { programId: prog.id || prog._id } })}
                       className="gap-1 text-xs"
                     >
-                      S'inscrire <ArrowRight className="h-3.5 w-3.5" />
+                      {isEn ? 'Register' : "S'inscrire"} <ArrowRight className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </CardContent>
@@ -374,8 +379,8 @@ const Home = () => {
             <LinkIcon className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Brokers Partenaires Recommandés</h2>
-            <p className="text-xs text-muted-foreground">Tradez sur des plateformes régulées avec spreads ultra-compétitifs</p>
+            <h2 className="text-xl font-bold tracking-tight">{isEn ? 'Recommended Partner Brokers' : 'Brokers Partenaires Recommandés'}</h2>
+            <p className="text-xs text-muted-foreground">{isEn ? 'Trade on regulated platforms with ultra-low spreads' : 'Tradez sur des plateformes régulées avec spreads ultra-compétitifs'}</p>
           </div>
         </div>
 
@@ -385,31 +390,33 @@ const Home = () => {
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600">
                   <Award className="h-3.5 w-3.5" />
-                  <span>Partenaire Officiel LivefxTrading</span>
+                  <span>{isEn ? 'Official LivefxTrading Partner' : 'Partenaire Officiel LivefxTrading'}</span>
                 </div>
                 <h3 className="text-xl font-extrabold tracking-tight">
-                  Ouvrez un compte chez notre Broker Partenaire
+                  {isEn ? 'Open an account with our Partner Broker' : 'Ouvrez un compte chez notre Broker Partenaire'}
                 </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Profitez de conditions de trading institutionnelles avec une exécution ultra-rapide des ordres, aucun frais caché et un accompagnement complet.
+                  {isEn
+                    ? 'Take advantage of institutional trading conditions with ultra-fast order execution, zero hidden fees, and dedicated support.'
+                    : 'Profitez de conditions de trading institutionnelles avec une exécution ultra-rapide des ordres, aucun frais caché et un accompagnement complet.'}
                 </p>
 
                 <div className="grid grid-cols-2 gap-2 text-xs font-medium">
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
                     <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>Dépôts Instantanés</span>
+                    <span>{isEn ? 'Instant Deposits' : 'Dépôts Instantanés'}</span>
                   </div>
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
                     <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>Spreads à partir de 0.0</span>
+                    <span>{isEn ? 'Spreads from 0.0' : 'Spreads à partir de 0.0'}</span>
                   </div>
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
                     <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>Régulé & 100% Sécurisé</span>
+                    <span>{isEn ? 'Regulated & 100% Secure' : 'Régulé & 100% Sécurisé'}</span>
                   </div>
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
                     <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>Support Dédié 24/7</span>
+                    <span>{isEn ? 'Dedicated 24/7 Support' : 'Support Dédié 24/7'}</span>
                   </div>
                 </div>
               </div>
@@ -419,9 +426,9 @@ const Home = () => {
                   <LinkIcon className="h-8 w-8" />
                 </div>
                 <div className="space-y-1">
-                  <h4 className="font-bold text-base">Lien d'affiliation officiel</h4>
+                  <h4 className="font-bold text-base">{isEn ? 'Official Affiliate Link' : "Lien d'affiliation officiel"}</h4>
                   <p className="text-xs text-muted-foreground max-w-xs">
-                    Inscrivez-vous via notre lien pour bénéficier de réductions sur les commissions et de bonus exclusifs.
+                    {isEn ? 'Register via our link to enjoy reduced commissions and exclusive bonuses.' : 'Inscrivez-vous via notre lien pour bénéficier de réductions sur les commissions et de bonus exclusifs.'}
                   </p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
@@ -432,13 +439,13 @@ const Home = () => {
                     className="w-full"
                   >
                     <Button className="w-full gap-2 shadow-md">
-                      <span>Ouvrir un Compte</span>
+                      <span>{isEn ? 'Open Account' : 'Ouvrir un Compte'}</span>
                       <ExternalLink className="h-4 w-4" />
                     </Button>
                   </a>
                   <Link to="/dashboard?section=broker" className="w-full">
                     <Button variant="outline" className="w-full text-xs">
-                      En savoir plus
+                      {isEn ? 'Learn more' : 'En savoir plus'}
                     </Button>
                   </Link>
                 </div>
@@ -456,13 +463,13 @@ const Home = () => {
               <MessageSquare className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight">Contactez l'Équipe LiveFX</h2>
-              <p className="text-xs text-muted-foreground">Une question ? Notre équipe d'assistance et nos coachs sont disponibles</p>
+              <h2 className="text-xl font-bold tracking-tight">{isEn ? 'Contact the LiveFX Team' : "Contactez l'Équipe LiveFX"}</h2>
+              <p className="text-xs text-muted-foreground">{isEn ? 'Any questions? Our support team and coaches are here to help' : "Une question ? Notre équipe d'assistance et nos coachs sont disponibles"}</p>
             </div>
           </div>
           <Link to="/dashboard?section=contact">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-              <span>Page Contact</span>
+              <span>{isEn ? 'Contact Page' : 'Page Contact'}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </Link>
@@ -477,7 +484,7 @@ const Home = () => {
               </div>
               <div>
                 <h3 className="font-bold text-base">WhatsApp</h3>
-                <p className="text-xs text-muted-foreground">Assistance rapide et directe</p>
+                <p className="text-xs text-muted-foreground">{isEn ? 'Fast and direct assistance' : 'Assistance rapide et directe'}</p>
               </div>
               <a
                 href="https://wa.me/237699000000"
@@ -486,7 +493,7 @@ const Home = () => {
                 className="block"
               >
                 <Button className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white text-xs h-9">
-                  <span>Discuter sur WhatsApp</span>
+                  <span>{isEn ? 'Chat on WhatsApp' : 'Discuter sur WhatsApp'}</span>
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Button>
               </a>
@@ -501,7 +508,7 @@ const Home = () => {
               </div>
               <div>
                 <h3 className="font-bold text-base">Telegram</h3>
-                <p className="text-xs text-muted-foreground">Canal officiel & alertes VIP</p>
+                <p className="text-xs text-muted-foreground">{isEn ? 'Official channel & VIP alerts' : 'Canal officiel & alertes VIP'}</p>
               </div>
               <a
                 href="https://t.me/livefxtrading"
@@ -510,7 +517,7 @@ const Home = () => {
                 className="block"
               >
                 <Button className="w-full gap-2 bg-sky-500 hover:bg-sky-600 text-white text-xs h-9">
-                  <span>Rejoindre le canal</span>
+                  <span>{isEn ? 'Join Channel' : 'Rejoindre le canal'}</span>
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Button>
               </a>
@@ -525,7 +532,7 @@ const Home = () => {
               </div>
               <div>
                 <h3 className="font-bold text-base">Facebook</h3>
-                <p className="text-xs text-muted-foreground">Page communautaire & lives</p>
+                <p className="text-xs text-muted-foreground">{isEn ? 'Community page & live sessions' : 'Page communautaire & lives'}</p>
               </div>
               <a
                 href="https://facebook.com/livefxtrading"
@@ -534,7 +541,7 @@ const Home = () => {
                 className="block"
               >
                 <Button className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs h-9">
-                  <span>Suivre notre Page</span>
+                  <span>{isEn ? 'Follow our Page' : 'Suivre notre Page'}</span>
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Button>
               </a>

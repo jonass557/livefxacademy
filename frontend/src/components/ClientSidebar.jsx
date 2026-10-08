@@ -22,7 +22,7 @@ import { useLanguageStore } from '../store/languageStore';
 
 const ClientSidebar = ({ activeSection, setActiveSection, collapsed, setCollapsed, mobileOpen, setMobileOpen }) => {
   const { logout } = useAuthStore();
-  const { t } = useLanguageStore();
+  const { t, language } = useLanguageStore();
   const navigate = useNavigate();
 
   const menuItems = [
@@ -74,7 +74,7 @@ const ClientSidebar = ({ activeSection, setActiveSection, collapsed, setCollapse
               <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
                 <User className="h-4 w-4 text-primary" />
               </div>
-              <span className="font-semibold text-sm">Espace Élève</span>
+              <span className="font-semibold text-sm">{language === 'en' ? 'Student Area' : 'Espace Élève'}</span>
             </div>
           )}
           {collapsed && (

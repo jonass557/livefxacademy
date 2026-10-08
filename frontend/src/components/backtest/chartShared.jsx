@@ -9,7 +9,7 @@ import {
   Equal, AlignJustify, Square, Type, Eraser, ChevronDown, Pencil, FunctionSquare,
   ArrowRight, ArrowUpRight, MapPin, ArrowUp, ArrowDown, TrendingUp, TrendingDown,
   Paintbrush, Waves, GitCommit, Grid, Palette, RotateCcw, Settings, X, Check,
-  Trash2, Clock, Route,
+  Trash2, Clock, Route, Bell, BellRing, Volume2, Plus,
 } from 'lucide-react';
 
 // ---- Constantes et Thèmes (façon MT4 / MT5 & TradingView) ----
@@ -259,6 +259,7 @@ export const DRAW_TOOLS = [
   { name: 'horizontalStraightLine', label: 'Ligne horizontale', Icon: Minus, group: 'Lignes' },
   { name: 'verticalStraightLine', label: 'Ligne verticale', Icon: SeparatorVertical, group: 'Lignes' },
   { name: 'priceLine', label: 'Ligne de prix', Icon: Tag, group: 'Lignes' },
+  { name: 'priceAlertLine', label: 'Alerte de prix (TradingView)', Icon: Bell, group: 'Lignes' },
   { name: 'parallelStraightLine', label: 'Canal parallèle', Icon: Equal, group: 'Lignes' },
   // Formes & Gann
   { name: 'rect', label: 'Rectangle / Zone', Icon: Square, group: 'Formes' },
@@ -592,7 +593,7 @@ export function ensureCustomOverlaysAndIndicators() {
     name: 'positionLong',
     totalStep: 4,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates, overlay, precision }) => {
+    createPointFigures: ({ coordinates, overlay }) => {
       if (coordinates.length < 2) return [];
       const pEntry = coordinates[0];
       const pTp = coordinates[1];
@@ -606,7 +607,6 @@ export function ensureCustomOverlaysAndIndicators() {
       const risk = Math.abs(entryPrice - slPrice);
       const reward = Math.abs(tpPrice - entryPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
-      const dec = precision?.price || 4;
 
       return [
         {
@@ -626,23 +626,60 @@ export function ensureCustomOverlaysAndIndicators() {
         },
         {
           type: 'text',
-          attrs: { x: left + 6, y: pTp.y + 14, text: `TP : ${tpPrice.toFixed(dec)} | R:R ${rr}` },
+          attrs: { x: left + 6, y: pTp.y + 14, text: `R:R ${rr}` },
           styles: { color: '#22c55e', size: 11, weight: 'bold' },
-        },
-        {
-          type: 'text',
-          attrs: { x: left + 6, y: pSl.y - 6, text: `SL : ${slPrice.toFixed(dec)}` },
-          styles: { color: '#ef4444', size: 11, weight: 'bold' },
-        },
-        {
-          type: 'text',
-          attrs: { x: left + 6, y: pEntry.y - 4, text: `Entrée : ${entryPrice.toFixed(dec)}` },
-          styles: { color: '#93c5fd', size: 11 },
         },
         { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
         { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
         { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
       ];
+    },
+    createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
+      if (!coordinates || coordinates.length < 2) return [];
+      const entryPrice = overlay.points[0]?.value || 0;
+      const tpPrice = overlay.points[1]?.value || 0;
+      const slPrice = overlay.points[2]?.value ?? (entryPrice - Math.abs(tpPrice - entryPrice) * 0.5);
+      const dec = precision?.price ?? 4;
+
+      const pEntryY = coordinates[0]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(entryPrice) : 0);
+      const pTpY = coordinates[1]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(tpPrice) : 0);
+      const pSlY = coordinates[2]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(slPrice) : (pEntryY + (pEntryY - pTpY) * 0.5));
+
+      const isFromZero = yAxis?.isFromZero ? yAxis.isFromZero() : false;
+      const width = bounding?.width || 65;
+      const textX = isFromZero ? 4 : width - 4;
+      const align = isFromZero ? 'left' : 'right';
+
+      const items = [
+        { price: entryPrice, y: pEntryY, color: '#2563eb' }, // Bleu pour le point d'entrée
+        { price: tpPrice, y: pTpY, color: '#16a34a' },       // Vert pour le TP
+        { price: slPrice, y: pSlY, color: '#dc2626' },       // Rouge pour le SL
+      ];
+
+      const figures = [];
+      items.forEach(item => {
+        if (typeof item.y === 'number' && !isNaN(item.y)) {
+          figures.push({
+            type: 'rect',
+            attrs: { x: 0, y: item.y - 9, width, height: 18 },
+            styles: { style: 'fill', color: item.color },
+            ignoreEvent: true,
+          });
+          figures.push({
+            type: 'text',
+            attrs: {
+              x: textX,
+              y: item.y,
+              text: Number(item.price).toFixed(dec),
+              align,
+              baseline: 'middle',
+            },
+            styles: { color: '#ffffff', size: 11, weight: 'bold' },
+            ignoreEvent: true,
+          });
+        }
+      });
+      return figures;
     },
   });
 
@@ -651,7 +688,7 @@ export function ensureCustomOverlaysAndIndicators() {
     name: 'positionShort',
     totalStep: 4,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates, overlay, precision }) => {
+    createPointFigures: ({ coordinates, overlay }) => {
       if (coordinates.length < 2) return [];
       const pEntry = coordinates[0];
       const pTp = coordinates[1];
@@ -665,7 +702,6 @@ export function ensureCustomOverlaysAndIndicators() {
       const risk = Math.abs(slPrice - entryPrice);
       const reward = Math.abs(entryPrice - tpPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
-      const dec = precision?.price || 4;
 
       return [
         {
@@ -685,22 +721,144 @@ export function ensureCustomOverlaysAndIndicators() {
         },
         {
           type: 'text',
-          attrs: { x: left + 6, y: pTp.y - 6, text: `TP : ${tpPrice.toFixed(dec)} | R:R ${rr}` },
+          attrs: { x: left + 6, y: pTp.y - 6, text: `R:R ${rr}` },
           styles: { color: '#22c55e', size: 11, weight: 'bold' },
-        },
-        {
-          type: 'text',
-          attrs: { x: left + 6, y: pSl.y + 14, text: `SL : ${slPrice.toFixed(dec)}` },
-          styles: { color: '#ef4444', size: 11, weight: 'bold' },
-        },
-        {
-          type: 'text',
-          attrs: { x: left + 6, y: pEntry.y - 4, text: `Entrée : ${entryPrice.toFixed(dec)}` },
-          styles: { color: '#93c5fd', size: 11 },
         },
         { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
         { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
         { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+      ];
+    },
+    createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
+      if (!coordinates || coordinates.length < 2) return [];
+      const entryPrice = overlay.points[0]?.value || 0;
+      const tpPrice = overlay.points[1]?.value || 0;
+      const slPrice = overlay.points[2]?.value ?? (entryPrice + Math.abs(entryPrice - tpPrice) * 0.5);
+      const dec = precision?.price ?? 4;
+
+      const pEntryY = coordinates[0]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(entryPrice) : 0);
+      const pTpY = coordinates[1]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(tpPrice) : 0);
+      const pSlY = coordinates[2]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(slPrice) : (pEntryY - (pTpY - pEntryY) * 0.5));
+
+      const isFromZero = yAxis?.isFromZero ? yAxis.isFromZero() : false;
+      const width = bounding?.width || 65;
+      const textX = isFromZero ? 4 : width - 4;
+      const align = isFromZero ? 'left' : 'right';
+
+      const items = [
+        { price: entryPrice, y: pEntryY, color: '#2563eb' }, // Bleu pour le point d'entrée
+        { price: tpPrice, y: pTpY, color: '#16a34a' },       // Vert pour le TP
+        { price: slPrice, y: pSlY, color: '#dc2626' },       // Rouge pour le SL
+      ];
+
+      const figures = [];
+      items.forEach(item => {
+        if (typeof item.y === 'number' && !isNaN(item.y)) {
+          figures.push({
+            type: 'rect',
+            attrs: { x: 0, y: item.y - 9, width, height: 18 },
+            styles: { style: 'fill', color: item.color },
+            ignoreEvent: true,
+          });
+          figures.push({
+            type: 'text',
+            attrs: {
+              x: textX,
+              y: item.y,
+              text: Number(item.price).toFixed(dec),
+              align,
+              baseline: 'middle',
+            },
+            styles: { color: '#ffffff', size: 11, weight: 'bold' },
+            ignoreEvent: true,
+          });
+        }
+      });
+      return figures;
+    },
+  });
+
+  // Price Alert Line (Alerte de Prix TradingView / MT5)
+  registerOverlay({
+    name: 'priceAlertLine',
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    createPointFigures: ({ coordinates, bounding, overlay, precision }) => {
+      if (!coordinates || coordinates.length < 1) return [];
+      const y = coordinates[0].y;
+      const price = overlay.points[0]?.value || 0;
+      const dec = precision?.price ?? 4;
+      const note = overlay.extendData?.note || '';
+      const triggered = overlay.extendData?.triggered || false;
+      const lineColor = triggered ? '#9ca3af' : '#f59e0b';
+      const labelText = `🔔 ${note ? `${note} : ` : ''}${Number(price).toFixed(dec)}`;
+
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: 0, y },
+              { x: bounding.width, y },
+            ],
+          },
+          styles: {
+            color: lineColor,
+            size: 1.5,
+            style: 'dashed',
+            dashedValue: [6, 4],
+          },
+        },
+        {
+          type: 'rect',
+          attrs: { x: 8, y: y - 10, width: Math.max(labelText.length * 7 + 16, 75), height: 20 },
+          styles: { style: 'fill', color: triggered ? 'rgba(75, 85, 99, 0.85)' : 'rgba(217, 119, 6, 0.9)', borderRadius: 4 },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: { x: 14, y, text: labelText, align: 'left', baseline: 'middle' },
+          styles: { color: '#ffffff', size: 11, weight: 'bold' },
+          ignoreEvent: true,
+        },
+        {
+          type: 'line',
+          attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+          styles: { size: 20, color: 'rgba(0,0,0,0)' },
+        },
+      ];
+    },
+    createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
+      if (!coordinates || coordinates.length < 1) return [];
+      const y = coordinates[0].y;
+      const price = overlay.points[0]?.value || 0;
+      const dec = precision?.price ?? 4;
+      const triggered = overlay.extendData?.triggered || false;
+      const bgColor = triggered ? '#6b7280' : '#f59e0b';
+      const isFromZero = yAxis?.isFromZero ? yAxis.isFromZero() : false;
+      const width = bounding?.width || 65;
+      const textX = isFromZero ? 4 : width - 4;
+      const align = isFromZero ? 'left' : 'right';
+
+      return [
+        {
+          type: 'rect',
+          attrs: { x: 0, y: y - 9, width, height: 18 },
+          styles: { style: 'fill', color: bgColor },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: textX,
+            y,
+            text: `🔔 ${Number(price).toFixed(dec)}`,
+            align,
+            baseline: 'middle',
+          },
+          styles: { color: '#ffffff', size: 10, weight: 'bold' },
+          ignoreEvent: true,
+        },
       ];
     },
   });
@@ -1596,6 +1754,7 @@ export function getToolLabel(name) {
   if (name === 'rect') return 'Rectangle / Zone';
   if (name === 'text') return 'Annotation texte';
   if (name === 'priceLine') return 'Ligne de prix';
+  if (name === 'priceAlertLine') return 'Alerte de prix';
   if (name === 'rayLine') return 'Demi-droite';
   if (name === 'horizontalStraightLine') return 'Ligne horizontale';
   if (name === 'verticalStraightLine') return 'Ligne verticale';
@@ -2789,5 +2948,442 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         Auto
       </Button>
     </div>
+  );
+}
+
+// ---- SYSTÈME D'ALERTES DE PRIX (façon TradingView & MT5) ----
+
+/**
+ * Joue un carillon harmonique doux et cristallin (Web Audio API natif, sans fichier audio externe).
+ */
+export const playAlertSound = () => {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    const now = ctx.currentTime;
+    const playNote = (freq, start, dur, vol) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(vol, start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + dur);
+    };
+    playNote(987.77, now, 0.35, 0.3);         // B5
+    playNote(1318.51, now + 0.08, 0.5, 0.35); // E6
+    playNote(1975.53, now + 0.16, 0.7, 0.25); // B6
+  } catch (err) {
+    console.warn('[Audio Alert] Error playing sound:', err);
+  }
+};
+
+/**
+ * Hook de gestion des alertes de prix par symbole / instrument.
+ * Synchronise les lignes d'alerte sur le graphique KlineCharts et surveille les franchissements.
+ */
+export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
+  const storageKey = `livefx_chart_alerts_${symbol}`;
+  const [alerts, setAlerts] = useState(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : [];
+    } catch (_) {
+      return [];
+    }
+  });
+
+  const lastCheckedPriceRef = useRef(null);
+
+  // Sauvegarder dans le localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(alerts));
+    } catch (_) {}
+  }, [alerts, storageKey]);
+
+  // Synchroniser les overlays priceAlertLine sur KlineCharts
+  useEffect(() => {
+    const chart = chartRef?.current;
+    if (!chart) return;
+
+    try {
+      chart.removeOverlay({ name: 'priceAlertLine' });
+    } catch (_) {}
+
+    alerts.forEach((alert) => {
+      try {
+        chart.createOverlay({
+          name: 'priceAlertLine',
+          id: `alert_${alert.id}`,
+          groupId: 'alerts',
+          points: [{ value: alert.targetPrice }],
+          extendData: {
+            id: alert.id,
+            note: alert.note || '',
+            triggered: alert.triggered,
+          },
+        });
+      } catch (_) {}
+    });
+  }, [alerts, chartRef]);
+
+  // Ajouter une alerte
+  const addAlert = useCallback(({ targetPrice, condition = 'crossing', note = '' }) => {
+    const numPrice = parseFloat(targetPrice);
+    if (!numPrice || isNaN(numPrice)) return null;
+
+    const newAlert = {
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      symbol,
+      targetPrice: numPrice,
+      condition,
+      note: note.trim(),
+      triggered: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setAlerts((prev) => [newAlert, ...prev]);
+    return newAlert;
+  }, [symbol]);
+
+  // Supprimer une alerte
+  const removeAlert = useCallback((id) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    const chart = chartRef?.current;
+    if (chart) {
+      try {
+        chart.removeOverlay({ id: `alert_${id}` });
+      } catch (_) {}
+    }
+  }, [chartRef]);
+
+  // Réinitialiser / basculer le statut d'une alerte
+  const toggleAlert = useCallback((id) => {
+    setAlerts((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, triggered: !a.triggered } : a))
+    );
+  }, []);
+
+  // Supprimer toutes les alertes
+  const clearAlerts = useCallback(() => {
+    setAlerts([]);
+    const chart = chartRef?.current;
+    if (chart) {
+      try {
+        chart.removeOverlay({ name: 'priceAlertLine' });
+      } catch (_) {}
+    }
+  }, [chartRef]);
+
+  // Vérifier les alertes en temps réel sur un tick / prix direct (Trading Démo)
+  const checkLivePrice = useCallback((currentPrice) => {
+    if (!currentPrice || typeof currentPrice !== 'number') return [];
+    const prev = lastCheckedPriceRef.current;
+    lastCheckedPriceRef.current = currentPrice;
+
+    if (prev === null) return [];
+
+    const triggeredList = [];
+
+    setAlerts((prevAlerts) =>
+      prevAlerts.map((alert) => {
+        if (alert.triggered) return alert;
+
+        let isHit = false;
+        const tp = alert.targetPrice;
+
+        if (alert.condition === 'above') {
+          isHit = currentPrice >= tp && prev < tp;
+        } else if (alert.condition === 'below') {
+          isHit = currentPrice <= tp && prev > tp;
+        } else {
+          // 'crossing'
+          isHit =
+            (prev <= tp && currentPrice >= tp) ||
+            (prev >= tp && currentPrice <= tp);
+        }
+
+        if (isHit) {
+          triggeredList.push(alert);
+          return { ...alert, triggered: true, triggeredAt: new Date().toISOString() };
+        }
+        return alert;
+      })
+    );
+
+    if (triggeredList.length > 0) {
+      playAlertSound();
+    }
+
+    return triggeredList;
+  }, []);
+
+  // Vérifier les alertes sur une bougie de Replay (Backtesting)
+  const checkCandle = useCallback((candle, prevClose) => {
+    if (!candle) return [];
+    const triggeredList = [];
+    const high = candle.high ?? candle.close;
+    const low = candle.low ?? candle.close;
+    const close = candle.close;
+
+    setAlerts((prevAlerts) =>
+      prevAlerts.map((alert) => {
+        if (alert.triggered) return alert;
+
+        let isHit = false;
+        const tp = alert.targetPrice;
+
+        if (alert.condition === 'above') {
+          isHit = high >= tp;
+        } else if (alert.condition === 'below') {
+          isHit = low <= tp;
+        } else {
+          // crossing: la bougie touche ou traverse le niveau cible
+          isHit =
+            (low <= tp && high >= tp) ||
+            (prevClose !== undefined &&
+              ((prevClose <= tp && close >= tp) || (prevClose >= tp && close <= tp)));
+        }
+
+        if (isHit) {
+          triggeredList.push(alert);
+          return { ...alert, triggered: true, triggeredAt: new Date().toISOString() };
+        }
+        return alert;
+      })
+    );
+
+    if (triggeredList.length > 0) {
+      playAlertSound();
+    }
+
+    return triggeredList;
+  }, []);
+
+  return {
+    alerts,
+    activeCount: alerts.filter((a) => !a.triggered).length,
+    addAlert,
+    removeAlert,
+    toggleAlert,
+    clearAlerts,
+    checkLivePrice,
+    checkCandle,
+  };
+}
+
+/**
+ * Menu Déroulant / Modal d'Alertes de Prix intégré dans la barre d'outils du graphique.
+ */
+export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrument', isEnglish = false }) {
+  const [open, setOpen] = useState(false);
+  const [targetPrice, setTargetPrice] = useState('');
+  const [condition, setCondition] = useState('crossing');
+  const [note, setNote] = useState('');
+
+  const { alerts, activeCount, addAlert, removeAlert, toggleAlert, clearAlerts } = alertsManager;
+
+  useEffect(() => {
+    if (open && currentPrice && !targetPrice) {
+      setTargetPrice(String(currentPrice));
+    }
+  }, [open, currentPrice, targetPrice]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!targetPrice) return;
+    const added = addAlert({ targetPrice, condition, note });
+    if (added) {
+      setTargetPrice('');
+      setNote('');
+    }
+  };
+
+  return (
+    <Dropdown
+      open={open}
+      setOpen={setOpen}
+      align="right"
+      width="w-80 sm:w-96"
+      trigger={
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 px-2 sm:px-2.5 text-xs font-medium gap-1.5 border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-amber-300"
+          title={isEnglish ? 'Price Alerts (TradingView / MT5)' : 'Alertes de Prix (TradingView / MT5)'}
+        >
+          <Bell className={`w-3.5 h-3.5 ${activeCount > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-400'}`} />
+          <span className="hidden sm:inline">{isEnglish ? 'Alerts' : 'Alertes'}</span>
+          {activeCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] leading-none">
+              {activeCount}
+            </span>
+          )}
+        </Button>
+      }
+    >
+      <div className="p-3 space-y-3 bg-slate-900 border border-slate-800 text-slate-100 rounded-lg shadow-2xl text-xs">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-1.5 font-bold text-amber-400 text-sm">
+            <BellRing className="w-4 h-4" />
+            <span>{isEnglish ? 'Price Alerts' : 'Alertes de Prix'}</span>
+            <span className="text-slate-400 font-normal text-xs">({symbol})</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={playAlertSound}
+              title={isEnglish ? 'Test alert sound' : 'Tester le son de cloche'}
+              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-amber-300"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Formulaire de création */}
+        <form onSubmit={handleSubmit} className="space-y-2 bg-slate-950/60 p-2.5 rounded border border-slate-800">
+          <div className="font-semibold text-slate-300 text-[11px] uppercase tracking-wider">
+            {isEnglish ? 'New Alert' : 'Nouvelle Alerte'}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-0.5">
+                {isEnglish ? 'Target Price' : 'Prix Cible'}
+              </label>
+              <input
+                type="number"
+                step="any"
+                required
+                value={targetPrice}
+                onChange={(e) => setTargetPrice(e.target.value)}
+                placeholder={currentPrice ? String(currentPrice) : '1.08500'}
+                className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 font-mono text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-0.5">
+                {isEnglish ? 'Condition' : 'Condition'}
+              </label>
+              <select
+                value={condition}
+                onChange={(e) => setCondition(e.target.value)}
+                className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
+              >
+                <option value="crossing">{isEnglish ? 'Price crosses' : 'Le prix croise'}</option>
+                <option value="above">{isEnglish ? 'Price ≥' : 'Prix supérieur (≥)'}</option>
+                <option value="below">{isEnglish ? 'Price ≤' : 'Prix inférieur (≤)'}</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-slate-400 mb-0.5">
+              {isEnglish ? 'Note / Label (optional)' : 'Note / Libellé (optionnel)'}
+            </label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={isEnglish ? 'e.g. Resistance breakout' : 'ex: Cassure résistance, Rebond'}
+              className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
+            />
+          </div>
+
+          <Button
+            type="submit"
+            size="sm"
+            className="w-full h-7 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold gap-1 text-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            {isEnglish ? 'Create Alert' : "Créer l'alerte"}
+          </Button>
+        </form>
+
+        {/* Liste des alertes */}
+        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 uppercase font-semibold">
+            <span>{isEnglish ? 'Configured Alerts' : 'Alertes actives'} ({alerts.length})</span>
+            {alerts.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAlerts}
+                className="text-red-400 hover:underline hover:text-red-300 text-[10px]"
+              >
+                {isEnglish ? 'Clear all' : 'Tout effacer'}
+              </button>
+            )}
+          </div>
+
+          {alerts.length === 0 ? (
+            <div className="text-center py-4 text-slate-500 text-xs italic">
+              {isEnglish ? 'No alert set for this symbol.' : 'Aucune alerte configurée pour cet instrument.'}
+            </div>
+          ) : (
+            alerts.map((a) => (
+              <div
+                key={a.id}
+                className={`flex items-center justify-between p-2 rounded border ${
+                  a.triggered
+                    ? 'bg-slate-950/40 border-slate-800 text-slate-500'
+                    : 'bg-slate-950/80 border-slate-700/80 text-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleAlert(a.id)}
+                    title={a.triggered ? (isEnglish ? 'Re-arm alert' : 'Réactiver') : (isEnglish ? 'Mark as triggered' : 'Désactiver')}
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      a.triggered ? 'bg-slate-600' : 'bg-amber-400 animate-pulse'
+                    }`}
+                  />
+                  <div className="truncate">
+                    <div className="font-mono font-bold text-xs flex items-center gap-1.5">
+                      <span>{a.targetPrice}</span>
+                      <span className="text-[10px] font-normal text-amber-400/90 px-1 py-0.2 bg-amber-500/10 rounded">
+                        {a.condition === 'above' ? '≥' : a.condition === 'below' ? '≤' : '✕'}
+                      </span>
+                      {a.triggered && (
+                        <span className="text-[9px] font-semibold text-slate-400 bg-slate-800 px-1 rounded">
+                          {isEnglish ? 'TRIGGERED' : 'DÉCLENCHÉE'}
+                        </span>
+                      )}
+                    </div>
+                    {a.note && <div className="text-[10px] text-slate-400 truncate">{a.note}</div>}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => removeAlert(a.id)}
+                  title={isEnglish ? 'Delete alert' : "Supprimer l'alerte"}
+                  className="p-1 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded transition-colors ml-2 flex-shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </Dropdown>
   );
 }

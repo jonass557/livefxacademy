@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { init, dispose } from 'klinecharts';
 import { Loader2, Maximize2, Minimize2, ChevronDown } from 'lucide-react';
 import { Button } from '../ui/button';
+import { toast } from 'sonner';
 import '../backtest/chart-landscape.css';
 import {
   CHART_STYLES, ensureCustomOverlaysAndIndicators, detectPriceDigits,
@@ -13,9 +14,10 @@ import {
   configureMT4Chart, ChartZoomControls, buildKLineStyles,
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
-  ChartErrorBoundary,
+  ChartErrorBoundary, usePriceAlerts, ChartAlertsMenu,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
+import { useLanguageStore } from '../../store/languageStore';
 
 const RELOAD_MS = 20000;
 
@@ -32,6 +34,10 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   const [digits, setDigits] = useState(5);
   const [activeIndicators, setActiveIndicators] = useState({});
   const [fullscreen, setFullscreen] = useFullscreen();
+
+  const { language } = useLanguageStore();
+  const isEnglish = language === 'en';
+  const alertsManager = usePriceAlerts(symbol, chartRef);
 
   const {
     styles: chartColors,
@@ -135,7 +141,20 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     };
     lastRef.current = updated;
     chart.updateData(updated);
-  }, [liveQuote, symbol]);
+
+    // Détection immédiate d'alertes de prix (TradingView / MT5)
+    const triggered = alertsManager.checkLivePrice(mid);
+    if (triggered && triggered.length > 0) {
+      triggered.forEach((alert) => {
+        toast.warning(
+          isEnglish
+            ? `🔔 ALERT: ${symbolName || symbol} reached ${alert.targetPrice}${alert.note ? ` (${alert.note})` : ''}!`
+            : `🔔 ALERTE : ${symbolName || symbol} a atteint ${alert.targetPrice}${alert.note ? ` (${alert.note})` : ''} !`,
+          { duration: 7000 }
+        );
+      });
+    }
+  }, [liveQuote, symbol, symbolName, alertsManager, isEnglish]);
 
   useEffect(() => {
     const resize = () => chartRef.current?.resize();
@@ -170,15 +189,16 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
           <span className="text-xs font-semibold text-primary mr-1">{symbolName || symbol}</span>
           
           {/* Sélecteur d'unité de temps en liste déroulante */}
-          <TimeframeDropdown timeframe={timeframe} onSelectTimeframe={onSelectTimeframe} />
+          <TimeframeDropdown timeframe={timeframe} onSelectTimeframe={onSelectTimeframe} isEnglish={isEnglish} />
 
           <CandleCountdownBadge timeframe={timeframe} />
 
           <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
           <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={panesRef} />
+          <ChartAlertsMenu alertsManager={alertsManager} currentPrice={lastRef.current?.close} symbol={symbolName || symbol} isEnglish={isEnglish} />
           <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
           <ChartZoomControls chartRef={chartRef} />
-          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} className="h-7 px-2 ml-auto" title="Plein écran">
+          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} className="h-7 px-2 ml-auto" title={isEnglish ? 'Fullscreen' : 'Plein écran'}>
             {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>
@@ -223,7 +243,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   );
 }
 
-function TimeframeDropdown({ timeframe, onSelectTimeframe }) {
+function TimeframeDropdown({ timeframe, onSelectTimeframe, isEnglish = false }) {
   const [open, setOpen] = useState(false);
   return (
     <Dropdown
@@ -239,7 +259,7 @@ function TimeframeDropdown({ timeframe, onSelectTimeframe }) {
             e.stopPropagation();
             setOpen((o) => !o);
           }}
-          title="Unité de temps"
+          title={isEnglish ? 'Timeframe' : 'Unité de temps'}
         >
           <span className="text-muted-foreground text-[11px] font-normal">TF:</span>
           <span>{timeframe}</span>

@@ -12,6 +12,7 @@ import Watchlist from '../components/trading-demo/Watchlist';
 import DemoChart from '../components/trading-demo/DemoChart';
 import OrderTicket from '../components/trading-demo/OrderTicket';
 import { PositionsPanel, OrdersPanel, HistoryPanel, CloseDialog, EditStopsDialog } from '../components/trading-demo/Panels';
+import { useLanguageStore } from '../store/languageStore';
 
 const REFRESH_MS = 3500;
 const TABS = [
@@ -24,6 +25,21 @@ const TABS = [
 ];
 
 export default function TradingDemo() {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+
+  const getTabLabel = (key) => {
+    switch (key) {
+      case 'chart': return isEn ? 'Chart' : 'Graphique';
+      case 'trade': return isEn ? 'Trade' : 'Trader';
+      case 'positions': return isEn ? 'Positions' : 'Positions';
+      case 'orders': return isEn ? 'Orders' : 'Ordres';
+      case 'history': return isEn ? 'History' : 'Historique';
+      case 'watchlist': return isEn ? 'Markets' : 'Marchés';
+      default: return key;
+    }
+  };
+
   const [account, setAccount] = useState(null);
   const [instruments, setInstruments] = useState([]);
   const [favorites, setFavorites] = useState([]);
@@ -136,7 +152,7 @@ export default function TradingDemo() {
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
-                <span>{label}</span>
+                <span>{getTabLabel(key)}</span>
                 {count != null && count > 0 && (
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
                     activeTab === key ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/15 text-primary'
@@ -152,14 +168,14 @@ export default function TradingDemo() {
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${connected ? 'bg-green-500/10 text-green-600' : 'bg-yellow-500/10 text-yellow-600'}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
-            <span className="hidden sm:inline">{connected ? 'En direct' : 'Connexion...'}</span>
+            <span className="hidden sm:inline">{connected ? (isEn ? 'Live' : 'En direct') : (isEn ? 'Connecting...' : 'Connexion...')}</span>
           </span>
           {isChartView && (
             <button
               onClick={() => setActiveTab('trade')}
               className="hidden sm:flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
             >
-              <ShoppingCart className="h-3.5 w-3.5" /> Trader
+              <ShoppingCart className="h-3.5 w-3.5" /> {isEn ? 'Trade' : 'Trader'}
             </button>
           )}
         </div>
@@ -170,13 +186,13 @@ export default function TradingDemo() {
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-lg md:text-xl font-extrabold flex items-center gap-2">
-              <LineChart className="h-5 w-5 text-primary" /> Compte Démo
+              <LineChart className="h-5 w-5 text-primary" /> {isEn ? 'Demo Account' : 'Compte Démo'}
             </h1>
             <button
               onClick={resetAccount}
               className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border bg-card hover:bg-accent transition-colors font-medium"
             >
-              <RefreshCw className="h-3.5 w-3.5" /> Réinitialiser le compte
+              <RefreshCw className="h-3.5 w-3.5" /> {isEn ? 'Reset Account' : 'Réinitialiser le compte'}
             </button>
           </div>
           <AccountHeader account={account} connected={connected} />
@@ -238,7 +254,7 @@ export default function TradingDemo() {
               }`}
             >
               <Icon className="h-4 w-4" />
-              <span>{label}</span>
+              <span>{getTabLabel(key)}</span>
               {count != null && count > 0 && (
                 <span className="absolute top-0 right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-primary-foreground text-[8px] flex items-center justify-center font-bold">
                   {count}

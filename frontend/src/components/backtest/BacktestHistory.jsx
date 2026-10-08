@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 import { History, Trash2, Loader2, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { useLanguageStore } from '../../store/languageStore';
 
 const fmtMoney = (n) => (n == null ? '—' : Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 2 }));
 const fmtPct = (n) => (n == null ? '—' : `${Number(n).toFixed(2)} %`);
@@ -14,23 +15,25 @@ const fmtPct = (n) => (n == null ? '—' : `${Number(n).toFixed(2)} %`);
  * passées et suppression. Accessible depuis le tableau de bord.
  */
 export default function BacktestHistory() {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   const [items, setItems] = useState(null);
   const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
     api.get('/backtests')
       .then((r) => setItems(r.data))
-      .catch(() => { setItems([]); toast.error("Impossible de charger l'historique"); });
-  }, []);
+      .catch(() => { setItems([]); toast.error(isEn ? "Failed to load backtest history" : "Impossible de charger l'historique"); });
+  }, [isEn]);
 
   const remove = async (id) => {
     setDeleting(id);
     try {
       await api.delete(`/backtests/${id}`);
       setItems((h) => h.filter((b) => b.id !== id));
-      toast.success('Backtest supprimé');
+      toast.success(isEn ? 'Backtest deleted' : 'Backtest supprimé');
     } catch {
-      toast.error('Suppression impossible');
+      toast.error(isEn ? 'Deletion failed' : 'Suppression impossible');
     } finally {
       setDeleting(null);
     }
@@ -40,20 +43,24 @@ export default function BacktestHistory() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <History className="h-5 w-5 text-primary" /> Historique de backtest
+          <History className="h-5 w-5 text-primary" /> {isEn ? 'Backtest History' : 'Historique de backtest'}
         </CardTitle>
-        <CardDescription>Vos 50 derniers backtests sauvegardés — performances et suppression</CardDescription>
+        <CardDescription>
+          {isEn
+            ? 'Your last 50 saved backtests — performance and management'
+            : 'Vos 50 derniers backtests sauvegardés — performances et suppression'}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {items === null ? (
           <div className="flex items-center justify-center h-24 text-muted-foreground gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
+            <Loader2 className="h-4 w-4 animate-spin" /> {isEn ? 'Loading…' : 'Chargement…'}
           </div>
         ) : items.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground">
             <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">Aucun backtest sauvegardé pour le moment.</p>
-            <p className="text-xs">Lancez une Lecture depuis la section Backtesting pour en créer un.</p>
+            <p className="text-sm">{isEn ? 'No saved backtests yet.' : 'Aucun backtest sauvegardé pour le moment.'}</p>
+            <p className="text-xs">{isEn ? 'Start a replay from the Backtesting section to create one.' : 'Lancez une Lecture depuis la section Backtesting pour en créer un.'}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -68,7 +75,7 @@ export default function BacktestHistory() {
                       <Badge variant="outline" className="text-[10px]">{b.timeframe}</Badge>
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(b.created_at).toLocaleString('fr-FR')} • {b.candles_count ?? '—'} bougies • {b.stats?.total_trades ?? '—'} trades • réussite {fmtPct(b.stats?.win_rate)}
+                      {new Date(b.created_at).toLocaleString(isEn ? 'en-US' : 'fr-FR')} • {b.candles_count ?? '—'} {isEn ? 'candles' : 'bougies'} • {b.stats?.total_trades ?? '—'} trades • {isEn ? 'win rate' : 'réussite'} {fmtPct(b.stats?.win_rate)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -78,7 +85,7 @@ export default function BacktestHistory() {
                     </span>
                     <Button
                       variant="ghost" size="icon" onClick={() => remove(b.id)} disabled={deleting === b.id}
-                      title="Supprimer ce backtest"
+                      title={isEn ? "Delete this backtest" : "Supprimer ce backtest"}
                     >
                       {deleting === b.id
                         ? <Loader2 className="h-4 w-4 animate-spin" />
