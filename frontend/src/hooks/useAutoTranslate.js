@@ -3,24 +3,25 @@ import { useLanguageStore } from '../store/languageStore';
 import { translateTexts } from '../lib/translateService';
 
 /**
- * Hook qui traduit automatiquement une liste de textes vers la langue active (si 'en').
- * Met à disposition une fonction `tr(text)` pour afficher le texte traduit ou d'origine.
+ * Hook qui traduit automatiquement une liste de textes vers la langue active ('en' ou 'fr').
+ * Supporte le français vers l'anglais et vice-versa.
  */
 export function useAutoTranslate(texts = []) {
   const { language } = useLanguageStore();
-  const isEn = language === 'en';
+  const currentLang = language === 'en' ? 'en' : 'fr';
+  const isEn = currentLang === 'en';
   const [translations, setTranslations] = useState({});
 
-  // Mémoïser la liste des textes pour éviter les requêtes inutiles
+  // Mémoïser la signature de la liste des textes pour éviter les requêtes inutiles
   const textArrayKey = useMemo(() => {
     return (texts || []).filter(Boolean).sort().join('|||');
   }, [texts]);
 
   useEffect(() => {
-    if (!isEn || !texts || texts.length === 0) return;
+    if (!texts || texts.length === 0) return;
 
     let mounted = true;
-    translateTexts(texts, 'en').then((res) => {
+    translateTexts(texts, currentLang).then((res) => {
       if (mounted && res) {
         setTranslations((prev) => ({ ...prev, ...res }));
       }
@@ -29,13 +30,13 @@ export function useAutoTranslate(texts = []) {
     return () => {
       mounted = false;
     };
-  }, [isEn, textArrayKey]);
+  }, [currentLang, textArrayKey]);
 
   const tr = useCallback((text) => {
-    if (!text || !isEn) return text;
+    if (!text) return text;
     const trimmed = typeof text === 'string' ? text.trim() : '';
     return translations[trimmed] || text;
-  }, [isEn, translations]);
+  }, [translations]);
 
-  return { tr, isEn, translations };
+  return { tr, isEn, language: currentLang, translations };
 }

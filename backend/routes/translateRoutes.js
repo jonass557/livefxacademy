@@ -31,7 +31,8 @@ async function fetchTranslation(text, target = 'en') {
 
   // 2. Fallback MyMemory
   try {
-    const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(trimmed.slice(0, 500))}&langpair=fr|${target}`;
+    const langpair = target === 'fr' ? 'en|fr' : 'fr|en';
+    const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(trimmed.slice(0, 500))}&langpair=${langpair}`;
     const mmRes = await fetch(mmUrl);
     if (mmRes.ok) {
       const mmData = await mmRes.json();

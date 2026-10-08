@@ -178,9 +178,11 @@ const Home = () => {
               <MessageSquare className="h-6 w-6 text-muted-foreground" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-semibold text-lg">Aucune publication pour le moment</h3>
+              <h3 className="font-semibold text-lg">{isEn ? 'No publications yet' : 'Aucune publication pour le moment'}</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                L'administrateur n'a pas encore publié de nouvelles annonces ou médias dans le fil d'actualité.
+                {isEn
+                  ? 'The administrator has not posted any announcements or media in the news feed yet.'
+                  : "L'administrateur n'a pas encore publié de nouvelles annonces ou médias dans le fil d'actualité."}
               </p>
             </div>
           </Card>
@@ -204,11 +206,11 @@ const Home = () => {
                               {post.admin_name || 'LivefxTrading Academy'}
                             </h3>
                             <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-primary">
-                              <ShieldCheck className="h-3 w-3" /> Officiel
+                              <ShieldCheck className="h-3 w-3" /> {isEn ? 'Official' : 'Officiel'}
                             </span>
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            {new Date(post.created_at).toLocaleDateString('fr-FR', {
+                            {new Date(post.created_at).toLocaleDateString(isEn ? 'en-US' : 'fr-FR', {
                               day: 'numeric',
                               month: 'long',
                               year: 'numeric',
@@ -222,7 +224,7 @@ const Home = () => {
                       {/* Indicateur média */}
                       <span className="text-xs text-muted-foreground flex items-center gap-1 bg-muted px-2 py-0.5 rounded-full">
                         {isImg ? <ImageIcon className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-                        <span className="capitalize">{isImg ? 'Image' : 'Vidéo'}</span>
+                        <span className="capitalize">{isImg ? 'Image' : (isEn ? 'Video' : 'Vidéo')}</span>
                       </span>
                     </div>
 
@@ -254,7 +256,7 @@ const Home = () => {
                         />
                         <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-background/90 text-foreground text-xs font-semibold shadow-lg">
-                            <Maximize2 className="h-3.5 w-3.5" /> Agrandir l'image
+                            <Maximize2 className="h-3.5 w-3.5" /> {isEn ? 'Enlarge image' : "Agrandir l'image"}
                           </span>
                         </div>
                       </div>
@@ -276,7 +278,7 @@ const Home = () => {
                       <div className="flex items-center justify-end text-[11px] text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Eye className="h-3.5 w-3.5" />
-                          <span>{post.view_count || 0} vue{(post.view_count || 0) > 1 ? 's' : ''}</span>
+                          <span>{post.view_count || 0} {isEn ? 'view' : 'vue'}{(post.view_count || 0) > 1 ? 's' : ''}</span>
                         </span>
                       </div>
 

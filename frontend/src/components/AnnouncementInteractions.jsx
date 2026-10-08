@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import api from '../lib/api';
 import {
   Heart, Share2, MessageSquare, Send, Check, Copy,
@@ -7,6 +7,7 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { toast } from 'sonner';
+import { useAutoTranslate } from '../hooks/useAutoTranslate';
 
 /**
  * Bloc d'interactions du fil d'actualité (Like / Partage Réseaux Sociaux / Commentaires & Réponses)
@@ -24,6 +25,15 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
   const [replyingToId, setReplyingToId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const commentTexts = useMemo(() => {
+    const list = [];
+    comments.forEach((c) => {
+      if (c.content) list.push(c.content);
+    });
+    return list;
+  }, [comments]);
+  const { tr } = useAutoTranslate(commentTexts);
 
   const handleLike = async () => {
     try {
@@ -323,7 +333,7 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                       </span>
                     </div>
 
-                    <p className="text-foreground whitespace-pre-wrap pl-7">{comment.content}</p>
+                    <p className="text-foreground whitespace-pre-wrap pl-7">{tr(comment.content)}</p>
 
                     {/* Bouton répondre */}
                     <div className="pl-7 flex items-center gap-2">
@@ -357,7 +367,7 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                                 {new Date(reply.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
-                            <p className="text-foreground text-xs whitespace-pre-wrap">{reply.content}</p>
+                            <p className="text-foreground text-xs whitespace-pre-wrap">{tr(reply.content)}</p>
                           </div>
                         ))}
                       </div>
