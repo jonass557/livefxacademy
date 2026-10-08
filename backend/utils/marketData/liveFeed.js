@@ -20,6 +20,36 @@ const DERIV_URL = process.env.DERIV_WS_URL || 'wss://api.derivws.com/trading/v1/
 const BINANCE_URL = process.env.BINANCE_WS_URL || 'wss://stream.binance.com:443/ws';
 const MAX_BACKOFF = 30000;
 
+const FOREX_METALS_DERIV_MAP = {
+  EURUSD: 'frxEURUSD',
+  GBPUSD: 'frxGBPUSD',
+  USDJPY: 'frxUSDJPY',
+  USDCHF: 'frxUSDCHF',
+  USDCAD: 'frxUSDCAD',
+  AUDUSD: 'frxAUDUSD',
+  NZDUSD: 'frxNZDUSD',
+  EURGBP: 'frxEURGBP',
+  EURJPY: 'frxEURJPY',
+  GBPJPY: 'frxGBPJPY',
+  EURCHF: 'frxEURCHF',
+  EURAUD: 'frxEURAUD',
+  EURNZD: 'frxEURNZD',
+  GBPAUD: 'frxGBPAUD',
+  GBPCAD: 'frxGBPCAD',
+  GBPNZD: 'frxGBPNZD',
+  AUDJPY: 'frxAUDJPY',
+  CADJPY: 'frxCADJPY',
+  CHFJPY: 'frxCHFJPY',
+  AUDCAD: 'frxAUDCAD',
+  AUDNZD: 'frxAUDNZD',
+  NZDCAD: 'frxNZDCAD',
+  NZDJPY: 'frxNZDJPY',
+  XAUUSD: 'frxXAUUSD',
+  XAGUSD: 'frxXAGUSD',
+  XPTUSD: 'frxXPTUSD',
+  XPDUSD: 'frxXPDUSD',
+};
+
 class LiveFeed extends EventEmitter {
   constructor() {
     super();
@@ -39,10 +69,14 @@ class LiveFeed extends EventEmitter {
   // Alimente le hub avec les instruments (au démarrage / après seed).
   init(instruments) {
     for (const i of instruments) {
-      if (!i.provider_symbol) continue; // ex. SYNTHETIC non branché → pas de prix
+      const derivSymbol = FOREX_METALS_DERIV_MAP[i.symbol];
+      const provider = derivSymbol ? 'deriv' : i.provider;
+      const ps = derivSymbol || i.provider_symbol;
+      if (!ps) continue;
+
       this.meta.set(i.symbol, {
-        provider: i.provider,
-        ps: i.provider_symbol,
+        provider,
+        ps,
         spread: (i.spread_pips || 0) * (i.pip_size || 0),
         digits: i.digits || 5,
       });
@@ -78,8 +112,16 @@ class LiveFeed extends EventEmitter {
 
   // Enregistre un intérêt pour un symbole (ouvre l'abonnement amont au 1er abonné).
   subscribe(symbol) {
-    const meta = this.meta.get(symbol);
-    if (!meta) return false;
+    let meta = this.meta.get(symbol);
+    if (!meta) {
+      const derivSymbol = FOREX_METALS_DERIV_MAP[symbol];
+      if (derivSymbol) {
+        meta = { provider: 'deriv', ps: derivSymbol, spread: 0.00015, digits: symbol.includes('JPY') ? 3 : 5 };
+        this.meta.set(symbol, meta);
+      } else {
+        return false;
+      }
+    }
     const n = (this.refs.get(symbol) || 0) + 1;
     this.refs.set(symbol, n);
     if (n === 1) {

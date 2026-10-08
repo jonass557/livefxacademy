@@ -1,7 +1,7 @@
 // Contrôleur du module Trading Demo (transactions 100 % virtuelles).
 // Sécurité : toutes les routes sont authentifiées ; chaque ressource est vérifiée
 // comme appartenant au compte démo de req.user.id (isolation stricte).
-const { DemoAccount, Instrument, Position, PendingOrder, Trade, Watchlist } = require('../models');
+const { DemoAccount, Instrument, Position, PendingOrder, Trade, Watchlist, PriceAlert } = require('../models');
 const liveFeed = require('../utils/marketData/liveFeed');
 const engine = require('../utils/tradingDemo/engine');
 const watcher = require('../utils/tradingDemo/watcher');
@@ -370,5 +370,100 @@ function publicTrade(t) {
     id: t._id, symbol: t.symbol, side: t.side, volume: t.volume,
     entry_price: t.entry_price, exit_price: t.exit_price, profit: round(t.profit),
     close_reason: t.close_reason, opened_at: t.opened_at, closed_at: t.closed_at,
+  };
+}
+
+// --- ALERTES DE PRIX (TradingView / MT5 avec notifications email) ---
+exports.getAlerts = async (req, res) => {
+  try {
+    const filter = { user_id: req.user.id };
+    if (req.query.symbol) filter.symbol = req.query.symbol;
+    const alerts = await PriceAlert.find(filter).sort({ created_at: -1 });
+    res.json(alerts.map(publicAlert));
+  } catch (err) {
+    console.error('demo getAlerts:', err.message);
+    res.status(500).json({ message: 'Erreur récupération alertes' });
+  }
+};
+
+exports.createAlert = async (req, res) => {
+  try {
+    const { symbol, target_price, condition = 'crossing', note = '', notify_email = true } = req.body || {};
+    const tp = parseFloat(target_price);
+    if (!symbol || !tp || isNaN(tp)) {
+      return res.status(400).json({ message: 'Symbole et prix cible valides requis' });
+    }
+    const quote = liveFeed.getQuote(symbol);
+    const created_price = quote?.mid || null;
+
+    const alert = await PriceAlert.create({
+      user_id: req.user.id,
+      symbol,
+      target_price: tp,
+      condition,
+      note: (note || '').slice(0, 200),
+      notify_email: Boolean(notify_email),
+      created_price,
+      status: 'active',
+    });
+
+    res.status(201).json(publicAlert(alert));
+  } catch (err) {
+    console.error('demo createAlert:', err.message);
+    res.status(400).json({ message: err.message || 'Création alerte impossible' });
+  }
+};
+
+exports.toggleAlert = async (req, res) => {
+  try {
+    const alert = await PriceAlert.findOne({ _id: req.params.id, user_id: req.user.id });
+    if (!alert) return res.status(404).json({ message: 'Alerte introuvable' });
+    alert.status = alert.status === 'active' ? 'triggered' : 'active';
+    if (alert.status === 'active') {
+      const quote = liveFeed.getQuote(alert.symbol);
+      alert.created_price = quote?.mid || null;
+      alert.email_sent = false;
+    }
+    await alert.save();
+    res.json(publicAlert(alert));
+  } catch (err) {
+    res.status(400).json({ message: err.message || 'Modification alerte impossible' });
+  }
+};
+
+exports.deleteAlert = async (req, res) => {
+  try {
+    const alert = await PriceAlert.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
+    if (!alert) return res.status(404).json({ message: 'Alerte introuvable' });
+    res.json({ message: 'Alerte supprimée', id: alert._id });
+  } catch (err) {
+    res.status(400).json({ message: err.message || 'Suppression impossible' });
+  }
+};
+
+exports.clearAlerts = async (req, res) => {
+  try {
+    const filter = { user_id: req.user.id };
+    if (req.query.symbol) filter.symbol = req.query.symbol;
+    await PriceAlert.deleteMany(filter);
+    res.json({ message: 'Alertes effacées' });
+  } catch (err) {
+    res.status(400).json({ message: err.message || 'Erreur suppression alertes' });
+  }
+};
+
+function publicAlert(a) {
+  return {
+    id: a._id,
+    symbol: a.symbol,
+    targetPrice: a.target_price,
+    condition: a.condition,
+    note: a.note || '',
+    notifyEmail: a.notify_email,
+    status: a.status,
+    triggered: a.status === 'triggered',
+    triggeredAt: a.triggered_at,
+    triggeredPrice: a.triggered_price,
+    createdAt: a.created_at,
   };
 }

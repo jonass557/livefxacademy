@@ -33,19 +33,54 @@ function weekKey(d) {
 }
 function monthKey(d) { return `${d.getUTCFullYear()}-${d.getUTCMonth()}`; }
 
+const FOREX_METALS_DERIV_MAP = {
+  EURUSD: 'frxEURUSD',
+  GBPUSD: 'frxGBPUSD',
+  USDJPY: 'frxUSDJPY',
+  USDCHF: 'frxUSDCHF',
+  USDCAD: 'frxUSDCAD',
+  AUDUSD: 'frxAUDUSD',
+  NZDUSD: 'frxNZDUSD',
+  EURGBP: 'frxEURGBP',
+  EURJPY: 'frxEURJPY',
+  GBPJPY: 'frxGBPJPY',
+  EURCHF: 'frxEURCHF',
+  EURAUD: 'frxEURAUD',
+  EURNZD: 'frxEURNZD',
+  GBPAUD: 'frxGBPAUD',
+  GBPCAD: 'frxGBPCAD',
+  GBPNZD: 'frxGBPNZD',
+  AUDJPY: 'frxAUDJPY',
+  CADJPY: 'frxCADJPY',
+  CHFJPY: 'frxCHFJPY',
+  AUDCAD: 'frxAUDCAD',
+  AUDNZD: 'frxAUDNZD',
+  NZDCAD: 'frxNZDCAD',
+  NZDJPY: 'frxNZDJPY',
+  XAUUSD: 'frxXAUUSD',
+  XAGUSD: 'frxXAGUSD',
+  XPTUSD: 'frxXPTUSD',
+  XPDUSD: 'frxXPDUSD',
+};
+
 // count bougies récentes d'un instrument (pour le graphique du terminal).
 // `instrument` = document Instrument. Renvoie [{ time, open, high, low, close, volume? }].
 async function getCandles(instrument, timeframeKey, count = 300) {
-  if (!instrument || !instrument.provider_symbol) return [];
-  const provider = getProvider(instrument.provider);
+  if (!instrument) return [];
+  const derivSym = FOREX_METALS_DERIV_MAP[instrument.symbol];
+  const providerName = derivSym ? 'deriv' : instrument.provider;
+  const providerSymbol = derivSym || instrument.provider_symbol;
+  if (!providerSymbol) return [];
+
+  const provider = getProvider(providerName);
   const now = Math.floor(Date.now() / 1000);
   const n = Math.min(Math.max(Number(count) || 300, 1), 1000);
 
   // Deriv ne fournit pas W1/MN → on télécharge du D1 puis on agrège.
-  if (instrument.provider === 'deriv' && (timeframeKey === 'W1' || timeframeKey === 'MN')) {
+  if (providerName === 'deriv' && (timeframeKey === 'W1' || timeframeKey === 'MN')) {
     const daysNeeded = timeframeKey === 'W1' ? n * 7 : n * 31;
     const dailyStart = now - (daysNeeded * 86400 * 2);
-    const daily = await provider.fetchCandles({ symbol: instrument.provider_symbol, granularity: 86400, start: dailyStart, end: now, count: daysNeeded });
+    const daily = await provider.fetchCandles({ symbol: providerSymbol, granularity: 86400, start: dailyStart, end: now, count: daysNeeded });
     const agg = aggregate(daily, timeframeKey === 'W1' ? weekKey : monthKey);
     return agg.slice(-n);
   }
@@ -53,7 +88,7 @@ async function getCandles(instrument, timeframeKey, count = 300) {
   const granularity = GRAN[timeframeKey];
   if (!granularity) throw new Error('Unité de temps invalide');
   const start = now - (n * granularity * 2);
-  const candles = await provider.fetchCandles({ symbol: instrument.provider_symbol, granularity, start, end: now, count: n });
+  const candles = await provider.fetchCandles({ symbol: providerSymbol, granularity, start, end: now, count: n });
   return candles.slice(-n);
 }
 

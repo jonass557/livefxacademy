@@ -17,6 +17,11 @@ export const demoApi = {
   cancelPending: (id) => api.delete(`/demo/orders/${id}`).then((r) => r.data),
   watchlist: () => api.get('/demo/watchlist').then((r) => r.data),
   updateWatchlist: (symbol, action) => api.post('/demo/watchlist', { symbol, action }).then((r) => r.data),
+  alerts: (symbol) => api.get('/demo/alerts', { params: symbol ? { symbol } : {} }).then((r) => r.data),
+  createAlert: (body) => api.post('/demo/alerts', body).then((r) => r.data),
+  toggleAlert: (id) => api.patch(`/demo/alerts/${id}`).then((r) => r.data),
+  deleteAlert: (id) => api.delete(`/demo/alerts/${id}`).then((r) => r.data),
+  clearAlerts: (symbol) => api.delete('/demo/alerts', { params: symbol ? { symbol } : {} }).then((r) => r.data),
 };
 
 // Catégories affichées dans le terminal.

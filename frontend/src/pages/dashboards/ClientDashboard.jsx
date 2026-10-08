@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -18,6 +18,7 @@ import { useLanguageStore } from '../../store/languageStore';
 import ReactPlayer from 'react-player';
 import { cloudinaryVideoThumb } from '../../lib/video';
 import AnnouncementInteractions from '../../components/AnnouncementInteractions';
+import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
@@ -87,6 +88,22 @@ const ClientDashboard = () => {
   const [vacationPrograms, setVacationPrograms] = useState([]);
   const [services, setServices] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
+
+  const textsToTranslate = useMemo(() => {
+    const list = [];
+    videos.forEach((v) => {
+      if (v.title) list.push(v.title);
+      if (v.description) list.push(v.description);
+    });
+    services.forEach((s) => {
+      if (s.title) list.push(s.title);
+      if (s.name) list.push(s.name);
+      if (s.description) list.push(s.description);
+    });
+    return list;
+  }, [videos, services]);
+
+  const { tr } = useAutoTranslate(textsToTranslate);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -281,11 +298,11 @@ const ClientDashboard = () => {
                 />
               </div>
               <CardHeader>
-                <CardTitle className="text-lg">{video.title}</CardTitle>
+                <CardTitle className="text-lg">{tr(video.title)}</CardTitle>
                 <p className="text-sm text-muted-foreground">{t('client.by')} {video.admin_name || 'Admin'}</p>
               </CardHeader>
               <CardContent>
-                <p className="text-sm">{video.description}</p>
+                <p className="text-sm">{tr(video.description)}</p>
                 <AnnouncementInteractions video={video} isAdmin={false} />
               </CardContent>
             </Card>
@@ -318,10 +335,10 @@ const ClientDashboard = () => {
                   <div className="inline-flex p-3 rounded-xl bg-primary/10">
                     <Icon className={`h-10 w-10 ${service.color || 'text-primary'}`} />
                   </div>
-                  <h3 className="text-xl font-bold">{service.title}</h3>
-                  <p className="text-muted-foreground line-clamp-2">{service.description}</p>
+                  <h3 className="text-xl font-bold">{tr(service.title || service.name)}</h3>
+                  <p className="text-muted-foreground line-clamp-2">{tr(service.description)}</p>
                   <span className="inline-flex items-center gap-1 text-sm text-primary font-medium">
-                    Voir les détails <ArrowRight className="h-4 w-4" />
+                    {isEn ? 'View details' : 'Voir les détails'} <ArrowRight className="h-4 w-4" />
                   </span>
                 </CardContent>
               </Card>

@@ -33,11 +33,13 @@ const serviceRoutes = require('./routes/serviceRoutes');
 const backtestRoutes = require('./routes/backtestRoutes');
 const economicRoutes = require('./routes/economicRoutes');
 const demoRoutes = require('./routes/demoRoutes');
+const translateRoutes = require('./routes/translateRoutes');
 const economicScheduler = require('./utils/economicCalendar/scheduler');
 // Trading Demo : hub de cotations temps réel, serveur WS, moteur de surveillance
 const liveFeed = require('./utils/marketData/liveFeed');
 const marketSocket = require('./realtime/marketSocket');
 const demoWatcher = require('./utils/tradingDemo/watcher');
+const alertWatcher = require('./utils/alerts/alertWatcher');
 const { Instrument } = require('./models');
 
 const app = express();
@@ -87,6 +89,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/backtests', backtestRoutes);
 app.use('/api/economics', economicRoutes);
 app.use('/api/demo', demoRoutes);
+app.use('/api/translate', translateRoutes);
 
 app.get('/', (req, res) => {
   res.send('LivefxTrading API Running');
@@ -123,6 +126,7 @@ server.listen(PORT, async () => {
     const instruments = await Instrument.find({ enabled: true });
     liveFeed.init(instruments);
     demoWatcher.start();
+    alertWatcher.start();
     console.log(`[trading-demo] ${instruments.length} instruments chargés dans le hub temps réel`);
   } catch (err) {
     console.error('[trading-demo] init différée (instruments non chargés) :', err.message);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -12,6 +12,7 @@ import {
 import api, { API_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { useLanguageStore } from '../store/languageStore';
+import { useAutoTranslate } from '../hooks/useAutoTranslate';
 import ReactPlayer from 'react-player';
 import { cloudinaryVideoThumb } from '../lib/video';
 import AnnouncementInteractions from '../components/AnnouncementInteractions';
@@ -39,6 +40,22 @@ const Home = () => {
   const [vacationPrograms, setVacationPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
+
+  const textsToTranslate = useMemo(() => {
+    const list = [];
+    posts.forEach((p) => {
+      if (p.title) list.push(p.title);
+      if (p.description) list.push(p.description);
+    });
+    vacationPrograms.forEach((vp) => {
+      if (vp.title) list.push(vp.title);
+      if (vp.description) list.push(vp.description);
+      if (vp.location) list.push(vp.location);
+    });
+    return list;
+  }, [posts, vacationPrograms]);
+
+  const { tr } = useAutoTranslate(textsToTranslate);
 
   const fetchFeedAndData = async () => {
     setLoading(true);
@@ -212,11 +229,11 @@ const Home = () => {
                     {/* Titre & Description du post */}
                     <div className="pt-2 space-y-1.5">
                       <h4 className="text-base sm:text-lg font-bold text-foreground">
-                        {post.title}
+                        {tr(post.title)}
                       </h4>
                       {post.description && (
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                          {post.description}
+                          {tr(post.description)}
                         </p>
                       )}
                     </div>
@@ -326,7 +343,7 @@ const Home = () => {
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2.5 py-0.5 text-xs font-bold mb-1">
                         <GraduationCap className="h-3 w-3" /> {isEn ? 'Vacation Program' : 'Programme Vacances'}
                       </span>
-                      <CardTitle className="text-base sm:text-lg">{prog.title}</CardTitle>
+                      <CardTitle className="text-base sm:text-lg">{tr(prog.title)}</CardTitle>
                     </div>
                     {prog.age_range && (
                       <span className="px-2 py-0.5 bg-card border rounded-full text-xs font-semibold text-muted-foreground">
@@ -337,7 +354,7 @@ const Home = () => {
                 </CardHeader>
                 <CardContent className="pt-4 space-y-3">
                   {prog.description && (
-                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{prog.description}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{tr(prog.description)}</p>
                   )}
                   <div className="space-y-1.5 text-xs text-muted-foreground">
                     <div className="flex items-center gap-2">
@@ -347,7 +364,7 @@ const Home = () => {
                     {prog.location && (
                       <div className="flex items-center gap-2">
                         <MapPin className="h-3.5 w-3.5 text-primary" />
-                        <span>{prog.location}</span>
+                        <span>{tr(prog.location)}</span>
                       </div>
                     )}
                     <div className="flex items-center gap-2">

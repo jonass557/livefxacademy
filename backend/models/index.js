@@ -27,6 +27,8 @@ const Position = require('./Position');
 const PendingOrder = require('./PendingOrder');
 const Trade = require('./Trade');
 const Watchlist = require('./Watchlist');
+const PriceAlert = require('./PriceAlert');
+const Translation = require('./Translation');
 
 module.exports = {
   User,
@@ -56,5 +58,7 @@ module.exports = {
   Position,
   PendingOrder,
   Trade,
-  Watchlist
+  Watchlist,
+  PriceAlert,
+  Translation
 };

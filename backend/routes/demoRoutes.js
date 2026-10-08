@@ -34,4 +34,11 @@ router.delete('/orders/:id', demo.cancelPending);
 router.get('/watchlist', demo.getWatchlist);
 router.post('/watchlist', demo.updateWatchlist);
 
+// Alertes de prix (TradingView / MT5 avec notifications email)
+router.get('/alerts', demo.getAlerts);
+router.post('/alerts', demo.createAlert);
+router.patch('/alerts/:id', demo.toggleAlert);
+router.delete('/alerts/:id', demo.deleteAlert);
+router.delete('/alerts', demo.clearAlerts);
+
 module.exports = router;

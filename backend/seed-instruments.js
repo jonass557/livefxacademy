@@ -22,7 +22,7 @@ const fx = (symbol, name, quote) => {
     tick_value: (jpy ? 0.001 : 0.00001) * 100000, // valeur d'un tick pour 1 lot, en devise quote
     min_volume: 0.01, max_volume: 100, volume_step: 0.01,
     spread_pips: 1.5,
-    provider: 'yahoo', provider_symbol: symbol + '=X',
+    provider: 'deriv', provider_symbol: 'frx' + symbol,
   };
 };
 
@@ -31,7 +31,7 @@ const metal = (symbol, name, pip, digits, contract, ys) => ({
   contract_size: contract, pip_size: pip, tick_size: pip / 10, digits,
   tick_value: (pip / 10) * contract,
   min_volume: 0.01, max_volume: 50, volume_step: 0.01, spread_pips: 3,
-  provider: 'yahoo', provider_symbol: ys,
+  provider: 'deriv', provider_symbol: 'frx' + symbol,
 });
 
 const index = (symbol, name, quote, providerSymbol) => ({

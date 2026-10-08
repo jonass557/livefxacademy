@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import api, { API_URL } from '../../lib/api';
+import { demoApi } from '../../lib/demoApi';
 import { registerOverlay, registerIndicator, IndicatorSeries } from 'klinecharts';
 
 const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
@@ -9,7 +10,7 @@ import {
   Equal, AlignJustify, Square, Type, Eraser, ChevronDown, Pencil, FunctionSquare,
   ArrowRight, ArrowUpRight, MapPin, ArrowUp, ArrowDown, TrendingUp, TrendingDown,
   Paintbrush, Waves, GitCommit, Grid, Palette, RotateCcw, Settings, X, Check,
-  Trash2, Clock, Route, Bell, BellRing, Volume2, Plus,
+  Trash2, Clock, Route, Bell, BellRing, Volume2, Plus, Mail,
 } from 'lucide-react';
 
 // ---- Constantes et Thèmes (façon MT4 / MT5 & TradingView) ----
@@ -3032,6 +3033,25 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
   const lastCheckedPriceRef = useRef(null);
 
+  // Charger depuis le backend si connecté
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !symbol || symbol === 'DEFAULT') return;
+
+    let mounted = true;
+    demoApi.alerts(symbol).then((remoteAlerts) => {
+      if (!mounted || !Array.isArray(remoteAlerts)) return;
+      setAlerts((local) => {
+        const map = new Map();
+        local.forEach((a) => map.set(String(a.id), a));
+        remoteAlerts.forEach((a) => map.set(String(a.id), a));
+        return Array.from(map.values());
+      });
+    }).catch(() => {});
+
+    return () => { mounted = false; };
+  }, [symbol]);
+
   // Sauvegarder dans le localStorage
   useEffect(() => {
     try {
@@ -3066,27 +3086,52 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
   }, [alerts, chartRef]);
 
   // Ajouter une alerte
-  const addAlert = useCallback(({ targetPrice, condition = 'crossing', note = '' }) => {
+  const addAlert = useCallback(({ targetPrice, condition = 'crossing', note = '', notifyEmail = true }) => {
     const numPrice = parseFloat(targetPrice);
     if (!numPrice || isNaN(numPrice)) return null;
 
+    const tempId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newAlert = {
-      id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: tempId,
       symbol,
       targetPrice: numPrice,
       condition,
       note: note.trim(),
+      notifyEmail: Boolean(notifyEmail),
       triggered: false,
       createdAt: new Date().toISOString(),
     };
 
     setAlerts((prev) => [newAlert, ...prev]);
+
+    // Synchronisation backend (pour surveillance serveur + notification email)
+    const token = localStorage.getItem('token');
+    if (token) {
+      demoApi.createAlert({
+        symbol,
+        target_price: numPrice,
+        condition,
+        note: note.trim(),
+        notify_email: Boolean(notifyEmail),
+      }).then((saved) => {
+        if (saved && saved.id) {
+          setAlerts((prev) => prev.map((a) => a.id === tempId ? { ...a, ...saved } : a));
+        }
+      }).catch((err) => {
+        console.warn('Sync alerte backend:', err.message);
+      });
+    }
+
     return newAlert;
   }, [symbol]);
 
   // Supprimer une alerte
   const removeAlert = useCallback((id) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
+    const token = localStorage.getItem('token');
+    if (token && id && !String(id).includes('_')) {
+      demoApi.deleteAlert(id).catch(() => {});
+    }
     const chart = chartRef?.current;
     if (chart) {
       try {
@@ -3100,18 +3145,26 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     setAlerts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, triggered: !a.triggered } : a))
     );
+    const token = localStorage.getItem('token');
+    if (token && id && !String(id).includes('_')) {
+      demoApi.toggleAlert(id).catch(() => {});
+    }
   }, []);
 
   // Supprimer toutes les alertes
   const clearAlerts = useCallback(() => {
     setAlerts([]);
+    const token = localStorage.getItem('token');
+    if (token) {
+      demoApi.clearAlerts(symbol).catch(() => {});
+    }
     const chart = chartRef?.current;
     if (chart) {
       try {
         chart.removeOverlay({ name: 'priceAlertLine' });
       } catch (_) {}
     }
-  }, [chartRef]);
+  }, [chartRef, symbol]);
 
   // Vérifier les alertes en temps réel sur un tick / prix direct (Trading Démo)
   const checkLivePrice = useCallback((currentPrice) => {
@@ -3218,6 +3271,7 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
   const [targetPrice, setTargetPrice] = useState('');
   const [condition, setCondition] = useState('crossing');
   const [note, setNote] = useState('');
+  const [notifyEmail, setNotifyEmail] = useState(true);
 
   const { alerts, activeCount, addAlert, removeAlert, toggleAlert, clearAlerts } = alertsManager;
 
@@ -3230,7 +3284,7 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!targetPrice) return;
-    const added = addAlert({ targetPrice, condition, note });
+    const added = addAlert({ targetPrice, condition, note, notifyEmail });
     if (added) {
       setTargetPrice('');
       setNote('');
@@ -3247,6 +3301,7 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
         <Button
           size="sm"
           variant="outline"
+          onClick={() => setOpen((o) => !o)}
           className="h-8 px-2 sm:px-2.5 text-xs font-medium gap-1.5 border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-amber-300"
           title={isEnglish ? 'Price Alerts (TradingView / MT5)' : 'Alertes de Prix (TradingView / MT5)'}
         >
@@ -3337,6 +3392,18 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
             />
           </div>
 
+          {/* Option notification par email */}
+          <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 py-1">
+            <input
+              type="checkbox"
+              checked={notifyEmail}
+              onChange={(e) => setNotifyEmail(e.target.checked)}
+              className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 w-3.5 h-3.5 accent-amber-500"
+            />
+            <Mail className="w-3.5 h-3.5 text-amber-400" />
+            <span>{isEnglish ? 'Receive notification by email' : 'Recevoir une notification par email'}</span>
+          </label>
+
           <Button
             type="submit"
             size="sm"
@@ -3391,6 +3458,11 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
                       <span className="text-[10px] font-normal text-amber-400/90 px-1 py-0.2 bg-amber-500/10 rounded">
                         {a.condition === 'above' ? '≥' : a.condition === 'below' ? '≤' : '✕'}
                       </span>
+                      {a.notifyEmail && (
+                        <span title={isEnglish ? 'Email notification enabled' : 'Notification email activée'} className="text-amber-400">
+                          <Mail className="w-3 h-3 inline-block" />
+                        </span>
+                      )}
                       {a.triggered && (
                         <span className="text-[9px] font-semibold text-slate-400 bg-slate-800 px-1 rounded">
                           {isEnglish ? 'TRIGGERED' : 'DÉCLENCHÉE'}
