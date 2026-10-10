@@ -45,6 +45,13 @@ class AlertWatcher {
       if (!activeAlerts || activeAlerts.length === 0) return;
 
       for (const alert of activeAlerts) {
+        // Vérifier expiration
+        if (alert.expires_at && new Date() > new Date(alert.expires_at)) {
+          alert.status = 'triggered';
+          await alert.save();
+          continue;
+        }
+
         let isHit = false;
         const tp = alert.target_price;
         const refPrice = alert.created_price ?? prevPrice;
@@ -63,7 +70,13 @@ class AlertWatcher {
         }
 
         if (isHit) {
-          alert.status = 'triggered';
+          const isEveryTime = alert.trigger_frequency === 'every_time';
+          if (!isEveryTime) {
+            alert.status = 'triggered';
+          } else {
+            // Réinitialiser le prix de référence pour le prochain déclenchement
+            alert.created_price = currentPrice;
+          }
           alert.triggered_at = new Date();
           alert.triggered_price = currentPrice;
 

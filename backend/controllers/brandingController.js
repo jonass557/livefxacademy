@@ -25,10 +25,40 @@ exports.uploadMiddleware = multer({ storage, fileFilter, limits: { fileSize: 5 *
 exports.getBranding = async (req, res) => {
   try {
     const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
-    res.json(branding || { navbar_logo_url: '', chart_logo_url: '' });
+    const data = branding || { navbar_logo_url: '', chart_logo_url: '' };
+    // Renvoyer indicateur si la clé Gemini est configurée sans exposer la clé brute si non-admin
+    const hasKey = !!(data.gemini_api_key || process.env.GEMINI_API_KEY);
+    const isAdmin = req.user && req.user.role === 'admin';
+    res.json({
+      ...data,
+      has_gemini_key: hasKey,
+      gemini_api_key: isAdmin ? (data.gemini_api_key || '') : (hasKey ? '••••••••' : ''),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+exports.updateSettings = async (req, res) => {
+  try {
+    const { gemini_api_key } = req.body || {};
+    const updateData = { updated_by: req.user.id };
+    if (gemini_api_key !== undefined) {
+      updateData.gemini_api_key = String(gemini_api_key || '').trim();
+    }
+    const branding = await BrandingSettings.findOneAndUpdate(
+      {},
+      { $set: updateData },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    res.json({
+      ...branding.toObject(),
+      has_gemini_key: !!(branding.gemini_api_key || process.env.GEMINI_API_KEY),
+    });
+  } catch (err) {
+    console.error('updateSettings error:', err);
+    res.status(500).json({ message: err.message || 'Erreur mise à jour paramètres' });
   }
 };
 

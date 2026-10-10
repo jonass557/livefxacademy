@@ -6,6 +6,7 @@ import {
   TrendingUp, TrendingDown, Minus, AlertTriangle, Gauge,
   Coins, LineChart, Bitcoin, Building2, Landmark, CircleDollarSign,
 } from 'lucide-react';
+import { useLanguageStore } from '../../store/languageStore';
 
 // --- Couleurs / libellés ----------------------------------------------------
 
@@ -17,6 +18,7 @@ export const IMPACT_STYLE = {
   Holiday: 'bg-muted text-muted-foreground border-border',
 };
 export const IMPACT_LABEL = { High: 'Élevé', Medium: 'Moyen', Low: 'Faible', Holiday: 'Férié' };
+export const IMPACT_LABEL_EN = { High: 'High', Medium: 'Medium', Low: 'Low', Holiday: 'Holiday' };
 
 // Niveaux « faible/moyen/eleve » renvoyés par l'IA.
 export const LEVEL_STYLE = {
@@ -25,6 +27,13 @@ export const LEVEL_STYLE = {
   moyen: 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',
   moyenne: 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',
   faible: 'bg-green-500/15 text-green-600 border-green-500/30',
+};
+export const LEVEL_LABEL_EN = {
+  eleve: 'High',
+  elevee: 'High',
+  moyen: 'Medium',
+  moyenne: 'Medium',
+  faible: 'Low',
 };
 
 // Ton banque centrale.
@@ -38,6 +47,11 @@ export const TONE_LABEL = {
   dovish: '🕊️ Dovish (accommodant)',
   neutre: '⚖️ Neutre',
 };
+export const TONE_LABEL_EN = {
+  hawkish: '🦅 Hawkish (tightening)',
+  dovish: '🕊️ Dovish (accommodative)',
+  neutre: '⚖️ Neutral',
+};
 
 export const SURPRISE_STYLE = {
   meilleur_que_prevu: 'bg-green-500/15 text-green-600 border-green-500/30',
@@ -48,6 +62,11 @@ export const SURPRISE_LABEL = {
   meilleur_que_prevu: '📈 Meilleur que prévu',
   pire_que_prevu: '📉 Pire que prévu',
   conforme: '➖ Conforme aux attentes',
+};
+export const SURPRISE_LABEL_EN = {
+  meilleur_que_prevu: '📈 Better than expected',
+  pire_que_prevu: '📉 Worse than expected',
+  conforme: '➖ In line with expectations',
 };
 
 const CATEGORY_ICON = {
@@ -93,21 +112,26 @@ export function ConfidenceBar({ value = 0 }) {
 
 // Tableau des actifs impactés avec direction et confiance.
 export function AssetTable({ assets = [] }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!assets.length) return null;
   return (
     <div className="overflow-hidden rounded-lg border">
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 text-left font-medium">Actif</th>
-            <th className="px-3 py-2 text-left font-medium">Sens</th>
-            <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">Confiance</th>
-            <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Pourquoi</th>
+            <th className="px-3 py-2 text-left font-medium">{isEn ? 'Asset' : 'Actif'}</th>
+            <th className="px-3 py-2 text-left font-medium">{isEn ? 'Direction' : 'Sens'}</th>
+            <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">{isEn ? 'Confidence' : 'Confiance'}</th>
+            <th className="px-3 py-2 text-left font-medium hidden md:table-cell">{isEn ? 'Rationale' : 'Pourquoi'}</th>
           </tr>
         </thead>
         <tbody>
           {assets.map((a, i) => {
             const Icon = CATEGORY_ICON[a.category] || CircleDollarSign;
+            const dirLabel = isEn
+              ? (a.direction === 'hausse' ? 'Bullish / Up' : a.direction === 'baisse' ? 'Bearish / Down' : 'Neutral')
+              : a.direction;
             return (
               <tr key={i} className="border-t">
                 <td className="px-3 py-2">
@@ -119,7 +143,7 @@ export function AssetTable({ assets = [] }) {
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1">
                     <DirectionArrow direction={a.direction} />
-                    <span className="capitalize">{a.direction}</span>
+                    <span className="capitalize">{dirLabel}</span>
                   </div>
                 </td>
                 <td className="px-3 py-2 hidden sm:table-cell"><ConfidenceBar value={a.confidence} /></td>
@@ -135,75 +159,76 @@ export function AssetTable({ assets = [] }) {
 
 // Bloc de données d'annonce (date, pays, type, valeurs, source) — pour EventAnalysisModal.
 export function EventDataBlock({ event }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!event) return null;
   const eventDate = new Date(event.date);
   const hasActual = event.actual != null && event.actual !== '';
   const hasForecast = event.forecast != null && event.forecast !== '';
 
-  // Code couleur actual vs forecast (meilleur/pire/conforme).
   let actualColor = '';
   if (hasActual && hasForecast) {
     const act = parseFloat(String(event.actual).replace(/[^0-9.-]/g, ''));
     const fore = parseFloat(String(event.forecast).replace(/[^0-9.-]/g, ''));
     if (!isNaN(act) && !isNaN(fore)) {
-      // Heuristique simple : actual > forecast = positif pour la croissance/emploi,
-      // négatif pour l'inflation/chômage. On colore vert si actual > forecast.
       actualColor = act > fore ? 'text-green-600 font-semibold' : act < fore ? 'text-red-600 font-semibold' : 'font-semibold';
     }
   }
 
+  const impactTxt = isEn ? (IMPACT_LABEL_EN[event.impact] || event.impact) : (IMPACT_LABEL[event.impact] || event.impact);
+
   return (
     <div className="rounded-lg border bg-muted/30 p-4 space-y-3 text-sm">
-      <h4 className="font-semibold text-foreground/90">📋 Données de l'annonce</h4>
+      <h4 className="font-semibold text-foreground/90">{isEn ? '📋 Economic Release Data' : "📋 Données de l'annonce"}</h4>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
         <div>
-          <span className="text-muted-foreground">🗓️ Date & heure</span>
-          <p className="font-medium">{eventDate.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+          <span className="text-muted-foreground">{isEn ? '🗓️ Date & Time' : '🗓️ Date & heure'}</span>
+          <p className="font-medium">{eventDate.toLocaleString(isEn ? 'en-US' : 'fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}</p>
         </div>
         {event.flag && event.country_name && (
           <div>
-            <span className="text-muted-foreground">🇺🇸 Pays</span>
+            <span className="text-muted-foreground">{isEn ? '🌐 Country' : '🇺🇸 Pays'}</span>
             <p className="font-medium">{event.flag} {event.country_name}</p>
           </div>
         )}
         <div>
-          <span className="text-muted-foreground">💱 Devise</span>
+          <span className="text-muted-foreground">{isEn ? '💱 Currency' : '💱 Devise'}</span>
           <p className="font-medium">{event.currency}</p>
         </div>
         {event.event_type && event.event_type !== 'other' && (
           <div>
-            <span className="text-muted-foreground">📌 Type</span>
+            <span className="text-muted-foreground">{isEn ? '📌 Category' : '📌 Type'}</span>
             <p className="font-medium capitalize">{event.event_type.replace('_', ' ')}</p>
           </div>
         )}
         <div>
-          <span className="text-muted-foreground">🔴 Importance</span>
-          <p className="font-medium">{IMPACT_LABEL[event.impact] || event.impact}</p>
+          <span className="text-muted-foreground">{isEn ? '🔴 Impact' : '🔴 Importance'}</span>
+          <p className="font-medium">{impactTxt}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">📊 Précédent</span>
+          <span className="text-muted-foreground">{isEn ? '📊 Previous' : '📊 Précédent'}</span>
           <p className="font-medium">{event.previous || '—'}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">🔮 Prévision</span>
+          <span className="text-muted-foreground">{isEn ? '🔮 Forecast' : '🔮 Prévision'}</span>
           <p className="font-medium">{event.forecast || '—'}</p>
         </div>
         {hasActual && (
           <div>
-            <span className="text-muted-foreground">✅ Publié</span>
+            <span className="text-muted-foreground">{isEn ? '✅ Actual' : '✅ Publié'}</span>
             <p className={actualColor || 'font-medium'}>{event.actual}</p>
           </div>
         )}
         {event.revised && (
           <div>
-            <span className="text-muted-foreground">🔄 Révisé</span>
+            <span className="text-muted-foreground">{isEn ? '🔄 Revised' : '🔄 Révisé'}</span>
             <p className="font-medium">{event.revised}</p>
           </div>
         )}
       </div>
       {event.source_name && (
         <div className="pt-2 border-t">
-          <span className="text-muted-foreground text-xs">🏛️ Source officielle : </span>
+          <span className="text-muted-foreground text-xs">{isEn ? '🏛️ Official Source: ' : '🏛️ Source officielle : '}</span>
           {event.source_url ? (
             <a href={event.source_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">
               {event.source_name}
@@ -219,13 +244,18 @@ export function EventDataBlock({ event }) {
 
 // Liste des scénarios (haussier / baissier / neutre).
 export function ScenarioList({ scenarios = [] }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!scenarios.length) return null;
   const style = {
     haussier: 'border-green-500/30 bg-green-500/5',
     baissier: 'border-red-500/30 bg-red-500/5',
     neutre: 'border-border bg-muted/30',
   };
-  const label = { haussier: '🟢 Scénario haussier', baissier: '🔴 Scénario baissier', neutre: '⚪ Scénario neutre' };
+  const labelFr = { haussier: '🟢 Scénario haussier', baissier: '🔴 Scénario baissier', neutre: '⚪ Scénario neutre' };
+  const labelEn = { haussier: '🟢 Bullish Scenario', baissier: '🔴 Bearish Scenario', neutre: '⚪ Neutral Scenario' };
+  const label = isEn ? labelEn : labelFr;
+
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       {scenarios.map((s, i) => (
@@ -234,8 +264,8 @@ export function ScenarioList({ scenarios = [] }) {
             <span className="text-sm font-semibold">{label[s.type] || s.type}</span>
             <span className="text-xs text-muted-foreground">{s.confidence}%</span>
           </div>
-          <p className="text-xs text-muted-foreground mb-1"><strong>Si :</strong> {s.condition}</p>
-          <p className="text-xs"><strong>Alors :</strong> {s.consequence}</p>
+          <p className="text-xs text-muted-foreground mb-1"><strong>{isEn ? 'If:' : 'Si :'}</strong> {s.condition}</p>
+          <p className="text-xs"><strong>{isEn ? 'Then:' : 'Alors :'}</strong> {s.consequence}</p>
         </div>
       ))}
     </div>
@@ -244,10 +274,14 @@ export function ScenarioList({ scenarios = [] }) {
 
 // Encadré « pour débutant ».
 export function BeginnerBox({ text }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!text) return null;
   return (
     <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-      <p className="text-xs font-semibold text-primary mb-1">💡 Explication simple (débutant)</p>
+      <p className="text-xs font-semibold text-primary mb-1">
+        {isEn ? '💡 Simple Explanation (Beginner Friendly)' : '💡 Explication simple (débutant)'}
+      </p>
       <p className="text-sm">{text}</p>
     </div>
   );
@@ -269,33 +303,39 @@ function Block({ icon: Icon, title, children }) {
 
 // Rend une analyse fondamentale ou « avant publication » (même schéma).
 export function FundamentalAnalysis({ data }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!data) return null;
+
+  const impLevel = isEn ? (LEVEL_LABEL_EN[data.importance_level] || data.importance_level) : data.importance_level;
+  const volLevel = isEn ? (LEVEL_LABEL_EN[data.expected_volatility] || data.expected_volatility) : data.expected_volatility;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2">
         {data.importance_level && (
           <Pill className={LEVEL_STYLE[data.importance_level] || ''}>
-            <AlertTriangle className="h-3 w-3" /> Importance : {data.importance_level}
+            <AlertTriangle className="h-3 w-3" /> {isEn ? 'Importance' : 'Importance'} : {impLevel}
           </Pill>
         )}
         {data.expected_volatility && (
           <Pill className={LEVEL_STYLE[data.expected_volatility] || ''}>
-            <Gauge className="h-3 w-3" /> Volatilité : {data.expected_volatility}
+            <Gauge className="h-3 w-3" /> {isEn ? 'Volatility' : 'Volatilité'} : {volLevel}
           </Pill>
         )}
       </div>
 
-      {data.summary && <Block title="Résumé"><p className="text-sm text-muted-foreground">{data.summary}</p></Block>}
-      {data.importance && <Block title="Pourquoi c'est important"><p className="text-sm text-muted-foreground">{data.importance}</p></Block>}
+      {data.summary && <Block title={isEn ? 'Summary' : 'Résumé'}><p className="text-sm text-muted-foreground">{data.summary}</p></Block>}
+      {data.importance && <Block title={isEn ? 'Why it matters' : "Pourquoi c'est important"}><p className="text-sm text-muted-foreground">{data.importance}</p></Block>}
 
       {data.affected_assets?.length > 0 && (
-        <Block icon={TrendingUp} title="Actifs concernés"><AssetTable assets={data.affected_assets} /></Block>
+        <Block icon={TrendingUp} title={isEn ? 'Affected Assets' : 'Actifs concernés'}><AssetTable assets={data.affected_assets} /></Block>
       )}
       {data.scenarios?.length > 0 && (
-        <Block title="Scénarios"><ScenarioList scenarios={data.scenarios} /></Block>
+        <Block title={isEn ? 'Scenarios' : 'Scénarios'}><ScenarioList scenarios={data.scenarios} /></Block>
       )}
       {data.watch_points?.length > 0 && (
-        <Block icon={AlertTriangle} title="Points de vigilance">
+        <Block icon={AlertTriangle} title={isEn ? 'Key Watchpoints' : 'Points de vigilance'}>
           <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
             {data.watch_points.map((w, i) => <li key={i}>{w}</li>)}
           </ul>
@@ -308,27 +348,32 @@ export function FundamentalAnalysis({ data }) {
 
 // Rend une analyse « après publication ».
 export function PostReleaseAnalysis({ data }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!data) return null;
+
+  const surpriseLabel = isEn ? (SURPRISE_LABEL_EN[data.surprise] || data.surprise) : (SURPRISE_LABEL[data.surprise] || data.surprise);
+
   return (
     <div className="space-y-5">
       {data.surprise && (
-        <Pill className={SURPRISE_STYLE[data.surprise] || ''}>{SURPRISE_LABEL[data.surprise] || data.surprise}</Pill>
+        <Pill className={SURPRISE_STYLE[data.surprise] || ''}>{surpriseLabel}</Pill>
       )}
-      {data.comparison && <Block title="Comparaison prévu / publié"><p className="text-sm text-muted-foreground">{data.comparison}</p></Block>}
-      {data.market_reaction && <Block title="Réaction du marché"><p className="text-sm text-muted-foreground">{data.market_reaction}</p></Block>}
+      {data.comparison && <Block title={isEn ? 'Forecast vs Actual Comparison' : 'Comparaison prévu / publié'}><p className="text-sm text-muted-foreground">{data.comparison}</p></Block>}
+      {data.market_reaction && <Block title={isEn ? 'Market Reaction' : 'Réaction du marché'}><p className="text-sm text-muted-foreground">{data.market_reaction}</p></Block>}
       {data.affected_assets?.length > 0 && (
-        <Block icon={TrendingUp} title="Actifs impactés"><AssetTable assets={data.affected_assets} /></Block>
+        <Block icon={TrendingUp} title={isEn ? 'Impacted Assets' : 'Actifs impactés'}><AssetTable assets={data.affected_assets} /></Block>
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         {data.immediate_effect && (
           <div className="rounded-lg border p-3">
-            <p className="text-xs font-semibold text-primary mb-1">⚡ Effet immédiat</p>
+            <p className="text-xs font-semibold text-primary mb-1">⚡ {isEn ? 'Immediate Effect' : 'Effet immédiat'}</p>
             <p className="text-sm text-muted-foreground">{data.immediate_effect}</p>
           </div>
         )}
         {data.progressive_effect && (
           <div className="rounded-lg border p-3">
-            <p className="text-xs font-semibold text-primary mb-1">📅 Effet progressif</p>
+            <p className="text-xs font-semibold text-primary mb-1">📅 {isEn ? 'Progressive Effect' : 'Effet progressif'}</p>
             <p className="text-sm text-muted-foreground">{data.progressive_effect}</p>
           </div>
         )}
@@ -340,15 +385,20 @@ export function PostReleaseAnalysis({ data }) {
 
 // Rend un résumé de banque centrale.
 export function CentralBankAnalysis({ data }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!data) return null;
+
+  const toneLabel = isEn ? (TONE_LABEL_EN[data.tone] || data.tone) : (TONE_LABEL[data.tone] || data.tone);
+
   return (
     <div className="space-y-5">
-      {data.tone && <Pill className={TONE_STYLE[data.tone] || ''}>{TONE_LABEL[data.tone] || data.tone}</Pill>}
-      {data.summary && <Block title="Résumé"><p className="text-sm text-muted-foreground">{data.summary}</p></Block>}
-      {data.tone_explanation && <Block title="Pourquoi ce ton"><p className="text-sm text-muted-foreground">{data.tone_explanation}</p></Block>}
-      {data.consequences && <Block title="Conséquences pour les marchés"><p className="text-sm text-muted-foreground">{data.consequences}</p></Block>}
+      {data.tone && <Pill className={TONE_STYLE[data.tone] || ''}>{toneLabel}</Pill>}
+      {data.summary && <Block title={isEn ? 'Summary' : 'Résumé'}><p className="text-sm text-muted-foreground">{data.summary}</p></Block>}
+      {data.tone_explanation && <Block title={isEn ? 'Policy Tone Rationale' : 'Pourquoi ce ton'}><p className="text-sm text-muted-foreground">{data.tone_explanation}</p></Block>}
+      {data.consequences && <Block title={isEn ? 'Market Consequences' : 'Conséquences pour les marchés'}><p className="text-sm text-muted-foreground">{data.consequences}</p></Block>}
       {data.affected_assets?.length > 0 && (
-        <Block icon={TrendingUp} title="Actifs concernés"><AssetTable assets={data.affected_assets} /></Block>
+        <Block icon={TrendingUp} title={isEn ? 'Affected Assets' : 'Actifs concernés'}><AssetTable assets={data.affected_assets} /></Block>
       )}
       <BeginnerBox text={data.beginner_summary} />
     </div>

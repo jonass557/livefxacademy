@@ -8,6 +8,8 @@ const priceAlertSchema = new mongoose.Schema({
   symbol: { type: String, required: true, index: true },        // symbole Trading Demo (ex. 'EURUSD')
   target_price: { type: Number, required: true },
   condition: { type: String, enum: ['crossing', 'above', 'below'], default: 'crossing' },
+  trigger_frequency: { type: String, enum: ['once', 'every_time'], default: 'once' },
+  expires_at: { type: Date, default: null },
   note: { type: String, default: '', maxlength: 200 },
   notify_email: { type: Boolean, default: true },
   status: { type: String, enum: ['active', 'triggered'], default: 'active', index: true },

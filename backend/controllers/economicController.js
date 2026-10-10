@@ -45,7 +45,7 @@ exports.getMeta = async (req, res) => {
       central_banks: ['Fed', 'BCE', 'BoE', 'BoJ', 'BoC', 'BNS', 'RBA', 'RBNZ', 'PBoC'],
       providers,
       enriched_fields: enriched_by.length > 0 ? ['actual', 'revised', 'source'] : [],
-      ai_enabled: ai.isConfigured(),
+      ai_enabled: await ai.isConfigured(),
     });
   } catch (err) {
     console.error('getMeta:', err.message);

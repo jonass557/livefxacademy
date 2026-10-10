@@ -19,7 +19,9 @@ const AdminDashboard = () => {
   const { user } = useAuthStore();
   const { t } = useLanguageStore();
   const [banners, setBanners] = useState([]);
-  const [branding, setBranding] = useState({ navbar_logo_url: '', chart_logo_url: '' });
+  const [branding, setBranding] = useState({ navbar_logo_url: '', chart_logo_url: '', gemini_api_key: '' });
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('');
+  const [savingGeminiKey, setSavingGeminiKey] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(null);
   const [prospects, setProspects] = useState([]);
@@ -118,9 +120,30 @@ const AdminDashboard = () => {
   const fetchBranding = async () => {
     try {
       const res = await api.get('/branding');
-      setBranding({ navbar_logo_url: res.data?.navbar_logo_url || '', chart_logo_url: res.data?.chart_logo_url || '' });
+      setBranding({
+        navbar_logo_url: res.data?.navbar_logo_url || '',
+        chart_logo_url: res.data?.chart_logo_url || '',
+        gemini_api_key: res.data?.gemini_api_key || '',
+      });
+      if (res.data?.gemini_api_key) {
+        setGeminiApiKeyInput(res.data.gemini_api_key);
+      }
     } catch (err) {
       console.error("Error fetching branding", err);
+    }
+  };
+
+  const handleSaveGeminiKey = async () => {
+    setSavingGeminiKey(true);
+    try {
+      await api.patch('/branding/admin/settings', { gemini_api_key: geminiApiKeyInput });
+      toast.success('Clé API Google Gemini enregistrée avec succès !');
+      fetchBranding();
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement de la clé API");
+    } finally {
+      setSavingGeminiKey(false);
     }
   };
 
@@ -1237,27 +1260,67 @@ const AdminDashboard = () => {
       { type: 'chart', label: 'Logo du graphique Trading Demo', url: branding.chart_logo_url },
     ];
     return (
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><ImageIcon className="h-5 w-5" /> Branding</CardTitle></CardHeader>
-        <CardContent className="grid gap-6 md:grid-cols-2">
-          {logos.map(({ type, label, url }) => (
-            <div key={type} className="space-y-3 rounded-lg border p-4">
-              <div>
-                <h3 className="font-semibold">{label}</h3>
-                <p className="text-sm text-muted-foreground">PNG, JPG, WEBP ou SVG — 5 Mo maximum</p>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><ImageIcon className="h-5 w-5" /> Logos & Identité Visuelle</CardTitle></CardHeader>
+          <CardContent className="grid gap-6 md:grid-cols-2">
+            {logos.map(({ type, label, url }) => (
+              <div key={type} className="space-y-3 rounded-lg border p-4">
+                <div>
+                  <h3 className="font-semibold">{label}</h3>
+                  <p className="text-sm text-muted-foreground">PNG, JPG, WEBP ou SVG — 5 Mo maximum</p>
+                </div>
+                <div className="flex min-h-24 items-center justify-center rounded-md bg-muted/40 p-4">
+                  {url ? <img src={assetUrl(url)} alt={label} className="max-h-16 max-w-full object-contain" /> : <span className="text-sm text-muted-foreground">Logo par défaut utilisé</span>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => handleLogoUpload(type, event)} disabled={uploadingLogo === type} className="max-w-xs" />
+                  {uploadingLogo === type && <span className="self-center text-sm text-muted-foreground">Upload en cours...</span>}
+                  {url && <Button type="button" variant="destructive" size="sm" onClick={() => handleDeleteLogo(type)}>Supprimer</Button>}
+                </div>
               </div>
-              <div className="flex min-h-24 items-center justify-center rounded-md bg-muted/40 p-4">
-                {url ? <img src={assetUrl(url)} alt={label} className="max-h-16 max-w-full object-contain" /> : <span className="text-sm text-muted-foreground">Logo par défaut utilisé</span>}
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Configuration Clé API Google Gemini (IA Analyse Économique & Assistant) */}
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lightbulb className="h-5 w-5 text-primary" /> Clé API Google Gemini (Intelligence Artificielle)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Configurez votre clé d'API <strong>Google Gemini</strong> pour activer instantanément les analyses macroéconomiques fondamentales automatisées (avant / après publication) et le chatbot assistant économique bilingue pour tous les utilisateurs.
+            </p>
+            <div className="space-y-2 max-w-xl">
+              <label className="text-sm font-medium">Clé secrète Gemini (API Key) :</label>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  placeholder="AIzaSy..."
+                  value={geminiApiKeyInput}
+                  onChange={(e) => setGeminiApiKeyInput(e.target.value)}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  onClick={handleSaveGeminiKey}
+                  disabled={savingGeminiKey}
+                  className="gap-1.5 shrink-0"
+                >
+                  {savingGeminiKey ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                  Enregistrer
+                </Button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => handleLogoUpload(type, event)} disabled={uploadingLogo === type} className="max-w-xs" />
-                {uploadingLogo === type && <span className="self-center text-sm text-muted-foreground">Upload en cours...</span>}
-                {url && <Button type="button" variant="destructive" size="sm" onClick={() => handleDeleteLogo(type)}>Supprimer</Button>}
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Obtenez une clé gratuitement sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">Google AI Studio</a>.
+                {branding.gemini_api_key && <span className="ml-2 text-green-600 font-semibold">● Clé configurée et active</span>}
+              </p>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     );
   };
 

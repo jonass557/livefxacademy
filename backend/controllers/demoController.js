@@ -388,7 +388,11 @@ exports.getAlerts = async (req, res) => {
 
 exports.createAlert = async (req, res) => {
   try {
-    const { symbol, target_price, condition = 'crossing', note = '', notify_email = true } = req.body || {};
+    const {
+      symbol, target_price, condition = 'crossing',
+      trigger_frequency = 'once', expires_at = null,
+      note = '', notify_email = true,
+    } = req.body || {};
     const tp = parseFloat(target_price);
     if (!symbol || !tp || isNaN(tp)) {
       return res.status(400).json({ message: 'Symbole et prix cible valides requis' });
@@ -401,6 +405,8 @@ exports.createAlert = async (req, res) => {
       symbol,
       target_price: tp,
       condition,
+      trigger_frequency: ['once', 'every_time'].includes(trigger_frequency) ? trigger_frequency : 'once',
+      expires_at: expires_at ? new Date(expires_at) : null,
       note: (note || '').slice(0, 200),
       notify_email: Boolean(notify_email),
       created_price,
@@ -458,6 +464,8 @@ function publicAlert(a) {
     symbol: a.symbol,
     targetPrice: a.target_price,
     condition: a.condition,
+    triggerFrequency: a.trigger_frequency || 'once',
+    expiresAt: a.expires_at,
     note: a.note || '',
     notifyEmail: a.notify_email,
     status: a.status,

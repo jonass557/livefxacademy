@@ -2,6 +2,7 @@
 // Sélection d'une banque → POST /api/economics/central-bank → ton dovish/hawkish,
 // conséquences, actifs concernés, synthèse débutants. Contexte facultatif saisi
 // par l'utilisateur (ex: dernier communiqué).
+// Support bilingue Français / Anglais complet.
 
 import React, { useState } from 'react';
 import { Card, CardContent } from '../ui/card';
@@ -10,8 +11,9 @@ import { Loader2, Sparkles, Landmark } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
 import { CentralBankAnalysis } from './shared';
+import { useLanguageStore } from '../../store/languageStore';
 
-const BANKS = [
+const BANKS_FR = [
   { id: 'Fed', label: 'Fed', desc: 'Réserve fédérale (USD)', flag: '🇺🇸' },
   { id: 'BCE', label: 'BCE', desc: 'Banque centrale européenne (EUR)', flag: '🇪🇺' },
   { id: 'BoE', label: 'BoE', desc: "Banque d'Angleterre (GBP)", flag: '🇬🇧' },
@@ -22,15 +24,30 @@ const BANKS = [
   { id: 'RBNZ', label: 'RBNZ', desc: 'Banque de réserve de N.-Zélande (NZD)', flag: '🇳🇿' },
 ];
 
+const BANKS_EN = [
+  { id: 'Fed', label: 'Fed', desc: 'Federal Reserve (USD)', flag: '🇺🇸' },
+  { id: 'BCE', label: 'ECB', desc: 'European Central Bank (EUR)', flag: '🇪🇺' },
+  { id: 'BoE', label: 'BoE', desc: 'Bank of England (GBP)', flag: '🇬🇧' },
+  { id: 'BoJ', label: 'BoJ', desc: 'Bank of Japan (JPY)', flag: '🇯🇵' },
+  { id: 'BoC', label: 'BoC', desc: 'Bank of Canada (CAD)', flag: '🇨🇦' },
+  { id: 'BNS', label: 'SNB', desc: 'Swiss National Bank (CHF)', flag: '🇨🇭' },
+  { id: 'RBA', label: 'RBA', desc: 'Reserve Bank of Australia (AUD)', flag: '🇦🇺' },
+  { id: 'RBNZ', label: 'RBNZ', desc: 'Reserve Bank of New Zealand (NZD)', flag: '🇳🇿' },
+];
+
 export default function CentralBankView({ aiEnabled = true }) {
   const [selected, setSelected] = useState(null);
   const [context, setContext] = useState('');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+  const banks = isEn ? BANKS_EN : BANKS_FR;
+
   const analyze = async (bank) => {
     if (!aiEnabled) {
-      toast.error("L'analyse IA n'est pas activée sur le serveur.");
+      toast.error(isEn ? 'AI analysis is not enabled on server.' : "L'analyse IA n'est pas activée sur le serveur.");
       return;
     }
     setSelected(bank);
@@ -40,7 +57,7 @@ export default function CentralBankView({ aiEnabled = true }) {
       const { data } = await api.post('/economics/central-bank', { bank: bank.id, context: context.trim() });
       setResult(data.analysis);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Erreur lors de l'analyse de la banque centrale.");
+      toast.error(err.response?.data?.message || (isEn ? 'Error analyzing central bank.' : "Erreur lors de l'analyse de la banque centrale."));
     } finally {
       setLoading(false);
     }
@@ -49,7 +66,7 @@ export default function CentralBankView({ aiEnabled = true }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {BANKS.map((b) => (
+        {banks.map((b) => (
           <button
             key={b.id}
             onClick={() => analyze(b)}
@@ -67,18 +84,22 @@ export default function CentralBankView({ aiEnabled = true }) {
       <Card>
         <CardContent className="p-4 space-y-3">
           <label className="text-sm font-medium flex items-center gap-2">
-            <Landmark className="h-4 w-4 text-primary" /> Contexte (facultatif)
+            <Landmark className="h-4 w-4 text-primary" /> {isEn ? 'Context (optional)' : 'Contexte (facultatif)'}
           </label>
           <textarea
             value={context}
             onChange={(e) => setContext(e.target.value)}
-            placeholder="Collez ici le dernier communiqué / la décision de taux si vous en avez un, pour une analyse plus précise…"
+            placeholder={
+              isEn
+                ? 'Paste the latest rate statement / monetary decision here for a more precise analysis...'
+                : 'Collez ici le dernier communiqué / la décision de taux si vous en avez un, pour une analyse plus précise…'
+            }
             className="w-full border rounded-md px-3 py-2 bg-background min-h-[70px] text-sm"
           />
           {selected && (
             <Button onClick={() => analyze(selected)} disabled={loading} className="gap-2">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {loading ? 'Analyse en cours…' : `Analyser ${selected.label}`}
+              {loading ? (isEn ? 'Analyzing...' : 'Analyse en cours…') : `${isEn ? 'Analyze' : 'Analyser'} ${selected.label}`}
             </Button>
           )}
         </CardContent>
@@ -86,7 +107,7 @@ export default function CentralBankView({ aiEnabled = true }) {
 
       {loading && (
         <div className="flex items-center justify-center py-10 text-muted-foreground gap-2">
-          <Loader2 className="h-5 w-5 animate-spin" /> Analyse de {selected?.label} en cours…
+          <Loader2 className="h-5 w-5 animate-spin" /> {isEn ? `Analyzing ${selected?.label}...` : `Analyse de ${selected?.label} en cours…`}
         </div>
       )}
 
@@ -105,7 +126,9 @@ export default function CentralBankView({ aiEnabled = true }) {
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
             <Landmark className="h-10 w-10 mx-auto mb-3 opacity-50" />
-            Sélectionnez une banque centrale pour obtenir un résumé pédagogique de sa politique monétaire.
+            {isEn
+              ? 'Select a central bank to get an educational summary of its monetary policy.'
+              : 'Sélectionnez une banque centrale pour obtenir un résumé pédagogique de sa politique monétaire.'}
           </CardContent>
         </Card>
       )}

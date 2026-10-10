@@ -2,6 +2,7 @@
 // Récupère /api/economics/calendar et regroupe les événements par jour.
 // Filtres : période (lastweek/thisweek/nextweek), devise, importance, recherche.
 // Cliquer un événement ouvre la modale d'analyse IA.
+// Supporte la traduction intégrale en anglais (FR / EN).
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '../ui/card';
@@ -11,16 +12,26 @@ import {
   CalendarDays, Search, Loader2, RefreshCw, Filter, Sparkles, ChevronRight,
 } from 'lucide-react';
 import api from '../../lib/api';
-import { Pill, IMPACT_STYLE, IMPACT_LABEL } from './shared';
+import { Pill, IMPACT_STYLE, IMPACT_LABEL, IMPACT_LABEL_EN } from './shared';
 import EventAnalysisModal from './EventAnalysisModal';
+import { useLanguageStore } from '../../store/languageStore';
 
-const RANGES = [
+const RANGES_FR = [
   { id: 'thisweek', label: 'Cette semaine' },
   { id: 'nextweek', label: 'Semaine prochaine' },
   { id: 'lastweek', label: 'Semaine dernière' },
   { id: 'all', label: 'Tout' },
 ];
+
+const RANGES_EN = [
+  { id: 'thisweek', label: 'This week' },
+  { id: 'nextweek', label: 'Next week' },
+  { id: 'lastweek', label: 'Last week' },
+  { id: 'all', label: 'All' },
+];
+
 const IMPACTS = ['High', 'Medium', 'Low'];
+
 const EVENT_TYPE_LABELS = {
   employment: 'Emploi',
   inflation: 'Inflation',
@@ -32,6 +43,19 @@ const EVENT_TYPE_LABELS = {
   housing: 'Logement',
   sentiment: 'Confiance / sentiment',
   other: 'Autre',
+};
+
+const EVENT_TYPE_LABELS_EN = {
+  employment: 'Employment',
+  inflation: 'Inflation',
+  interest_rate: 'Interest Rate',
+  growth: 'Growth / GDP',
+  trade: 'Trade Balance',
+  retail: 'Retail Sales',
+  production: 'Industrial Production',
+  housing: 'Housing',
+  sentiment: 'Consumer Sentiment',
+  other: 'Other',
 };
 
 // Parseur de date robuste compatible Safari / iOS WebKit et formats variés
@@ -48,14 +72,14 @@ function parseSafeDate(iso) {
   }
 }
 
-// Clé de jour (ex: "lundi 12 août") pour regrouper.
-const dayKey = (iso) => {
+// Clé de jour pour regrouper (ex: "lundi 12 août" ou "Monday, August 12").
+const dayKey = (iso, isEn = false) => {
   const d = parseSafeDate(iso);
-  if (!d) return 'Date indéterminée';
+  if (!d) return isEn ? 'Undetermined date' : 'Date indéterminée';
   try {
-    return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    return d.toLocaleDateString(isEn ? 'en-US' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   } catch (_) {
-    return 'Date indéterminée';
+    return isEn ? 'Undetermined date' : 'Date indéterminée';
   }
 };
 
@@ -82,6 +106,13 @@ export default function CalendarView({ aiEnabled = true }) {
   const [eventType, setEventType] = useState('');
   const [eventTypes, setEventTypes] = useState([]);
 
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+
+  const ranges = isEn ? RANGES_EN : RANGES_FR;
+  const impactLabels = isEn ? IMPACT_LABEL_EN : IMPACT_LABEL;
+  const eventTypeLabels = isEn ? EVENT_TYPE_LABELS_EN : EVENT_TYPE_LABELS;
+
   const load = async () => {
     setLoading(true);
     setError('');
@@ -93,7 +124,6 @@ export default function CalendarView({ aiEnabled = true }) {
       const { data } = await api.get('/economics/calendar', { params });
       const nextEvents = Array.isArray(data.events) ? data.events : [];
       setEvents(nextEvents);
-      // Les réponses du backend sont { range, count, events }.
       setCurrencies((prev) => prev.length
         ? prev
         : [...new Set(nextEvents.map((e) => e.currency).filter(Boolean))].sort());
@@ -101,35 +131,32 @@ export default function CalendarView({ aiEnabled = true }) {
         ? prev
         : [...new Set(nextEvents.map((e) => e.event_type).filter(Boolean))].sort());
     } catch (err) {
-      setError(err.response?.data?.message || 'Impossible de charger le calendrier économique.');
+      setError(err.response?.data?.message || (isEn ? 'Failed to load economic calendar.' : 'Impossible de charger le calendrier économique.'));
     } finally {
       setLoading(false);
     }
   };
 
-  // Recharge quand la période/devise/importance/type changent (filtres serveur).
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, currency, impact, eventType]);
 
-  // Recherche texte côté client.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return events;
     return events.filter((e) => (e.title || '').toLowerCase().includes(q) || (e.currency || '').toLowerCase().includes(q));
   }, [events, query]);
 
-  // Regroupe par jour en conservant l'ordre chronologique.
   const groups = useMemo(() => {
     const map = new Map();
     for (const ev of filtered) {
-      const k = dayKey(ev.date);
+      const k = dayKey(ev.date, isEn);
       if (!map.has(k)) map.set(k, []);
       map.get(k).push(ev);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [filtered, isEn]);
 
   return (
     <div className="space-y-4">
@@ -138,7 +165,7 @@ export default function CalendarView({ aiEnabled = true }) {
         <CardContent className="p-3 md:p-4 space-y-3">
           {/* Périodes */}
           <div className="flex flex-wrap gap-2">
-            {RANGES.map((r) => (
+            {ranges.map((r) => (
               <button
                 key={r.id}
                 onClick={() => setRange(r.id)}
@@ -150,7 +177,7 @@ export default function CalendarView({ aiEnabled = true }) {
               </button>
             ))}
             <Button variant="ghost" size="sm" onClick={load} className="gap-1.5 ml-auto" disabled={loading}>
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Actualiser
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> {isEn ? 'Refresh' : 'Actualiser'}
             </Button>
           </div>
 
@@ -163,7 +190,7 @@ export default function CalendarView({ aiEnabled = true }) {
                 onChange={(e) => setCurrency(e.target.value)}
                 className="w-full border rounded-md px-2 py-2 bg-background text-sm"
               >
-                <option value="">Toutes devises</option>
+                <option value="">{isEn ? 'All currencies' : 'Toutes devises'}</option>
                 {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               <select
@@ -171,16 +198,16 @@ export default function CalendarView({ aiEnabled = true }) {
                 onChange={(e) => setImpact(e.target.value)}
                 className="w-full border rounded-md px-2 py-2 bg-background text-sm"
               >
-                <option value="">Toute importance</option>
-                {IMPACTS.map((i) => <option key={i} value={i}>{IMPACT_LABEL[i]}</option>)}
+                <option value="">{isEn ? 'All impacts' : 'Toute importance'}</option>
+                {IMPACTS.map((i) => <option key={i} value={i}>{impactLabels[i] || i}</option>)}
               </select>
               <select
                 value={eventType}
                 onChange={(e) => setEventType(e.target.value)}
                 className="w-full border rounded-md px-2 py-2 bg-background text-sm"
               >
-                <option value="">Tous types</option>
-                {eventTypes.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t] || t}</option>)}
+                <option value="">{isEn ? 'All types' : 'Tous types'}</option>
+                {eventTypes.map((t) => <option key={t} value={t}>{eventTypeLabels[t] || t}</option>)}
               </select>
             </div>
             <div className="relative flex-1">
@@ -188,7 +215,7 @@ export default function CalendarView({ aiEnabled = true }) {
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Rechercher (NFP, CPI, USD…)"
+                placeholder={isEn ? 'Search (NFP, CPI, USD...)' : 'Rechercher (NFP, CPI, USD…)'}
                 className="pl-8"
               />
             </div>
@@ -199,14 +226,14 @@ export default function CalendarView({ aiEnabled = true }) {
       {/* Contenu */}
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-          <Loader2 className="h-5 w-5 animate-spin" /> Chargement du calendrier…
+          <Loader2 className="h-5 w-5 animate-spin" /> {isEn ? 'Loading calendar...' : 'Chargement du calendrier…'}
         </div>
       ) : error ? (
         <Card>
           <CardContent className="py-12 text-center space-y-4">
             <p className="text-destructive">{error}</p>
             <Button variant="outline" onClick={load} className="gap-2">
-              <RefreshCw className="h-4 w-4" /> Réessayer
+              <RefreshCw className="h-4 w-4" /> {isEn ? 'Retry' : 'Réessayer'}
             </Button>
           </CardContent>
         </Card>
@@ -214,7 +241,7 @@ export default function CalendarView({ aiEnabled = true }) {
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <CalendarDays className="h-10 w-10 mx-auto mb-3 opacity-50" />
-            Aucun événement pour ces critères.
+            {isEn ? 'No events found for this filter.' : 'Aucun événement pour ces critères.'}
           </CardContent>
         </Card>
       ) : (
@@ -243,7 +270,7 @@ export default function CalendarView({ aiEnabled = true }) {
                       onClick={() => setSelected(ev)}
                       className="w-full text-left group flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-lg border bg-card p-3 hover:border-primary/40 hover:shadow-sm transition-all"
                     >
-                      {/* En-tête métadonnées : heure, drapeau, devise, niveau d'impact */}
+                      {/* En-tête métadonnées */}
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <div className="w-12 sm:w-14 text-sm font-semibold tabular-nums text-foreground">
                           {formatTime(ev.date)}
@@ -252,24 +279,24 @@ export default function CalendarView({ aiEnabled = true }) {
                         <Pill className="bg-primary/10 text-primary border-primary/20 text-xs px-2 py-0.5 flex-shrink-0">{ev.currency}</Pill>
                         <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
                           ev.impact === 'High' ? 'bg-red-500' : ev.impact === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
-                        }`} title={IMPACT_LABEL[ev.impact]} />
+                        }`} title={impactLabels[ev.impact] || ev.impact} />
                       </div>
 
-                      {/* Phrase complète de l'annonce : aucun texte tronqué sur mobile */}
+                      {/* Titre de l'annonce */}
                       <span className="flex-1 text-sm font-medium text-foreground whitespace-normal break-words leading-snug">
                         {ev.title}
                       </span>
 
-                      {/* Données chiffrées : visibles aussi sur mobile */}
+                      {/* Données chiffrées */}
                       <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs text-muted-foreground flex-shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-muted/50">
-                        <span>préc. <strong className="text-foreground">{ev.previous || '—'}</strong></span>
-                        <span>prév. <strong className="text-foreground">{ev.forecast || '—'}</strong></span>
-                        {hasActual && <span>publié <strong className={actualColor || 'text-foreground'}>{ev.actual}</strong></span>}
-                        {ev.revised && <span className="hidden lg:inline">rév. <strong className="text-foreground">{ev.revised}</strong></span>}
+                        <span>{isEn ? 'prev.' : 'préc.'} <strong className="text-foreground">{ev.previous || '—'}</strong></span>
+                        <span>{isEn ? 'fcst.' : 'prév.'} <strong className="text-foreground">{ev.forecast || '—'}</strong></span>
+                        {hasActual && <span>{isEn ? 'act.' : 'publié'} <strong className={actualColor || 'text-foreground'}>{ev.actual}</strong></span>}
+                        {ev.revised && <span className="hidden lg:inline">{isEn ? 'rev.' : 'rév.'} <strong className="text-foreground">{ev.revised}</strong></span>}
                       </div>
 
                       <span className="hidden sm:inline-flex items-center gap-1 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                        <Sparkles className="h-3.5 w-3.5" /> Analyser <ChevronRight className="h-3.5 w-3.5" />
+                        <Sparkles className="h-3.5 w-3.5" /> {isEn ? 'AI Analysis' : 'Analyser'} <ChevronRight className="h-3.5 w-3.5" />
                       </span>
                     </button>
                   );

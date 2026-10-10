@@ -15,6 +15,7 @@ import {
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
   ChartErrorBoundary, usePriceAlerts, ChartAlertsMenu,
+  CreatePriceAlertDialog, ChartContextMenu,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 import { useLanguageStore } from '../../store/languageStore';
@@ -35,6 +36,11 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   const [digits, setDigits] = useState(5);
   const [activeIndicators, setActiveIndicators] = useState({});
   const [fullscreen, setFullscreen] = useFullscreen();
+
+  // État du menu contextuel (clic-droit style TradingView) et modal d'alerte
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, price: null, formattedPrice: '', symbol: '' });
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [alertTargetPrice, setAlertTargetPrice] = useState('');
 
   const { language } = useLanguageStore();
   const isEnglish = language === 'en';
@@ -192,6 +198,21 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
       chart.updateData(updated);
     }
 
+    // Mise à jour en temps réel de l'évolution du prix sur les positions Long / Short
+    try {
+      const longOverlays = chart.getOverlayList?.({ name: 'positionLong' }) || [];
+      const shortOverlays = chart.getOverlayList?.({ name: 'positionShort' }) || [];
+      const allPos = [...longOverlays, ...shortOverlays];
+      if (allPos.length > 0) {
+        allPos.forEach((ov) => {
+          chart.overrideOverlay?.({
+            id: ov.id,
+            extendData: { ...(ov.extendData || {}), currentPrice: mid },
+          });
+        });
+      }
+    } catch (_) {}
+
     // Détection immédiate d'alertes de prix (TradingView / MT5)
     const triggered = alertsManager.checkLivePrice(mid);
     if (triggered && triggered.length > 0) {
@@ -205,6 +226,52 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
       });
     }
   }, [symbol, timeframe, alertsManager, isEnglish, symbolName]);
+
+  // Clic droit sur le graphique : ouverture du menu contextuel TradingView
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault();
+    const el = containerRef.current;
+    const chart = chartRef.current;
+    if (!el || !chart) return;
+
+    const rect = el.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    if (relY < 0 || relY > rect.height) return;
+
+    // Conversion du pixel Y en prix via KLineCharts
+    let clickedPrice = null;
+    try {
+      const coord = chart.convertFromPixel?.({ y: relY }, { paneId: 'candle_pane' });
+      if (coord && typeof coord.value === 'number' && Number.isFinite(coord.value)) {
+        clickedPrice = coord.value;
+      }
+    } catch (_) {}
+
+    if (clickedPrice == null && lastRef.current?.close) {
+      clickedPrice = lastRef.current.close;
+    }
+
+    if (clickedPrice != null) {
+      const formatted = clickedPrice.toFixed(digits);
+      setContextMenu({
+        visible: true,
+        x: Math.min(e.clientX, window.innerWidth - 220),
+        y: Math.min(e.clientY, window.innerHeight - 120),
+        price: clickedPrice,
+        formattedPrice: formatted,
+        symbol: symbolName || symbol,
+      });
+    }
+  }, [digits, symbol, symbolName]);
+
+  // Fermer le menu contextuel lors d'un clic ailleurs
+  useEffect(() => {
+    const handleDocClick = () => {
+      setContextMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+    };
+    window.addEventListener('click', handleDocClick);
+    return () => window.removeEventListener('click', handleDocClick);
+  }, []);
 
   // Abonnement direct 0 ms de latence sans re-render React du parent
   useRealtimeQuote(symbol, processLivePriceTick);
@@ -283,7 +350,12 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             onDeselect={() => overlayManager.setSelectedOverlay(null)}
           />
 
-          <div ref={containerRef} className="w-full h-full" style={{ width: '100%', height: '100%', minHeight: '300px' }} />
+          <div
+            ref={containerRef}
+            className="w-full h-full cursor-crosshair"
+            style={{ width: '100%', height: '100%', minHeight: '300px' }}
+            onContextMenu={handleContextMenu}
+          />
           <ChartWatermark />
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
@@ -295,6 +367,30 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
               <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
+
+          {/* Menu contextuel TradingView au clic droit */}
+          <ChartContextMenu
+            menu={contextMenu}
+            onClose={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
+            onAddAlert={(price) => {
+              setAlertTargetPrice(price != null ? String(price) : '');
+              setAlertModalOpen(true);
+            }}
+            isEnglish={isEnglish}
+          />
+
+          {/* Modal de création d'alerte TradingView / MT5 */}
+          <CreatePriceAlertDialog
+            open={alertModalOpen}
+            onClose={() => setAlertModalOpen(false)}
+            initialPrice={alertTargetPrice}
+            symbol={symbolName || symbol}
+            currentPrice={lastRef.current?.close}
+            isEnglish={isEnglish}
+            onCreateAlert={async (data) => {
+              await alertsManager.createAlert(data);
+            }}
+          />
         </div>
       </div>
     </ChartErrorBoundary>

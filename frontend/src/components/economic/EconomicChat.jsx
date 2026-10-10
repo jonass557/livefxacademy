@@ -1,6 +1,6 @@
 // Chatbot pédagogique macroéconomique (feature 6).
 // POST /api/economics/chat avec la question ; le backend ajoute le contexte du
-// calendrier de la semaine. Réponses en français, orientées apprentissage.
+// calendrier de la semaine. Réponses précises et bilingues (FR/EN).
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '../ui/button';
@@ -8,21 +8,46 @@ import { Input } from '../ui/input';
 import { Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/api';
+import { useLanguageStore } from '../../store/languageStore';
 
-const SUGGESTIONS = [
+const SUGGESTIONS_FR = [
   'Pourquoi le dollar monte quand le NFP est fort ?',
   "Qu'est-ce que le CPI et pourquoi c'est important ?",
   'Différence entre Dovish et Hawkish ?',
   'Comment trader une annonce à forte volatilité ?',
 ];
 
+const SUGGESTIONS_EN = [
+  'Why does the dollar rise when NFP is strong?',
+  'What is CPI and why is it important for forex?',
+  'What is the difference between Dovish and Hawkish?',
+  'How to trade high volatility economic news?',
+];
+
 export default function EconomicChat({ aiEnabled = true }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+
+  const defaultWelcome = isEn
+    ? "Hello 👋 I am your macroeconomic AI assistant. Ask me anything about economic news, indicators (NFP, CPI, PMI...) or central banks."
+    : "Bonjour 👋 Je suis votre assistant macro. Posez-moi une question sur les annonces économiques, les indicateurs (NFP, CPI, PMI…) ou les banques centrales.";
+
   const [messages, setMessages] = useState([
-    { role: 'bot', text: "Bonjour 👋 Je suis votre assistant macro. Posez-moi une question sur les annonces économiques, les indicateurs (NFP, CPI, PMI…) ou les banques centrales." },
+    { role: 'bot', text: defaultWelcome },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
+
+  // Mettre à jour le message d'accueil si la langue change et qu'il n'y a pas eu d'échange
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length <= 1) {
+        return [{ role: 'bot', text: defaultWelcome }];
+      }
+      return prev;
+    });
+  }, [defaultWelcome]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -32,7 +57,7 @@ export default function EconomicChat({ aiEnabled = true }) {
     const q = (question ?? input).trim();
     if (!q || loading) return;
     if (!aiEnabled) {
-      toast.error("Le chatbot IA n'est pas activé sur le serveur.");
+      toast.error(isEn ? 'AI chatbot is not enabled on server.' : "Le chatbot IA n'est pas activé sur le serveur.");
       return;
     }
     setMessages((m) => [...m, { role: 'user', text: q }]);
@@ -40,14 +65,16 @@ export default function EconomicChat({ aiEnabled = true }) {
     setLoading(true);
     try {
       const { data } = await api.post('/economics/chat', { question: q });
-      setMessages((m) => [...m, { role: 'bot', text: data.answer || '(réponse vide)' }]);
+      setMessages((m) => [...m, { role: 'bot', text: data.answer || (isEn ? '(empty answer)' : '(réponse vide)') }]);
     } catch (err) {
-      const text = err.response?.data?.message || 'Erreur du chatbot, réessayez.';
+      const text = err.response?.data?.message || (isEn ? 'Chatbot error, please try again.' : 'Erreur du chatbot, réessayez.');
       setMessages((m) => [...m, { role: 'bot', text, error: true }]);
     } finally {
       setLoading(false);
     }
   };
+
+  const suggestions = isEn ? SUGGESTIONS_EN : SUGGESTIONS_FR;
 
   return (
     <div className="flex flex-col h-[65vh] rounded-xl border bg-card overflow-hidden">
@@ -87,7 +114,7 @@ export default function EconomicChat({ aiEnabled = true }) {
       {/* Suggestions (au démarrage) */}
       {messages.length <= 1 && (
         <div className="px-4 pb-2 flex flex-wrap gap-2">
-          {SUGGESTIONS.map((s) => (
+          {suggestions.map((s) => (
             <button
               key={s}
               onClick={() => send(s)}
@@ -107,7 +134,7 @@ export default function EconomicChat({ aiEnabled = true }) {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Votre question sur l'actualité économique…"
+          placeholder={isEn ? 'Your question about economic news, interest rates...' : "Votre question sur l'actualité économique…"}
           disabled={loading}
         />
         <Button type="submit" size="icon" disabled={loading || !input.trim()}>

@@ -624,7 +624,7 @@ export function ensureCustomOverlaysAndIndicators() {
     name: 'positionLong',
     totalStep: 4,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates, overlay }) => {
+    createPointFigures: ({ coordinates, overlay, yAxis }) => {
       if (coordinates.length < 2) return [];
       const pEntry = coordinates[0];
       const pTp = coordinates[1];
@@ -639,31 +639,82 @@ export function ensureCustomOverlaysAndIndicators() {
       const reward = Math.abs(tpPrice - entryPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
 
-      return [
-        {
-          type: 'polygon',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pTp.y }, { x: left, y: pTp.y }] },
-          styles: { style: 'stroke_fill', color: 'rgba(34, 197, 94, 0.2)', borderColor: '#22c55e', borderSize: 1 },
-        },
-        {
-          type: 'polygon',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pSl.y }, { x: left, y: pSl.y }] },
-          styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.2)', borderColor: '#ef4444', borderSize: 1 },
-        },
-        {
+      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché
+      const currentPrice = overlay.extendData?.currentPrice != null ? Number(overlay.extendData.currentPrice) : null;
+      let pCurrentY = null;
+      if (currentPrice != null && yAxis?.convertToPixel) {
+        pCurrentY = yAxis.convertToPixel(currentPrice);
+      }
+
+      const figures = [];
+
+      // Zone TP globale (vert clair)
+      figures.push({
+        type: 'polygon',
+        attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pTp.y }, { x: left, y: pTp.y }] },
+        styles: { style: 'stroke_fill', color: 'rgba(34, 197, 94, 0.16)', borderColor: '#22c55e', borderSize: 1 },
+      });
+
+      // Zone SL globale (rouge clair)
+      figures.push({
+        type: 'polygon',
+        attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pSl.y }, { x: left, y: pSl.y }] },
+        styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.16)', borderColor: '#ef4444', borderSize: 1 },
+      });
+
+      // Si le trade a évolué : colorer la zone parcourue plus foncée (gain ou perte réalisée)
+      if (pCurrentY != null && !isNaN(pCurrentY)) {
+        if (currentPrice > entryPrice) {
+          // Évolution positive vers le TP : zone verte plus foncée
+          const clampY = Math.max(pTp.y, pCurrentY);
+          figures.push({
+            type: 'polygon',
+            attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
+            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.42)' },
+            ignoreEvent: true,
+          });
+        } else if (currentPrice < entryPrice) {
+          // Évolution négative vers le SL : zone rouge plus foncée
+          const clampY = Math.min(pSl.y, pCurrentY);
+          figures.push({
+            type: 'polygon',
+            attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
+            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.42)' },
+            ignoreEvent: true,
+          });
+        }
+
+        // Ligne de pointillés au niveau du prix actuel marquant l'évolution exacte
+        figures.push({
           type: 'line',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }] },
-          styles: { size: 1.5, color: '#3b82f6' },
-        },
-        {
-          type: 'text',
-          attrs: { x: left + 6, y: pTp.y + 14, text: `R:R ${rr}` },
-          styles: { color: '#22c55e', size: 11, weight: 'bold' },
-        },
+          attrs: { coordinates: [{ x: left, y: pCurrentY }, { x: right, y: pCurrentY }] },
+          styles: { size: 1.5, color: '#38bdf8', style: 'dashed', dashedValue: [5, 4] },
+          ignoreEvent: true,
+        });
+      }
+
+      // Ligne d'entrée bleue solide
+      figures.push({
+        type: 'line',
+        attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }] },
+        styles: { size: 1.5, color: '#3b82f6' },
+      });
+
+      // Badge R:R
+      figures.push({
+        type: 'text',
+        attrs: { x: left + 6, y: pTp.y + 14, text: `R:R ${rr}` },
+        styles: { color: '#22c55e', size: 11, weight: 'bold' },
+      });
+
+      // Points de contrôle
+      figures.push(
         { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
         { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-      ];
+        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
+      );
+
+      return figures;
     },
     createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
       if (!coordinates || coordinates.length < 2) return [];
@@ -719,7 +770,7 @@ export function ensureCustomOverlaysAndIndicators() {
     name: 'positionShort',
     totalStep: 4,
     needDefaultPointFigure: true,
-    createPointFigures: ({ coordinates, overlay }) => {
+    createPointFigures: ({ coordinates, overlay, yAxis }) => {
       if (coordinates.length < 2) return [];
       const pEntry = coordinates[0];
       const pTp = coordinates[1];
@@ -734,31 +785,82 @@ export function ensureCustomOverlaysAndIndicators() {
       const reward = Math.abs(entryPrice - tpPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
 
-      return [
-        {
-          type: 'polygon',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pTp.y }, { x: left, y: pTp.y }] },
-          styles: { style: 'stroke_fill', color: 'rgba(34, 197, 94, 0.2)', borderColor: '#22c55e', borderSize: 1 },
-        },
-        {
-          type: 'polygon',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pSl.y }, { x: left, y: pSl.y }] },
-          styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.2)', borderColor: '#ef4444', borderSize: 1 },
-        },
-        {
+      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché
+      const currentPrice = overlay.extendData?.currentPrice != null ? Number(overlay.extendData.currentPrice) : null;
+      let pCurrentY = null;
+      if (currentPrice != null && yAxis?.convertToPixel) {
+        pCurrentY = yAxis.convertToPixel(currentPrice);
+      }
+
+      const figures = [];
+
+      // Zone TP globale (vert clair)
+      figures.push({
+        type: 'polygon',
+        attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pTp.y }, { x: left, y: pTp.y }] },
+        styles: { style: 'stroke_fill', color: 'rgba(34, 197, 94, 0.16)', borderColor: '#22c55e', borderSize: 1 },
+      });
+
+      // Zone SL globale (rouge clair)
+      figures.push({
+        type: 'polygon',
+        attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: pSl.y }, { x: left, y: pSl.y }] },
+        styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.16)', borderColor: '#ef4444', borderSize: 1 },
+      });
+
+      // Si le trade a évolué : colorer la zone parcourue plus foncée (gain ou perte réalisée)
+      if (pCurrentY != null && !isNaN(pCurrentY)) {
+        if (currentPrice < entryPrice) {
+          // Évolution positive vers le TP : zone verte plus foncée
+          const clampY = Math.min(pTp.y, pCurrentY);
+          figures.push({
+            type: 'polygon',
+            attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
+            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.42)' },
+            ignoreEvent: true,
+          });
+        } else if (currentPrice > entryPrice) {
+          // Évolution négative vers le SL : zone rouge plus foncée
+          const clampY = Math.max(pSl.y, pCurrentY);
+          figures.push({
+            type: 'polygon',
+            attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
+            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.42)' },
+            ignoreEvent: true,
+          });
+        }
+
+        // Ligne de pointillés au niveau du prix actuel
+        figures.push({
           type: 'line',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }] },
-          styles: { size: 1.5, color: '#3b82f6' },
-        },
-        {
-          type: 'text',
-          attrs: { x: left + 6, y: pTp.y - 6, text: `R:R ${rr}` },
-          styles: { color: '#22c55e', size: 11, weight: 'bold' },
-        },
+          attrs: { coordinates: [{ x: left, y: pCurrentY }, { x: right, y: pCurrentY }] },
+          styles: { size: 1.5, color: '#38bdf8', style: 'dashed', dashedValue: [5, 4] },
+          ignoreEvent: true,
+        });
+      }
+
+      // Ligne d'entrée bleue solide
+      figures.push({
+        type: 'line',
+        attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }] },
+        styles: { size: 1.5, color: '#3b82f6' },
+      });
+
+      // Badge R:R
+      figures.push({
+        type: 'text',
+        attrs: { x: left + 6, y: pTp.y - 6, text: `R:R ${rr}` },
+        styles: { color: '#22c55e', size: 11, weight: 'bold' },
+      });
+
+      // Points de contrôle
+      figures.push(
         { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
         { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-      ];
+        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
+      );
+
+      return figures;
     },
     createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
       if (!coordinates || coordinates.length < 2) return [];
@@ -3086,7 +3188,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
   }, [alerts, chartRef]);
 
   // Ajouter une alerte
-  const addAlert = useCallback(({ targetPrice, condition = 'crossing', note = '', notifyEmail = true }) => {
+  const addAlert = useCallback(({ targetPrice, condition = 'crossing', triggerFrequency = 'once', expiresAt = null, note = '', notifyEmail = true }) => {
     const numPrice = parseFloat(targetPrice);
     if (!numPrice || isNaN(numPrice)) return null;
 
@@ -3096,6 +3198,8 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
       symbol,
       targetPrice: numPrice,
       condition,
+      triggerFrequency: triggerFrequency || 'once',
+      expiresAt: expiresAt || null,
       note: note.trim(),
       notifyEmail: Boolean(notifyEmail),
       triggered: false,
@@ -3111,6 +3215,8 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
         symbol,
         target_price: numPrice,
         condition,
+        trigger_frequency: triggerFrequency,
+        expires_at: expiresAt,
         note: note.trim(),
         notify_email: Boolean(notifyEmail),
       }).then((saved) => {
@@ -3270,6 +3376,8 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
   const [open, setOpen] = useState(false);
   const [targetPrice, setTargetPrice] = useState('');
   const [condition, setCondition] = useState('crossing');
+  const [triggerFrequency, setTriggerFrequency] = useState('once'); // 'once' | 'every_time'
+  const [expiresAt, setExpiresAt] = useState('');
   const [note, setNote] = useState('');
   const [notifyEmail, setNotifyEmail] = useState(true);
 
@@ -3284,10 +3392,18 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!targetPrice) return;
-    const added = addAlert({ targetPrice, condition, note, notifyEmail });
+    const added = addAlert({
+      targetPrice,
+      condition,
+      triggerFrequency,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+      note,
+      notifyEmail,
+    });
     if (added) {
       setTargetPrice('');
       setNote('');
+      setExpiresAt('');
     }
   };
 
@@ -3342,7 +3458,7 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
         </div>
 
         {/* Formulaire de création */}
-        <form onSubmit={handleSubmit} className="space-y-2 bg-slate-950/60 p-2.5 rounded border border-slate-800">
+        <form onSubmit={handleSubmit} className="space-y-2.5 bg-slate-950/60 p-2.5 rounded border border-slate-800">
           <div className="font-semibold text-slate-300 text-[11px] uppercase tracking-wider">
             {isEnglish ? 'New Alert' : 'Nouvelle Alerte'}
           </div>
@@ -3372,22 +3488,51 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
                 onChange={(e) => setCondition(e.target.value)}
                 className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
               >
-                <option value="crossing">{isEnglish ? 'Price crosses' : 'Le prix croise'}</option>
-                <option value="above">{isEnglish ? 'Price ≥' : 'Prix supérieur (≥)'}</option>
-                <option value="below">{isEnglish ? 'Price ≤' : 'Prix inférieur (≤)'}</option>
+                <option value="crossing">{isEnglish ? 'Crossing (Croisement)' : 'Croisement'}</option>
+                <option value="above">{isEnglish ? 'Crossing Up (Haussier ≥)' : 'Croisement haussier (≥)'}</option>
+                <option value="below">{isEnglish ? 'Crossing Down (Baissier ≤)' : 'Croisement baissier (≤)'}</option>
               </select>
+            </div>
+          </div>
+
+          {/* Trigger Frequency & Expiration (TradingView style) */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-0.5">
+                {isEnglish ? 'Trigger Frequency' : 'Déclenchement'}
+              </label>
+              <select
+                value={triggerFrequency}
+                onChange={(e) => setTriggerFrequency(e.target.value)}
+                className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
+              >
+                <option value="once">{isEnglish ? 'Only Once' : 'Seulement une fois'}</option>
+                <option value="every_time">{isEnglish ? 'Every Time' : 'À chaque fois'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-0.5">
+                {isEnglish ? 'Expiration (optional)' : 'Expiration (optionnel)'}
+              </label>
+              <input
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                className="w-full px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-amber-400 text-[11px]"
+              />
             </div>
           </div>
 
           <div>
             <label className="block text-[11px] text-slate-400 mb-0.5">
-              {isEnglish ? 'Note / Label (optional)' : 'Note / Libellé (optionnel)'}
+              {isEnglish ? 'Message / Note (optional)' : 'Message / Note (optionnel)'}
             </label>
             <input
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={isEnglish ? 'e.g. Resistance breakout' : 'ex: Cassure résistance, Rebond'}
+              placeholder={isEnglish ? 'e.g. Resistance breakout, Target level' : 'ex: Cassure résistance, Niveau clé'}
               className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
             />
           </div>
@@ -3410,7 +3555,7 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
             className="w-full h-7 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold gap-1 text-xs"
           >
             <Plus className="w-3.5 h-3.5" />
-            {isEnglish ? 'Create Alert' : "Créer l'alerte"}
+            {isEnglish ? 'Add Alert' : "Ajouter l'alerte"}
           </Button>
         </form>
 
@@ -3487,5 +3632,199 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
         </div>
       </div>
     </Dropdown>
+  );
+}
+
+/**
+ * Boîte de dialogue modale de création d'alerte (déclenchée par clic droit TradingView).
+ */
+export function CreatePriceAlertDialog({ open, onClose, targetPrice, symbol = 'Instrument', alertsManager, isEnglish = false }) {
+  const [condition, setCondition] = useState('crossing');
+  const [triggerFrequency, setTriggerFrequency] = useState('once');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [note, setNote] = useState('');
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [priceInput, setPriceInput] = useState('');
+
+  useEffect(() => {
+    if (open && targetPrice != null) {
+      setPriceInput(String(targetPrice));
+    }
+  }, [open, targetPrice]);
+
+  if (!open) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!priceInput) return;
+    alertsManager.addAlert({
+      targetPrice: priceInput,
+      condition,
+      triggerFrequency,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+      note,
+      notifyEmail,
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
+      <div className="relative w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 text-slate-100 shadow-2xl p-5">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-base text-slate-100">
+                {isEnglish ? `Add Alert on ${symbol}` : `Ajouter une alerte sur ${symbol}`}
+              </h3>
+              <p className="text-xs text-slate-400">
+                {isEnglish ? `Target price: ${priceInput}` : `Prix cible : ${priceInput}`}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                {isEnglish ? 'Target Price' : 'Prix Cible'}
+              </label>
+              <input
+                type="number"
+                step="any"
+                required
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 font-mono text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                {isEnglish ? 'Condition' : 'Condition'}
+              </label>
+              <select
+                value={condition}
+                onChange={(e) => setCondition(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
+              >
+                <option value="crossing">{isEnglish ? 'Crossing (Croisement)' : 'Croisement'}</option>
+                <option value="above">{isEnglish ? 'Crossing Up (Haussier ≥)' : 'Croisement haussier (≥)'}</option>
+                <option value="below">{isEnglish ? 'Crossing Down (Baissier ≤)' : 'Croisement baissier (≤)'}</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                {isEnglish ? 'Trigger Frequency' : 'Déclenchement'}
+              </label>
+              <select
+                value={triggerFrequency}
+                onChange={(e) => setTriggerFrequency(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
+              >
+                <option value="once">{isEnglish ? 'Only Once' : 'Seulement une fois'}</option>
+                <option value="every_time">{isEnglish ? 'Every Time' : 'À chaque fois'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                {isEnglish ? 'Expiration (optional)' : 'Expiration (optionnel)'}
+              </label>
+              <input
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-amber-400 text-xs"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-slate-300 mb-1">
+              {isEnglish ? 'Message / Note (optional)' : 'Message / Note (optionnel)'}
+            </label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={isEnglish ? 'e.g. Resistance reached, Buy signal' : 'ex: Résistance atteinte, Signal clé'}
+              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
+            />
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 pt-1">
+            <input
+              type="checkbox"
+              checked={notifyEmail}
+              onChange={(e) => setNotifyEmail(e.target.checked)}
+              className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 w-3.5 h-3.5 accent-amber-500"
+            />
+            <Mail className="w-3.5 h-3.5 text-amber-400" />
+            <span>{isEnglish ? 'Receive notification by email' : 'Recevoir une notification par email'}</span>
+          </label>
+
+          <div className="flex gap-2 pt-3 border-t border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800 text-xs"
+            >
+              {isEnglish ? 'Cancel' : 'Annuler'}
+            </Button>
+            <Button
+              type="submit"
+              className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs"
+            >
+              {isEnglish ? 'Create Alert' : "Créer l'alerte"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Menu contextuel TradingView au clic droit sur le graphique.
+ */
+export function ChartContextMenu({ menu, onClose, onAddAlert, isEnglish = false }) {
+  if (!menu || !menu.visible) return null;
+
+  return (
+    <div
+      className="fixed z-[110] min-w-[210px] rounded-lg border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl p-1 backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100"
+      style={{ top: `${menu.y}px`, left: `${menu.x}px` }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={() => {
+          onAddAlert(menu.price);
+          onClose();
+        }}
+        className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-amber-500/15 hover:text-amber-300 text-left transition-colors cursor-pointer group"
+      >
+        <Clock className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+        <div className="flex flex-col">
+          <span className="font-semibold">
+            {isEnglish ? 'Add alert on' : 'Ajouter une alerte sur'} {menu.symbol || ''}
+          </span>
+          <span className="text-[11px] text-slate-400 font-mono">
+            @ {menu.formattedPrice || menu.price}
+          </span>
+        </div>
+      </button>
+    </div>
   );
 }

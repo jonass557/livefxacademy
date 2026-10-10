@@ -10,6 +10,7 @@ import {
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
   ChartErrorBoundary, Dropdown, usePriceAlerts, ChartAlertsMenu,
+  CreatePriceAlertDialog, ChartContextMenu,
 } from './chartShared';
 import { useLanguageStore } from '../../store/languageStore';
 import {
@@ -89,6 +90,11 @@ export default function ReplayChart({
 
   const [activeIndicators, setActiveIndicators] = useState({});
   const [fullscreen, setFullscreen] = useFullscreen();
+
+  // État du menu contextuel (clic-droit style TradingView) et modal d'alerte Replay
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, price: null, formattedPrice: '', symbol: '' });
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [alertTargetPrice, setAlertTargetPrice] = useState('');
 
   const {
     styles: chartColors,
@@ -353,14 +359,79 @@ export default function ReplayChart({
         toast.warning(
           isEnglish
             ? `🔔 ALERT: ${symbolName || 'Price'} reached ${al.targetPrice}${al.note ? ` (${al.note})` : ''}! Replay paused.`
-            : `🔔 ALERTE : ${symbolName || 'Prix'} a atteint ${al.targetPrice}${al.note ? ` (${al.note})` : ''} ! Replay mis en pause.`,
+            : `🔔 ALERTE : ${symbolName || 'Prix'} a atteint ${al.targetPrice}${al.note ? ` (${alert.note})` : ''} ! Replay mis en pause.`,
           { duration: 8000 }
         );
       });
     }
 
+    // Mise à jour de l'évolution du prix sur les positions Long / Short (TradingView style)
+    try {
+      const chart = chartRef.current;
+      if (chart && candle.close > 0) {
+        const longOverlays = chart.getOverlayList?.({ name: 'positionLong' }) || [];
+        const shortOverlays = chart.getOverlayList?.({ name: 'positionShort' }) || [];
+        const allPos = [...longOverlays, ...shortOverlays];
+        if (allPos.length > 0) {
+          allPos.forEach((ov) => {
+            chart.overrideOverlay?.({
+              id: ov.id,
+              extendData: { ...(ov.extendData || {}), currentPrice: candle.close },
+            });
+          });
+        }
+      }
+    } catch (_) {}
+
     syncTradingOverlays();
   }, [annotate, priceDigits, profitOf, syncTradingOverlays, alertsManager, isEnglish, symbolName]);
+
+  // Clic droit sur le graphique Replay : menu contextuel TradingView
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault();
+    const el = containerRef.current;
+    const chart = chartRef.current;
+    if (!el || !chart) return;
+
+    const rect = el.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    if (relY < 0 || relY > rect.height) return;
+
+    // Conversion du pixel Y en prix via KLineCharts
+    let clickedPrice = null;
+    try {
+      const coord = chart.convertFromPixel?.({ y: relY }, { paneId: 'candle_pane' });
+      if (coord && typeof coord.value === 'number' && Number.isFinite(coord.value)) {
+        clickedPrice = coord.value;
+      }
+    } catch (_) {}
+
+    const currCandle = klineData[indexRef.current] || klineData[klineData.length - 1];
+    if (clickedPrice == null && currCandle?.close) {
+      clickedPrice = currCandle.close;
+    }
+
+    if (clickedPrice != null) {
+      const formatted = clickedPrice.toFixed(priceDigits);
+      setContextMenu({
+        visible: true,
+        x: Math.min(e.clientX, window.innerWidth - 220),
+        y: Math.min(e.clientY, window.innerHeight - 120),
+        price: clickedPrice,
+        formattedPrice: formatted,
+        symbol: symbolName || 'Chart',
+      });
+    }
+  }, [priceDigits, symbolName, klineData]);
+
+  // Fermer le menu contextuel lors d'un clic ailleurs
+  useEffect(() => {
+    const handleDocClick = () => {
+      setContextMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+    };
+    window.addEventListener('click', handleDocClick);
+    return () => window.removeEventListener('click', handleDocClick);
+  }, []);
 
   // Exécution de la coupe à une bougie donnée
   const executeCutAtCandle = useCallback((targetCandle) => {
@@ -1288,7 +1359,12 @@ export default function ReplayChart({
             <CandleCountdownBadge timeframe={timeframe} referenceTime={cur?.time ? cur.time * 1000 : null} />
           </div>
 
-          <div ref={containerRef} className="w-full h-full" style={{ width: '100%', height: '100%', minHeight: '420px' }} />
+          <div
+            ref={containerRef}
+            className="w-full h-full"
+            style={{ width: '100%', height: '100%', minHeight: '420px' }}
+            onContextMenu={handleContextMenu}
+          />
           <ChartWatermark />
           {loading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/70 backdrop-blur-[2px] z-30 gap-2">
@@ -1307,6 +1383,30 @@ export default function ReplayChart({
               )}
             </div>
           )}
+
+          {/* Menu contextuel TradingView au clic droit */}
+          <ChartContextMenu
+            menu={contextMenu}
+            onClose={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
+            onAddAlert={(price) => {
+              setAlertTargetPrice(price != null ? String(price) : '');
+              setAlertModalOpen(true);
+            }}
+            isEnglish={isEnglish}
+          />
+
+          {/* Modal de création d'alerte TradingView / MT5 Replay */}
+          <CreatePriceAlertDialog
+            open={alertModalOpen}
+            onClose={() => setAlertModalOpen(false)}
+            initialPrice={alertTargetPrice}
+            symbol={symbolName || 'Chart'}
+            currentPrice={cur?.close}
+            isEnglish={isEnglish}
+            onCreateAlert={async (data) => {
+              await alertsManager.createAlert(data);
+            }}
+          />
         </div>
       </div>
     </ChartErrorBoundary>
