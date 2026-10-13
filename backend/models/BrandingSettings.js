@@ -6,6 +6,9 @@ const brandingSettingsSchema = new mongoose.Schema({
   chart_logo_url: { type: String, default: '' },
   chart_logo_public_id: { type: String, default: '' },
   gemini_api_key: { type: String, default: '' },
+  sebpay_public_key: { type: String, default: '' },
+  sebpay_secret_key: { type: String, default: '' },
+  referral_percentage: { type: Number, default: 10 }, // 10% par défaut
   updated_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }

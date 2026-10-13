@@ -37,9 +37,6 @@ const Dashboard = () => {
 
   // Client dashboard
   if (user.role === 'client') {
-    if (!section) {
-      return <Navigate to="/" replace />;
-    }
     return <ClientDashboard />;
   }
 

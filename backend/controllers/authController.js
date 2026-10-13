@@ -9,6 +9,7 @@ const registerSchema = z.object({
   full_name: z.string().min(2),
   role: z.enum(['client', 'trainer', 'admin']).optional(),
   phone: z.string().optional(),
+  referral_code: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -27,11 +28,20 @@ const normalizePhone = (s) => (s || '').replace(/\D/g, '');
 
 exports.register = async (req, res) => {
   try {
-    const { email, password, full_name, role, phone } = registerSchema.parse(req.body);
+    const { email, password, full_name, role, phone, referral_code } = registerSchema.parse(req.body);
     
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Vérifier si un parrain correspond au code fourni
+    let referredByUser = null;
+    if (referral_code) {
+      referredByUser = await User.findOne({
+        referral_code: referral_code.trim().toUpperCase(),
+        is_referral_enabled: true
+      });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -42,7 +52,8 @@ exports.register = async (req, res) => {
       password_hash,
       full_name,
       role: role || 'client',
-      phone
+      phone,
+      referred_by: referredByUser ? referredByUser._id : null
     });
 
     // If trainer, create trainer profile
@@ -54,7 +65,8 @@ exports.register = async (req, res) => {
       id: newUser._id,
       email: newUser.email,
       role: newUser.role,
-      full_name: newUser.full_name
+      full_name: newUser.full_name,
+      referred_by: newUser.referred_by
     });
   } catch (err) {
     console.error(err);
@@ -100,7 +112,10 @@ exports.login = async (req, res) => {
         id: user._id,
         email: user.email,
         role: user.role,
-        full_name: user.full_name
+        full_name: user.full_name,
+        is_referral_enabled: !!user.is_referral_enabled,
+        referral_code: user.referral_code || '',
+        custom_referral_percentage: user.custom_referral_percentage
       }
     });
   } catch (err) {
@@ -134,5 +149,26 @@ exports.resetPassword = async (req, res) => {
     }
     console.error(err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password_hash');
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    res.json({
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      full_name: user.full_name,
+      phone: user.phone,
+      is_referral_enabled: !!user.is_referral_enabled,
+      referral_code: user.referral_code || '',
+      custom_referral_percentage: user.custom_referral_percentage,
+      referred_by: user.referred_by
+    });
+  } catch (err) {
+    console.error('getMe error:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
   }
 };

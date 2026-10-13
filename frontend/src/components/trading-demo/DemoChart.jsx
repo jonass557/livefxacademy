@@ -136,10 +136,27 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             chartRef.current.scrollToRealTime?.();
             lastRef.current = kline[kline.length - 1] || null;
           } else {
-            // Background sync silencieux : ne pas perturber le zoom/scroll ni réinitialiser
+            // Background sync silencieux : ne pas écraser la bougie active si le tick live est en avance
             const latest = kline[kline.length - 1];
-            if (latest && (!lastRef.current || latest.timestamp >= lastRef.current.timestamp)) {
-              chartRef.current.updateData(latest);
+            if (latest && chartRef.current) {
+              const currentLast = lastRef.current;
+              if (!currentLast) {
+                lastRef.current = latest;
+                chartRef.current.updateData(latest);
+              } else if (latest.timestamp > currentLast.timestamp) {
+                lastRef.current = latest;
+                chartRef.current.updateData(latest);
+              } else if (latest.timestamp === currentLast.timestamp) {
+                // Même bougie : mettre à jour le high/low/volume du backend sans écraser le close live
+                const merged = {
+                  ...latest,
+                  close: currentLast.close,
+                  high: Math.max(latest.high, currentLast.high),
+                  low: Math.min(latest.low, currentLast.low),
+                };
+                lastRef.current = merged;
+                chartRef.current.updateData(merged);
+              }
             }
           }
         }
@@ -171,12 +188,14 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
 
     const tfMs = getTimeframeMs(timeframe);
     const tickTime = Number(q.ts) || Date.now();
-    const currentBucket = Math.floor(tickTime / tfMs) * tfMs;
+    // Utiliser la base de temps de la dernière bougie pour éviter les décalages d'arrondi
+    const elapsedSinceLast = tickTime - last.timestamp;
 
-    if (currentBucket > last.timestamp) {
-      // Nouvelle bougie en temps réel synchronisée avec l'intervalle de temps (TradingView style)
+    if (elapsedSinceLast >= tfMs) {
+      // Nouvelle bougie en temps réel au franchissement strict de la durée du timeframe
+      const nextBucket = last.timestamp + Math.floor(elapsedSinceLast / tfMs) * tfMs;
       const newCandle = {
-        timestamp: currentBucket,
+        timestamp: nextBucket,
         open: mid,
         high: mid,
         low: mid,
@@ -186,7 +205,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
       lastRef.current = newCandle;
       chart.updateData(newCandle);
     } else {
-      // Mise à jour continue de la bougie en cours
+      // Mise à jour continue et fluide de la bougie en cours
       if (last.close > 0 && Math.abs(mid - last.close) / last.close > 0.15) return;
       const updated = {
         ...last,

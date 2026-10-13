@@ -3,21 +3,25 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import api from '../lib/api';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { PasswordInput } from '../components/ui/password-input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../components/ui/card';
-import { GraduationCap, User, CheckCircle } from 'lucide-react';
+import { GraduationCap, User, CheckCircle, Share2 } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { toast } from 'sonner';
 import { getErrorMessage } from '../lib/errors';
 
 const Register = () => {
   const navigate = useNavigate();
-  const { t } = useLanguageStore();
+  const [searchParams] = useSearchParams();
+  const refCodeFromUrl = searchParams.get('ref') || searchParams.get('referral') || '';
+  const { t, language } = useLanguageStore();
+  const isEn = language === 'en';
   const [selectedRole, setSelectedRole] = useState('client');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [referralCode, setReferralCode] = useState(refCodeFromUrl);
 
   const registerSchema = z.object({
     full_name: z.string().min(2, t('register.nameTooShort')),
@@ -33,7 +37,11 @@ const Register = () => {
   const onSubmit = async (data) => {
     setIsSubmitting(true);
     try {
-      await api.post('/auth/register', { ...data, role: selectedRole });
+      await api.post('/auth/register', {
+        ...data,
+        role: selectedRole,
+        referral_code: referralCode ? referralCode.trim() : undefined,
+      });
       toast.success(t('register.successMessage'));
       navigate('/login');
     } catch (error) {
@@ -117,6 +125,24 @@ const Register = () => {
               <div>
                 <PasswordInput {...register('password')} placeholder={t('register.password')} />
                 {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>}
+              </div>
+              <div>
+                <div className="relative">
+                  <Input
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                    placeholder={isEn ? "Referral code (Optional, ex: LFX-ABCD)" : "Code de parrainage (Optionnel, ex: LFX-ABCD)"}
+                    className="pr-10 uppercase font-mono tracking-wider"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                    <Share2 className="h-4 w-4" />
+                  </div>
+                </div>
+                {refCodeFromUrl && (
+                  <p className="text-xs text-primary font-medium mt-1 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" /> {isEn ? "Referral code detected and applied" : "Code de parrainage détecté et appliqué"}
+                  </p>
+                )}
               </div>
             </div>
 

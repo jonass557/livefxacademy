@@ -173,8 +173,7 @@ export function buildKLineStyles(settings = {}) {
           noChangeColor: s.upColor,
           line: {
             show: true,
-            style: 'dashed',
-            dashedValue: [4, 3],
+            style: 'solid',
             size: 1,
             upColor: s.upColor,
             downColor: s.downColor,

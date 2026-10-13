@@ -19,8 +19,34 @@ const AdminDashboard = () => {
   const { user } = useAuthStore();
   const { t } = useLanguageStore();
   const [banners, setBanners] = useState([]);
-  const [branding, setBranding] = useState({ navbar_logo_url: '', chart_logo_url: '', gemini_api_key: '' });
+  const [branding, setBranding] = useState({
+    navbar_logo_url: '',
+    chart_logo_url: '',
+    gemini_api_key: '',
+    sebpay_public_key: '',
+    sebpay_secret_key: '',
+    referral_percentage: 10
+  });
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('');
+  const [sebpayPublicKeyInput, setSebpayPublicKeyInput] = useState('');
+  const [sebpaySecretKeyInput, setSebpaySecretKeyInput] = useState('');
+  const [referralPercentageInput, setReferralPercentageInput] = useState(10);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Referrals overview state
+  const [referralsOverview, setReferralsOverview] = useState([]);
+  const [loadingReferralsOverview, setLoadingReferralsOverview] = useState(false);
+  const [editingUserReferral, setEditingUserReferral] = useState(null);
+  const [customPercInput, setCustomPercInput] = useState('');
+
+  // Plans management state
+  const [adminPlans, setAdminPlans] = useState([]);
+  const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
+  const [planForm, setPlanForm] = useState({ name: '', description: '', price_xaf: '', duration_days: 30, features: '', is_active: true });
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+
   const [savingGeminiKey, setSavingGeminiKey] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(null);
@@ -124,10 +150,14 @@ const AdminDashboard = () => {
         navbar_logo_url: res.data?.navbar_logo_url || '',
         chart_logo_url: res.data?.chart_logo_url || '',
         gemini_api_key: res.data?.gemini_api_key || '',
+        sebpay_public_key: res.data?.sebpay_public_key || '',
+        sebpay_secret_key: res.data?.sebpay_secret_key || '',
+        referral_percentage: res.data?.referral_percentage ?? 10
       });
-      if (res.data?.gemini_api_key) {
-        setGeminiApiKeyInput(res.data.gemini_api_key);
-      }
+      if (res.data?.gemini_api_key) setGeminiApiKeyInput(res.data.gemini_api_key);
+      if (res.data?.sebpay_public_key) setSebpayPublicKeyInput(res.data.sebpay_public_key);
+      if (res.data?.sebpay_secret_key) setSebpaySecretKeyInput(res.data.sebpay_secret_key);
+      if (res.data?.referral_percentage != null) setReferralPercentageInput(res.data.referral_percentage);
     } catch (err) {
       console.error("Error fetching branding", err);
     }
@@ -144,6 +174,134 @@ const AdminDashboard = () => {
       toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement de la clé API");
     } finally {
       setSavingGeminiKey(false);
+    }
+  };
+
+  const handleSaveSebpayKeys = async () => {
+    setSavingSettings(true);
+    try {
+      await api.patch('/branding/admin/settings', {
+        sebpay_public_key: sebpayPublicKeyInput,
+        sebpay_secret_key: sebpaySecretKeyInput
+      });
+      toast.success('Clés API SEBPAY enregistrées avec succès !');
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement des clés SEBPAY");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSaveReferralPercentage = async () => {
+    setSavingSettings(true);
+    try {
+      await api.patch('/branding/admin/settings', {
+        referral_percentage: Number(referralPercentageInput) || 10
+      });
+      toast.success('Pourcentage global de parrainage mis à jour !');
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de la mise à jour");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Referral Overview
+  const fetchReferralsOverview = async () => {
+    setLoadingReferralsOverview(true);
+    try {
+      const res = await api.get('/referrals/admin/overview');
+      setReferralsOverview(res.data || []);
+    } catch (err) {
+      console.error("Error fetching referrals overview", err);
+    } finally {
+      setLoadingReferralsOverview(false);
+    }
+  };
+
+  const handleToggleUserReferral = async (userId, enable, customPerc) => {
+    try {
+      const res = await api.patch(`/referrals/admin/users/${userId}/toggle`, {
+        is_referral_enabled: enable,
+        custom_referral_percentage: customPerc !== '' && customPerc != null ? Number(customPerc) : null
+      });
+      toast.success(res.data?.message || 'Accès parrainage mis à jour');
+      fetchReferralsOverview();
+      fetchUsers();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors de la modification');
+    }
+  };
+
+  const handleMarkCommissionsPaid = async (referrerId, userName) => {
+    if (!window.confirm(`Confirmez-vous avoir payé toutes les commissions en attente à ${userName} ?`)) return;
+    try {
+      const res = await api.post(`/referrals/admin/users/${referrerId}/pay`);
+      toast.success(res.data?.message || 'Commissions marquées comme payées');
+      fetchReferralsOverview();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors de la validation du paiement');
+    }
+  };
+
+  // Subscription Plans
+  const fetchAdminPlans = async () => {
+    setLoadingAdminPlans(true);
+    try {
+      const res = await api.get('/subscriptions/admin/plans');
+      setAdminPlans(res.data || []);
+    } catch (err) {
+      console.error("Error fetching admin plans", err);
+    } finally {
+      setLoadingAdminPlans(false);
+    }
+  };
+
+  const handleSavePlan = async (e) => {
+    e.preventDefault();
+    setSavingPlan(true);
+    try {
+      const feats = typeof planForm.features === 'string'
+        ? planForm.features.split('\n').map(s => s.trim()).filter(Boolean)
+        : planForm.features;
+
+      const payload = {
+        name: planForm.name,
+        description: planForm.description,
+        price_xaf: Number(planForm.price_xaf),
+        duration_days: Number(planForm.duration_days),
+        features: feats,
+        is_active: planForm.is_active
+      };
+
+      if (editingPlan) {
+        await api.put(`/subscriptions/admin/plans/${editingPlan.id}`, payload);
+        toast.success('Plan mis à jour avec succès');
+      } else {
+        await api.post('/subscriptions/admin/plans', payload);
+        toast.success('Nouveau plan créé avec succès');
+      }
+      setShowPlanModal(false);
+      setEditingPlan(null);
+      setPlanForm({ name: '', description: '', price_xaf: '', duration_days: 30, features: '', is_active: true });
+      fetchAdminPlans();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors de l’enregistrement du plan');
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const handleDeletePlan = async (planId) => {
+    if (!window.confirm('Supprimer définitivement ce plan de souscription ?')) return;
+    try {
+      await api.delete(`/subscriptions/admin/plans/${planId}`);
+      toast.success('Plan supprimé');
+      fetchAdminPlans();
+    } catch (err) {
+      toast.error('Erreur lors de la suppression');
     }
   };
 
@@ -687,7 +845,9 @@ const AdminDashboard = () => {
       fetchServices(),
       fetchEmailRecipients(),
       fetchEmailHistory(),
-      fetchEmailTemplates()
+      fetchEmailTemplates(),
+      fetchReferralsOverview(),
+      fetchAdminPlans()
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -1317,6 +1477,86 @@ const AdminDashboard = () => {
                 Obtenez une clé gratuitement sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">Google AI Studio</a>.
                 {branding.gemini_api_key && <span className="ml-2 text-green-600 font-semibold">● Clé configurée et active</span>}
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Configuration Clés API SEBPAY (Paiement Mobile Money MTN, Moov, Orange, Wave) */}
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-primary" /> Passerelle de Paiement Mobile Money SEBPAY
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Intégrez votre compte marchand <strong>SEBPAY</strong> (documentation officielle : <a href="https://new.sebpay.bj/fr/docs/auth" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">new.sebpay.bj</a>) pour encaisser les souscriptions mensuelles par Mobile Money.
+            </p>
+            <div className="space-y-3 max-w-xl">
+              <div>
+                <label className="text-xs font-semibold block mb-1">Clé Publique SEBPAY (X-Public-Key) :</label>
+                <Input
+                  type="text"
+                  placeholder="pub_live_..."
+                  value={sebpayPublicKeyInput}
+                  onChange={(e) => setSebpayPublicKeyInput(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1">Clé Secrète SEBPAY (X-Secret-Key) :</label>
+                <Input
+                  type="password"
+                  placeholder="sec_live_..."
+                  value={sebpaySecretKeyInput}
+                  onChange={(e) => setSebpaySecretKeyInput(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="pt-1 flex items-center gap-3">
+                <Button
+                  onClick={handleSaveSebpayKeys}
+                  disabled={savingSettings}
+                  className="gap-1.5"
+                >
+                  {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                  Enregistrer les clés SEBPAY
+                </Button>
+                {branding.sebpay_public_key && <span className="text-xs text-green-600 font-semibold">● Clés configurées</span>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Configuration du Pourcentage Global de Parrainage */}
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Share2 className="h-5 w-5 text-primary" /> Pourcentage Global de Parrainage (Affiliation)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Pourcentage par défaut reversé aux membres actifs lorsqu'un de leurs filleuls souscrit à un plan mensuel (par défaut : 10%). Vous pouvez aussi ajuster un pourcentage spécifique par utilisateur dans l'onglet <strong>Parrainage & Commissions</strong>.
+            </p>
+            <div className="flex items-center gap-3 max-w-sm">
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={referralPercentageInput}
+                onChange={(e) => setReferralPercentageInput(e.target.value)}
+                className="w-28 text-center font-bold"
+              />
+              <span className="font-bold text-lg">%</span>
+              <Button
+                onClick={handleSaveReferralPercentage}
+                disabled={savingSettings}
+                className="gap-1.5"
+              >
+                {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Mettre à jour
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -2372,11 +2612,37 @@ const AdminDashboard = () => {
                         <p className="flex items-center gap-2"><Phone className="h-3 w-3" /> {u.phone || 'Non renseigné'}</p>
                         {u.specialty && <p className="flex items-center gap-2"><Lightbulb className="h-3 w-3" /> {u.specialty}</p>}
                         <p className="flex items-center gap-2"><Calendar className="h-3 w-3" /> Inscrit le {new Date(u.created_at).toLocaleDateString('fr-FR')}</p>
+                        <div className="pt-1 flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${u.is_referral_enabled ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                            <Share2 className="h-3 w-3" />
+                            {u.is_referral_enabled ? `Parrainage Actif (${u.custom_referral_percentage || branding.referral_percentage || 10}%) - Code: ${u.referral_code || 'Généré'}` : 'Parrainage Inactif'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <Button size="sm" variant="destructive" onClick={() => handleDeleteUser(u.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={u.is_referral_enabled ? "outline" : "default"}
+                        className="text-xs gap-1.5"
+                        onClick={() => {
+                          const newStatus = !u.is_referral_enabled;
+                          let custom = null;
+                          if (newStatus) {
+                            const input = window.prompt("Pourcentage de parrainage pour cet utilisateur (% ou vide pour défaut) :", u.custom_referral_percentage || branding.referral_percentage || "10");
+                            if (input === null) return;
+                            custom = input.trim() ? Number(input) : null;
+                          }
+                          handleToggleUserReferral(u.id, newStatus, custom);
+                        }}
+                      >
+                        <Share2 className="h-3.5 w-3.5" />
+                        {u.is_referral_enabled ? "Désactiver Parrainage" : "Activer Parrainage"}
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleDeleteUser(u.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -3643,11 +3909,370 @@ const AdminDashboard = () => {
     </div>
   );
 
+  // Section: Parrainage & Commissions (Admin)
+  const renderAdminReferrals = () => {
+    const totalGenerated = referralsOverview.reduce((sum, r) => sum + (r.total_generated_xaf || 0), 0);
+    const totalPending = referralsOverview.reduce((sum, r) => sum + (r.pending_payout_xaf || 0), 0);
+    const totalPaid = referralsOverview.reduce((sum, r) => sum + (r.paid_payout_xaf || 0), 0);
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Share2 className="h-6 w-6 text-primary" /> Parrainage & Commissions d'Affiliation
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Gérez les liens de parrainage activés, suivez les revenus générés par chaque affilié et payez leurs commissions.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchReferralsOverview} disabled={loadingReferralsOverview} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${loadingReferralsOverview ? 'animate-spin' : ''}`} />
+            Actualiser
+          </Button>
+        </div>
+
+        {/* Global Stats */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Affiliés Autorisés</CardTitle>
+              <Users className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{referralsOverview.length}</div>
+              <p className="text-xs text-muted-foreground">Membres avec lien actif</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Revenus Totaux Générés</CardTitle>
+              <TrendingUp className="h-4 w-4 text-emerald-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-emerald-600">{totalGenerated.toLocaleString()} XAF</div>
+              <p className="text-xs text-muted-foreground">Souscriptions apportées par les affiliés</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Commissions à Payer</CardTitle>
+              <Clock className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">{totalPending.toLocaleString()} XAF</div>
+              <p className="text-xs text-muted-foreground">En attente de versement par l'admin</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Commissions Déjà Payées</CardTitle>
+              <CheckCircle className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">{totalPaid.toLocaleString()} XAF</div>
+              <p className="text-xs text-muted-foreground">Versées aux affiliés</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Referrers Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" /> Liste des Parrains et Soldes de Commissions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {referralsOverview.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground space-y-3">
+                <p>Aucun utilisateur n'a actuellement de lien de parrainage activé.</p>
+                <p className="text-xs">
+                  Allez dans l'onglet <strong>Utilisateurs</strong> pour activer le parrainage sur les membres éligibles.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="text-left py-2 px-3">Parrain / Utilisateur</th>
+                      <th className="text-left py-2 px-3">Code</th>
+                      <th className="text-left py-2 px-3">Taux (%)</th>
+                      <th className="text-center py-2 px-3">Inscrits</th>
+                      <th className="text-center py-2 px-3">Souscriptions</th>
+                      <th className="text-right py-2 px-3">CA Généré</th>
+                      <th className="text-right py-2 px-3">À Payer</th>
+                      <th className="text-right py-2 px-3">Déjà Payé</th>
+                      <th className="text-right py-2 px-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {referralsOverview.map((item) => (
+                      <tr key={item.id} className="border-b hover:bg-muted/30">
+                        <td className="py-3 px-3">
+                          <p className="font-semibold">{item.full_name}</p>
+                          <p className="text-xs text-muted-foreground">{item.email} • {item.phone}</p>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-mono font-bold text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                            {item.referral_code}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-semibold">{item.percentage}%</td>
+                        <td className="py-3 px-3 text-center">{item.referees_count || 0}</td>
+                        <td className="py-3 px-3 text-center font-semibold text-emerald-600">{item.subscribed_count || 0}</td>
+                        <td className="py-3 px-3 text-right font-bold">{(item.total_generated_xaf || 0).toLocaleString()} XAF</td>
+                        <td className="py-3 px-3 text-right font-extrabold text-amber-600">
+                          {(item.pending_payout_xaf || 0).toLocaleString()} XAF
+                        </td>
+                        <td className="py-3 px-3 text-right text-muted-foreground">
+                          {(item.paid_payout_xaf || 0).toLocaleString()} XAF
+                        </td>
+                        <td className="py-3 px-3 text-right space-x-1">
+                          {item.pending_payout_xaf > 0 && (
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs"
+                              onClick={() => handleMarkCommissionsPaid(item.id, item.full_name)}
+                            >
+                              <CheckCircle className="h-3.5 w-3.5" /> Payer
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="text-xs"
+                            onClick={() => handleToggleUserReferral(item.id, false, null)}
+                            title="Désactiver le lien"
+                          >
+                            Désactiver
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  // Section: Plans & Souscriptions (Admin)
+  const renderAdminSubscriptions = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <CreditCard className="h-6 w-6 text-primary" /> Plans de Souscription Mensuels
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Créez et configurez les offres de souscription payables via SEBPAY Mobile Money.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => {
+                setEditingPlan(null);
+                setPlanForm({ name: '', description: '', price_xaf: '', duration_days: 30, features: '', is_active: true });
+                setShowPlanModal(true);
+              }}
+              className="gap-2"
+            >
+              + Nouveau Plan
+            </Button>
+            <Button variant="outline" size="sm" onClick={fetchAdminPlans} disabled={loadingAdminPlans}>
+              <RefreshCw className={`h-4 w-4 ${loadingAdminPlans ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Modal Création / Modification de Plan */}
+        {showPlanModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in-0">
+            <div className="bg-card border rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+              <button
+                onClick={() => setShowPlanModal(false)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <h3 className="font-bold text-lg">
+                {editingPlan ? 'Modifier le Plan' : 'Créer un Nouveau Plan de Souscription'}
+              </h3>
+
+              <form onSubmit={handleSavePlan} className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Nom du Plan *</label>
+                  <Input
+                    required
+                    placeholder="Ex: Abonnement VIP Mensuel"
+                    value={planForm.name}
+                    onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold block mb-1">Prix en XAF *</label>
+                    <Input
+                      required
+                      type="number"
+                      placeholder="Ex: 25000"
+                      value={planForm.price_xaf}
+                      onChange={(e) => setPlanForm({ ...planForm, price_xaf: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold block mb-1">Durée (Jours) *</label>
+                    <Input
+                      required
+                      type="number"
+                      placeholder="30"
+                      value={planForm.duration_days}
+                      onChange={(e) => setPlanForm({ ...planForm, duration_days: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Description courte</label>
+                  <Input
+                    placeholder="Ex: Accès complet aux analyses en direct et aux signaux"
+                    value={planForm.description}
+                    onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Fonctionnalités incluses (une par ligne)</label>
+                  <textarea
+                    rows={4}
+                    className="w-full border rounded-lg p-2.5 text-xs bg-background"
+                    placeholder={"Accès aux webinaires hebdomadaires\nSignaux de trading en temps réel\nAssistance personnalisée"}
+                    value={planForm.features}
+                    onChange={(e) => setPlanForm({ ...planForm, features: e.target.value })}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="plan-active"
+                    checked={planForm.is_active}
+                    onChange={(e) => setPlanForm({ ...planForm, is_active: e.target.checked })}
+                  />
+                  <label htmlFor="plan-active" className="text-xs font-medium cursor-pointer">
+                    Plan actif et visible pour les utilisateurs
+                  </label>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <Button type="submit" disabled={savingPlan} className="flex-1">
+                    {savingPlan ? 'Enregistrement...' : (editingPlan ? 'Mettre à jour' : 'Créer le Plan')}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setShowPlanModal(false)}>
+                    Annuler
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Plans Grid */}
+        {loadingAdminPlans ? (
+          <div className="py-12 text-center text-muted-foreground">Chargement des plans...</div>
+        ) : adminPlans.length === 0 ? (
+          <Card className="p-8 text-center border-dashed">
+            <CreditCard className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+            <p className="font-semibold">Aucun plan de souscription configuré</p>
+            <p className="text-xs text-muted-foreground mt-1">Cliquez sur « + Nouveau Plan » pour en créer un.</p>
+          </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {adminPlans.map((p) => {
+              const feats = Array.isArray(p.features) ? p.features : [];
+              return (
+                <Card key={p.id} className="relative flex flex-col justify-between">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${p.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground'}`}>
+                        {p.is_active ? 'Actif' : 'Inactif'}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{p.duration_days} jours</span>
+                    </div>
+                    <CardTitle className="text-lg mt-2">{p.name}</CardTitle>
+                    <p className="text-xs text-muted-foreground">{p.description}</p>
+                    <div className="pt-2">
+                      <span className="text-2xl font-bold">{Number(p.price_xaf).toLocaleString()}</span>
+                      <span className="text-xs font-semibold text-muted-foreground ml-1">XAF</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1.5 border-t pt-3">
+                      {feats.map((f, i) => (
+                        <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                          <span>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 pt-2 border-t">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          setEditingPlan(p);
+                          setPlanForm({
+                            name: p.name,
+                            description: p.description || '',
+                            price_xaf: p.price_xaf,
+                            duration_days: p.duration_days,
+                            features: Array.isArray(p.features) ? p.features.join('\n') : '',
+                            is_active: p.is_active
+                          });
+                          setShowPlanModal(true);
+                        }}
+                      >
+                        <Edit2 className="h-3.5 w-3.5 mr-1" /> Modifier
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDeletePlan(p.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Render active section content
   const renderContent = () => {
     switch (activeSection) {
       case 'dashboard':
         return renderDashboard();
+      case 'referrals':
+        return renderAdminReferrals();
+      case 'subscriptions':
+        return renderAdminSubscriptions();
       case 'users':
         return renderUsers();
       case 'trainers':

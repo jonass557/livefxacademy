@@ -7,7 +7,8 @@ import {
   MessageSquare, Phone, Send, Facebook, ClipboardList,
   Palmtree, Briefcase, CheckCircle, ArrowRight, ArrowLeft, ExternalLink,
   User, MapPin, Clock, Target, BookOpen, Star, AlertCircle,
-  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X, History, LineChart
+  DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X, History, LineChart,
+  Share2, CreditCard, Copy, Check, ShieldCheck
 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
@@ -48,12 +49,6 @@ const ClientDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    if (activeSection === 'dashboard') {
-      navigate('/', { replace: true });
-    }
-  }, [activeSection, navigate]);
-
   const [loading, setLoading] = useState(true);
   
   // Consultation form state
@@ -88,6 +83,20 @@ const ClientDashboard = () => {
   const [vacationPrograms, setVacationPrograms] = useState([]);
   const [services, setServices] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
+
+  // Referral state
+  const [referralStats, setReferralStats] = useState(null);
+  const [loadingReferral, setLoadingReferral] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // Subscriptions & Payment state
+  const [plans, setPlans] = useState([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [payForm, setPayForm] = useState({ phone: '', operator: 'mtn', country: 'BJ', otp_code: '' });
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [paymentResult, setPaymentResult] = useState(null);
 
   const textsToTranslate = useMemo(() => {
     const list = [];
@@ -176,6 +185,69 @@ const ClientDashboard = () => {
       toast.error('Erreur lors de l\'envoi de la fiche');
     } finally {
       setSubmittingConsultation(false);
+    }
+  };
+
+  const fetchReferralStats = async () => {
+    setLoadingReferral(true);
+    try {
+      const res = await api.get('/referrals/my-stats');
+      setReferralStats(res.data);
+    } catch (err) {
+      console.error('Error fetching referral stats:', err);
+    } finally {
+      setLoadingReferral(false);
+    }
+  };
+
+  const fetchPlans = async () => {
+    setLoadingPlans(true);
+    try {
+      const res = await api.get('/subscriptions/plans');
+      setPlans(res.data || []);
+    } catch (err) {
+      console.error('Error fetching plans:', err);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'referral') {
+      fetchReferralStats();
+    }
+    if (activeSection === 'subscription') {
+      fetchPlans();
+    }
+  }, [activeSection]);
+
+  const handleCopyReferralLink = (code) => {
+    const origin = window.location.origin;
+    const link = `${origin}/register?ref=${code}`;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    toast.success(isEn ? 'Referral link copied to clipboard!' : 'Lien de parrainage copié dans le presse-papiers !');
+    setTimeout(() => setCopiedLink(false), 3000);
+  };
+
+  const handleInitiatePayment = async (e) => {
+    e.preventDefault();
+    if (!selectedPlan) return;
+    setSubmittingPayment(true);
+    try {
+      const res = await api.post('/subscriptions/pay/mobile', {
+        plan_id: selectedPlan.id,
+        phone: payForm.phone,
+        operator: payForm.operator,
+        country: payForm.country,
+        otp_code: payForm.otp_code || undefined,
+      });
+      setPaymentResult(res.data);
+      toast.success(res.data?.message || (isEn ? 'Payment initiated successfully' : 'Paiement initié avec succès'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || (isEn ? 'Error initiating payment' : 'Erreur lors du paiement'));
+    } finally {
+      setSubmittingPayment(false);
     }
   };
 
@@ -1055,6 +1127,404 @@ const ClientDashboard = () => {
     </div>
   );
 
+  // Section: Referral (Parrainage)
+  const renderReferral = () => {
+    const isEnabled = referralStats?.is_referral_enabled;
+    const refCode = referralStats?.referral_code;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://livefx-trading.com';
+    const refLink = refCode ? `${origin}/register?ref=${refCode}` : '';
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Share2 className="h-6 w-6 text-primary" /> {isEn ? 'Referral Program' : 'Programme de Parrainage'}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {isEn
+                ? 'Invite traders to LiveFX and earn commissions on subscriptions.'
+                : 'Invitez des traders sur LiveFX et recevez vos commissions sur leurs souscriptions.'}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchReferralStats} disabled={loadingReferral} className="gap-2">
+            <Clock className={`h-4 w-4 ${loadingReferral ? 'animate-spin' : ''}`} />
+            {isEn ? 'Refresh Stats' : 'Actualiser les stats'}
+          </Button>
+        </div>
+
+        {!isEnabled ? (
+          <Card className="border-dashed border-2 p-8 text-center max-w-2xl mx-auto space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Share2 className="h-8 w-8" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold">{isEn ? 'Referral Access Restricted' : 'Accès au Parrainage Restreint'}</h3>
+              <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                {isEn
+                  ? "Your account does not currently have the referral link enabled. The administrator selectively enables referral links for qualifying members. Contact admin or your trainer to activate your link."
+                  : "Votre compte n'a pas encore le lien de parrainage activé. L'administrateur active sélectivement les liens pour les membres éligibles. Contactez l'administrateur ou votre formateur pour demander l'activation."}
+              </p>
+            </div>
+            <div className="pt-2">
+              <Button onClick={() => setActiveSection('contact')} variant="outline" className="gap-2">
+                <MessageSquare className="h-4 w-4" /> {isEn ? 'Contact Support / Admin' : "Contacter l'administrateur"}
+              </Button>
+            </div>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {/* Referral Link Banner */}
+            <Card className="overflow-hidden border-primary/30 bg-gradient-to-br from-primary/5 via-card to-purple-500/5">
+              <CardContent className="p-6 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary text-primary-foreground mb-2 shadow-sm">
+                      <Award className="h-3.5 w-3.5" />
+                      {referralStats?.percentage || 10}% {isEn ? 'Commission per active subscription' : 'de commission par abonnement activé'}
+                    </div>
+                    <h3 className="text-xl font-bold">{isEn ? 'Your Unique Referral Link' : 'Votre Lien de Parrainage Unique'}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {isEn ? 'Share this link to automatically link new traders to your account' : 'Partagez ce lien pour associer automatiquement les nouveaux inscrits à votre profil'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-muted-foreground block">{isEn ? 'Referral Code' : 'Code Parrain'}</span>
+                    <span className="text-2xl font-mono font-extrabold text-primary tracking-widest">{refCode}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={refLink}
+                    className="font-mono text-xs sm:text-sm bg-background border-primary/20 select-all"
+                  />
+                  <Button
+                    onClick={() => handleCopyReferralLink(refCode)}
+                    className="shrink-0 gap-2 shadow-sm"
+                  >
+                    {copiedLink ? <Check className="h-4 w-4 text-green-300" /> : <Copy className="h-4 w-4" />}
+                    <span>{copiedLink ? (isEn ? 'Copied!' : 'Copié !') : (isEn ? 'Copy' : 'Copier')}</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Statistics Cards */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{isEn ? 'Total Referrals' : 'Inscrits Parrainés'}</CardTitle>
+                  <Users className="h-4 w-4 text-blue-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{referralStats?.total_referees || 0}</div>
+                  <p className="text-xs text-muted-foreground">{isEn ? 'Registered with your link' : 'Inscrits avec votre lien'}</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{isEn ? 'Active Subscriptions' : 'Plans Activés'}</CardTitle>
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-emerald-600">{referralStats?.active_subscribed_referees || 0}</div>
+                  <p className="text-xs text-muted-foreground">{isEn ? 'Referees who paid a plan' : 'Filleuls ayant payé un plan'}</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{isEn ? 'Pending Payout' : 'En attente de paiement'}</CardTitle>
+                  <Clock className="h-4 w-4 text-amber-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-amber-600">{(referralStats?.pending_earnings_xaf || 0).toLocaleString()} XAF</div>
+                  <p className="text-xs text-muted-foreground">{isEn ? 'To be paid by administrator' : "À verser par l'administrateur"}</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{isEn ? 'Total Paid Out' : 'Total Déjà Versé'}</CardTitle>
+                  <DollarSign className="h-4 w-4 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-primary">{(referralStats?.paid_earnings_xaf || 0).toLocaleString()} XAF</div>
+                  <p className="text-xs text-muted-foreground">{isEn ? 'Commissions already received' : 'Commissions déjà reçues'}</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* List of Referees */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" /> {isEn ? 'Your Referees List' : 'Liste de vos filleuls'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(!referralStats?.referees || referralStats.referees.length === 0) ? (
+                  <p className="text-center py-8 text-sm text-muted-foreground">
+                    {isEn ? 'No registered referee yet. Share your link to get started!' : "Aucun filleul inscrit pour le moment. Partagez votre lien pour commencer !"}
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-muted-foreground text-xs">
+                          <th className="text-left py-2 px-3">{isEn ? 'Name' : 'Nom'}</th>
+                          <th className="text-left py-2 px-3">{isEn ? 'Email' : 'Email'}</th>
+                          <th className="text-left py-2 px-3">{isEn ? 'Registration Date' : "Date d'inscription"}</th>
+                          <th className="text-left py-2 px-3">{isEn ? 'Active Plan' : 'Plan Actif'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {referralStats.referees.map((ref) => (
+                          <tr key={ref.id} className="border-b hover:bg-muted/30">
+                            <td className="py-2.5 px-3 font-medium">{ref.full_name}</td>
+                            <td className="py-2.5 px-3 text-muted-foreground">{ref.email}</td>
+                            <td className="py-2.5 px-3 text-muted-foreground">
+                              {new Date(ref.created_at).toLocaleDateString(isEn ? 'en-US' : 'fr-FR')}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {ref.has_active_plan ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                  <CheckCircle className="h-3 w-3" /> {isEn ? 'Active Plan' : 'Plan Actif'}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                                  {isEn ? 'No Plan' : 'Sans plan'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Section: Subscription Plans & SEBPAY Mobile Money Payment
+  const renderSubscription = () => {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <CreditCard className="h-6 w-6 text-primary" /> {isEn ? 'Subscription Plans' : 'Plans de Souscription'}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isEn
+              ? 'Subscribe easily with Mobile Money (MTN, Moov, Orange, Wave) via SEBPAY.'
+              : 'Souscrivez en toute sécurité par Mobile Money (MTN, Moov, Orange, Wave) via SEBPAY.'}
+          </p>
+        </div>
+
+        {loadingPlans ? (
+          <div className="py-12 text-center text-muted-foreground">
+            {isEn ? 'Loading subscription plans...' : 'Chargement des plans...'}
+          </div>
+        ) : plans.length === 0 ? (
+          <Card className="p-8 text-center border-dashed">
+            <CreditCard className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <h3 className="font-bold text-lg">{isEn ? 'No active plans right now' : 'Aucun plan disponible actuellement'}</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              {isEn ? 'The administrator will add monthly subscription plans shortly.' : "L'administrateur configurera les plans de souscription sous peu."}
+            </p>
+          </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {plans.map((p) => {
+              const features = Array.isArray(p.features) ? p.features : [];
+              return (
+                <Card key={p.id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider">
+                        {p.duration_days} {isEn ? 'Days' : 'Jours'}
+                      </span>
+                    </div>
+                    <CardTitle className="text-xl mt-2">{p.name}</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">{p.description}</p>
+                    <div className="pt-3">
+                      <span className="text-3xl font-extrabold text-foreground">{Number(p.price_xaf).toLocaleString()}</span>
+                      <span className="text-sm font-semibold text-muted-foreground ml-1">XAF</span>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
+                    <div className="space-y-2 border-t pt-4">
+                      {features.length > 0 ? (
+                        features.map((feat, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                            <span>{feat}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                          <span>{isEn ? 'Full access to academy services' : "Accès complet aux services de l'académie"}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <Button
+                      onClick={() => {
+                        setSelectedPlan(p);
+                        setPaymentResult(null);
+                        setPaymentModalOpen(true);
+                      }}
+                      className="w-full gap-2 mt-4"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      {isEn ? 'Pay with Mobile Money' : 'Payer par Mobile Money'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Modal de paiement Mobile Money SEBPAY */}
+        {paymentModalOpen && selectedPlan && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in-0">
+            <div className="bg-card border rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+              <button
+                onClick={() => setPaymentModalOpen(false)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-primary/10 text-primary">
+                  <CreditCard className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">{isEn ? 'Mobile Money Payment' : 'Paiement Mobile Money'}</h3>
+                  <p className="text-xs text-muted-foreground">SEBPAY Secure Gateway</p>
+                </div>
+              </div>
+
+              <div className="bg-muted/50 p-3 rounded-xl flex items-center justify-between text-sm">
+                <div>
+                  <p className="font-semibold">{selectedPlan.name}</p>
+                  <p className="text-xs text-muted-foreground">{selectedPlan.duration_days} {isEn ? 'days' : 'jours'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-primary">{Number(selectedPlan.price_xaf).toLocaleString()} XAF</p>
+                </div>
+              </div>
+
+              {paymentResult ? (
+                <div className="space-y-4 pt-2 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <CheckCircle className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base">{isEn ? 'Payment in Progress' : 'Paiement en attente de validation'}</h4>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {paymentResult.message || (isEn ? 'Please confirm the prompt on your mobile phone' : 'Veuillez confirmer l’invite USSD envoyée sur votre téléphone.')}
+                    </p>
+                  </div>
+                  {paymentResult.payment_url && (
+                    <a
+                      href={paymentResult.payment_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
+                    >
+                      <span>{isEn ? 'Complete on SEBPAY' : 'Finaliser sur SEBPAY'}</span>
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
+                  <Button variant="outline" className="w-full" onClick={() => setPaymentModalOpen(false)}>
+                    {isEn ? 'Close' : 'Fermer'}
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleInitiatePayment} className="space-y-4 pt-1">
+                  <div>
+                    <label className="text-xs font-semibold block mb-1">{isEn ? 'Country' : 'Pays'}</label>
+                    <select
+                      value={payForm.country}
+                      onChange={(e) => setPayForm({ ...payForm, country: e.target.value })}
+                      className="w-full border rounded-lg p-2.5 bg-background text-sm"
+                    >
+                      <option value="BJ">Bénin (BJ)</option>
+                      <option value="CI">Côte d'Ivoire (CI)</option>
+                      <option value="TG">Togo (TG)</option>
+                      <option value="SN">Sénégal (SN)</option>
+                      <option value="CM">Cameroun (CM)</option>
+                      <option value="BF">Burkina Faso (BF)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold block mb-1">{isEn ? 'Mobile Operator' : 'Opérateur Mobile'}</label>
+                    <select
+                      value={payForm.operator}
+                      onChange={(e) => setPayForm({ ...payForm, operator: e.target.value })}
+                      className="w-full border rounded-lg p-2.5 bg-background text-sm"
+                    >
+                      <option value="mtn">MTN Mobile Money</option>
+                      <option value="moov">Moov Money</option>
+                      <option value="orange">Orange Money</option>
+                      <option value="wave">Wave</option>
+                      <option value="celtiis">Celtiis</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold block mb-1">{isEn ? 'Phone Number' : 'Numéro de Téléphone'}</label>
+                    <Input
+                      required
+                      placeholder="Ex: 97000000"
+                      value={payForm.phone}
+                      onChange={(e) => setPayForm({ ...payForm, phone: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold block mb-1">
+                      {isEn ? 'OTP Code (if required by operator)' : 'Code OTP (si requis par l’opérateur)'}
+                    </label>
+                    <Input
+                      placeholder="Ex: 1234 (Orange Money OTP)"
+                      value={payForm.otp_code}
+                      onChange={(e) => setPayForm({ ...payForm, otp_code: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="pt-2 flex gap-2">
+                    <Button type="submit" disabled={submittingPayment} className="flex-1 gap-2">
+                      <CreditCard className="h-4 w-4" />
+                      {submittingPayment ? (isEn ? 'Processing...' : 'Traitement...') : (isEn ? 'Confirm & Pay' : 'Confirmer et Payer')}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setPaymentModalOpen(false)}>
+                      {isEn ? 'Cancel' : 'Annuler'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Render active section
   const renderContent = () => {
     switch (activeSection) {
@@ -1071,6 +1541,8 @@ const ClientDashboard = () => {
       case 'trading-demo': return <TradingDemo />;
       case 'backtesting': return <Backtesting />;
       case 'backtest-history': return <BacktestHistory />;
+      case 'referral': return renderReferral();
+      case 'subscription': return renderSubscription();
       default: return renderDashboard();
     }
   };
@@ -1081,6 +1553,8 @@ const ClientDashboard = () => {
     { id: 'backtesting', icon: BarChart3, label: t('features.backtesting', 'Backtesting') },
     { id: 'backtest-history', icon: History, label: t('features.backtestHistory', 'Historique de backtest') },
     { id: 'economics', icon: Calendar, label: t('features.economics', 'Annonces éco') },
+    { id: 'referral', icon: Share2, label: isEn ? 'Referral Program' : 'Parrainage & Gains' },
+    { id: 'subscription', icon: CreditCard, label: isEn ? 'Subscriptions' : 'Abonnements & Plans' },
     { id: 'services', icon: Briefcase, label: t('sidebar.services') },
     { id: 'trading', icon: TrendingUp, label: t('sidebar.tradingInfo') },
     { id: 'academy', icon: GraduationCap, label: t('sidebar.academy') },

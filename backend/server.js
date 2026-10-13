@@ -34,6 +34,8 @@ const backtestRoutes = require('./routes/backtestRoutes');
 const economicRoutes = require('./routes/economicRoutes');
 const demoRoutes = require('./routes/demoRoutes');
 const translateRoutes = require('./routes/translateRoutes');
+const referralRoutes = require('./routes/referralRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const economicScheduler = require('./utils/economicCalendar/scheduler');
 // Trading Demo : hub de cotations temps réel, serveur WS, moteur de surveillance
 const liveFeed = require('./utils/marketData/liveFeed');
@@ -90,6 +92,8 @@ app.use('/api/backtests', backtestRoutes);
 app.use('/api/economics', economicRoutes);
 app.use('/api/demo', demoRoutes);
 app.use('/api/translate', translateRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 app.get('/', (req, res) => {
   res.send('LivefxTrading API Running');

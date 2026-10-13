@@ -21,7 +21,9 @@ import {
   Briefcase,
   Menu,
   X,
-  Newspaper
+  Newspaper,
+  Share2,
+  CreditCard
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { useLanguageStore } from '../store/languageStore';
@@ -34,6 +36,8 @@ const AdminSidebar = ({ activeSection, setActiveSection, collapsed, setCollapsed
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: t('sidebar.dashboard') },
+    { id: 'referrals', icon: Share2, label: 'Parrainage & Commissions' },
+    { id: 'subscriptions', icon: CreditCard, label: 'Plans & Souscriptions' },
     { id: 'users', icon: UserCheck, label: 'Utilisateurs' },
     { id: 'trainers', icon: GraduationCap, label: 'Formateurs' },
     { id: 'consultation-sheets', icon: FileCheck, label: 'Fiches Formateurs' },

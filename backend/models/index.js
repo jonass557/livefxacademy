@@ -29,6 +29,8 @@ const Trade = require('./Trade');
 const Watchlist = require('./Watchlist');
 const PriceAlert = require('./PriceAlert');
 const Translation = require('./Translation');
+const SubscriptionPlan = require('./SubscriptionPlan');
+const PaymentTransaction = require('./PaymentTransaction');
 
 module.exports = {
   User,
@@ -60,5 +62,7 @@ module.exports = {
   Trade,
   Watchlist,
   PriceAlert,
-  Translation
+  Translation,
+  SubscriptionPlan,
+  PaymentTransaction
 };

@@ -25,14 +25,19 @@ exports.uploadMiddleware = multer({ storage, fileFilter, limits: { fileSize: 5 *
 exports.getBranding = async (req, res) => {
   try {
     const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
-    const data = branding || { navbar_logo_url: '', chart_logo_url: '' };
-    // Renvoyer indicateur si la clé Gemini est configurée sans exposer la clé brute si non-admin
+    const data = branding || { navbar_logo_url: '', chart_logo_url: '', referral_percentage: 10 };
+    // Renvoyer indicateur si les clés API sont configurées sans exposer la clé secrète brute aux non-admins
     const hasKey = !!(data.gemini_api_key || process.env.GEMINI_API_KEY);
+    const hasSebpay = !!(data.sebpay_public_key && data.sebpay_secret_key);
     const isAdmin = req.user && req.user.role === 'admin';
     res.json({
       ...data,
       has_gemini_key: hasKey,
       gemini_api_key: isAdmin ? (data.gemini_api_key || '') : (hasKey ? '••••••••' : ''),
+      has_sebpay_keys: hasSebpay,
+      sebpay_public_key: isAdmin ? (data.sebpay_public_key || '') : (data.sebpay_public_key || ''),
+      sebpay_secret_key: isAdmin ? (data.sebpay_secret_key || '') : (hasSebpay ? '••••••••' : ''),
+      referral_percentage: Number(data.referral_percentage || 10)
     });
   } catch (err) {
     console.error(err);
@@ -42,10 +47,22 @@ exports.getBranding = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   try {
-    const { gemini_api_key } = req.body || {};
+    const { gemini_api_key, sebpay_public_key, sebpay_secret_key, referral_percentage } = req.body || {};
     const updateData = { updated_by: req.user.id };
     if (gemini_api_key !== undefined) {
       updateData.gemini_api_key = String(gemini_api_key || '').trim();
+    }
+    if (sebpay_public_key !== undefined) {
+      updateData.sebpay_public_key = String(sebpay_public_key || '').trim();
+    }
+    if (sebpay_secret_key !== undefined) {
+      updateData.sebpay_secret_key = String(sebpay_secret_key || '').trim();
+    }
+    if (referral_percentage !== undefined) {
+      const parsedPct = Number(referral_percentage);
+      if (!isNaN(parsedPct) && parsedPct >= 0 && parsedPct <= 100) {
+        updateData.referral_percentage = parsedPct;
+      }
     }
     const branding = await BrandingSettings.findOneAndUpdate(
       {},
@@ -55,6 +72,7 @@ exports.updateSettings = async (req, res) => {
     res.json({
       ...branding.toObject(),
       has_gemini_key: !!(branding.gemini_api_key || process.env.GEMINI_API_KEY),
+      has_sebpay_keys: !!(branding.sebpay_public_key && branding.sebpay_secret_key),
     });
   } catch (err) {
     console.error('updateSettings error:', err);
