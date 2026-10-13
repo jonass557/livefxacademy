@@ -1057,7 +1057,7 @@ export default function ReplayChart({
                         }
                       }}
                     >
-                      {t.label}
+                      {t.key === 'market' ? (isEnglish ? 'Market' : 'Au Marché') : t.label}
                     </Button>
                   ))}
                 </div>
@@ -1067,14 +1067,14 @@ export default function ReplayChart({
               {orderType !== 'market' && (
                 <div>
                   <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-                    Prix de déclenchement
+                    {isEnglish ? 'Trigger Price' : 'Prix de déclenchement'}
                   </label>
                   <input
                     type="number"
                     step="any"
                     value={orderPrice}
                     onChange={(e) => setOrderPrice(e.target.value)}
-                    placeholder={cur ? cur.close.toFixed(digits) : 'Prix'}
+                    placeholder={cur ? cur.close.toFixed(digits) : (isEnglish ? 'Price' : 'Prix')}
                     className="w-full h-8 rounded-md border bg-background px-2.5 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
@@ -1084,7 +1084,7 @@ export default function ReplayChart({
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-                    Volume (Lot)
+                    {isEnglish ? 'Volume (Lot)' : 'Volume (Lot)'}
                   </label>
                   <input
                     type="number"
@@ -1106,14 +1106,14 @@ export default function ReplayChart({
                       step="any"
                       value={orderSl}
                       onChange={(e) => setOrderSl(e.target.value)}
-                      placeholder="Prix SL"
+                      placeholder={isEnglish ? 'SL Price' : 'Prix SL'}
                       className="w-full h-8 rounded-md border border-red-500/40 bg-background px-2 pr-5 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-red-500"
                     />
                     {orderSl && (
                       <button
                         onClick={() => setOrderSl('')}
                         className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-[11px]"
-                        title="Effacer SL"
+                        title={isEnglish ? 'Clear SL' : 'Effacer SL'}
                       >
                         ✕
                       </button>
@@ -1131,14 +1131,14 @@ export default function ReplayChart({
                       step="any"
                       value={orderTp}
                       onChange={(e) => setOrderTp(e.target.value)}
-                      placeholder="Prix TP"
+                      placeholder={isEnglish ? 'TP Price' : 'Prix TP'}
                       className="w-full h-8 rounded-md border border-green-500/40 bg-background px-2 pr-5 text-xs font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-green-500"
                     />
                     {orderTp && (
                       <button
                         onClick={() => setOrderTp('')}
                         className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-[11px]"
-                        title="Effacer TP"
+                        title={isEnglish ? 'Clear TP' : 'Effacer TP'}
                       >
                         ✕
                       </button>
@@ -1187,7 +1187,7 @@ export default function ReplayChart({
                       setOrderDropdownOpen(false);
                     }}
                   >
-                    Placer {orderType.replace('_', ' ').toUpperCase()}
+                    {isEnglish ? `Place ${orderType.replace('_', ' ').toUpperCase()}` : `Placer ${orderType.replace('_', ' ').toUpperCase()}`}
                   </Button>
                 )}
               </div>
@@ -1207,13 +1207,13 @@ export default function ReplayChart({
                   onClick={() => setPendingDropdownOpen((o) => !o)}
                   className="h-8 gap-1 border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-xs font-semibold px-2"
                 >
-                  <span>Attente ({pendingOrders.length})</span>
+                  <span>{isEnglish ? `Pending (${pendingOrders.length})` : `Attente (${pendingOrders.length})`}</span>
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               }
             >
               <div className="p-2 space-y-1.5 max-h-60 overflow-y-auto">
-                <div className="text-[11px] font-bold text-muted-foreground uppercase px-1">Ordres en attente</div>
+                <div className="text-[11px] font-bold text-muted-foreground uppercase px-1">{isEnglish ? 'Pending Orders' : 'Ordres en attente'}</div>
                 {pendingOrders.map((ord) => (
                   <div key={ord.id} className="flex items-center justify-between gap-2 rounded border bg-muted/40 p-1.5 text-xs font-mono">
                     <div>
@@ -1228,7 +1228,7 @@ export default function ReplayChart({
                     <button
                       onClick={() => handleCancelPendingOrder(ord.id)}
                       className="text-muted-foreground hover:text-destructive p-1"
-                      title="Annuler"
+                      title={isEnglish ? 'Cancel' : 'Annuler'}
                     >
                       ✕
                     </button>

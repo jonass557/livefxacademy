@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import api, { API_URL } from '../../lib/api';
 import { demoApi } from '../../lib/demoApi';
+import { useLanguageStore } from '../../store/languageStore';
 import { registerOverlay, registerIndicator, IndicatorSeries } from 'klinecharts';
 
 const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
@@ -1608,6 +1609,8 @@ export function useChartStyles(chartRef) {
 
 // Modal de personnalisation graphique façon MT5 / TradingView
 export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, onApplyPreset, onReset }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!open) return null;
 
   return (
@@ -1617,8 +1620,8 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
           <div className="flex items-center gap-2">
             <Palette className="h-5 w-5 text-primary" />
             <div>
-              <h3 className="font-semibold text-base">Personnaliser le Graphique</h3>
-              <p className="text-xs text-muted-foreground">Styles MT4 / MT5 / TradingView</p>
+              <h3 className="font-semibold text-base">{isEn ? 'Customize Chart' : 'Personnaliser le Graphique'}</h3>
+              <p className="text-xs text-muted-foreground">{isEn ? 'MT4 / MT5 / TradingView styles' : 'Styles MT4 / MT5 / TradingView'}</p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-md p-1 hover:bg-muted text-muted-foreground hover:text-foreground">
@@ -1628,7 +1631,7 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
 
         {/* Présets rapides */}
         <div className="space-y-2 mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thèmes pré-configurés</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{isEn ? 'Preconfigured Themes' : 'Thèmes pré-configurés'}</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {Object.entries(DEFAULT_CHART_PRESETS).map(([key, p]) => (
               <button
@@ -1649,16 +1652,16 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
 
         {/* Détail des couleurs */}
         <div className="space-y-3 mb-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Couleurs personnalisées</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{isEn ? 'Custom Colors' : 'Couleurs personnalisées'}</p>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             {/* Bougies Haussières */}
             <div className="p-2.5 rounded-lg border bg-muted/20 space-y-2">
               <span className="font-semibold text-green-500 flex items-center gap-1">
-                ▲ Bougies Haussières (Achat)
+                {isEn ? '▲ Bullish Candles (Buy)' : '▲ Bougies Haussières (Achat)'}
               </span>
               <div className="flex items-center justify-between">
-                <span>Corps</span>
+                <span>{isEn ? 'Body' : 'Corps'}</span>
                 <input
                   type="color"
                   value={styles.upColor}
@@ -1667,7 +1670,7 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
                 />
               </div>
               <div className="flex items-center justify-between">
-                <span>Bordure</span>
+                <span>{isEn ? 'Border' : 'Bordure'}</span>
                 <input
                   type="color"
                   value={styles.upBorderColor}
@@ -1676,7 +1679,7 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
                 />
               </div>
               <div className="flex items-center justify-between">
-                <span>Mèches</span>
+                <span>{isEn ? 'Wicks' : 'Mèches'}</span>
                 <input
                   type="color"
                   value={styles.upWickColor}
@@ -1689,10 +1692,10 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
             {/* Bougies Baissières */}
             <div className="p-2.5 rounded-lg border bg-muted/20 space-y-2">
               <span className="font-semibold text-red-500 flex items-center gap-1">
-                ▼ Bougies Baissières (Vente)
+                {isEn ? '▼ Bearish Candles (Sell)' : '▼ Bougies Baissières (Vente)'}
               </span>
               <div className="flex items-center justify-between">
-                <span>Corps</span>
+                <span>{isEn ? 'Body' : 'Corps'}</span>
                 <input
                   type="color"
                   value={styles.downColor}
@@ -1701,7 +1704,7 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
                 />
               </div>
               <div className="flex items-center justify-between">
-                <span>Bordure</span>
+                <span>{isEn ? 'Border' : 'Bordure'}</span>
                 <input
                   type="color"
                   value={styles.downBorderColor}
@@ -1710,7 +1713,7 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
                 />
               </div>
               <div className="flex items-center justify-between">
-                <span>Mèches</span>
+                <span>{isEn ? 'Wicks' : 'Mèches'}</span>
                 <input
                   type="color"
                   value={styles.downWickColor}
@@ -1723,10 +1726,10 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
 
           {/* Fond & Grille */}
           <div className="p-2.5 rounded-lg border bg-muted/20 space-y-2 text-xs">
-            <span className="font-semibold text-primary">Graphique & Environnement</span>
+            <span className="font-semibold text-primary">{isEn ? 'Chart & Environment' : 'Graphique & Environnement'}</span>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="flex items-center justify-between sm:flex-col sm:items-start gap-1">
-                <span>Arrière-plan</span>
+                <span>{isEn ? 'Background' : 'Arrière-plan'}</span>
                 <input
                   type="color"
                   value={styles.bgColor}
@@ -1735,7 +1738,7 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
                 />
               </div>
               <div className="flex items-center justify-between sm:flex-col sm:items-start gap-1">
-                <span>Réticule</span>
+                <span>{isEn ? 'Crosshair' : 'Réticule'}</span>
                 <input
                   type="color"
                   value={styles.crosshairColor}
@@ -1744,7 +1747,7 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
                 />
               </div>
               <div className="flex items-center justify-between sm:flex-col sm:items-start gap-1">
-                <span>Textes / Axes</span>
+                <span>{isEn ? 'Text / Axes' : 'Textes / Axes'}</span>
                 <input
                   type="color"
                   value={styles.textColor}
@@ -1764,10 +1767,10 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
             onClick={onReset}
             className="text-xs text-muted-foreground hover:text-foreground gap-1"
           >
-            <RotateCcw className="h-3.5 w-3.5" /> Réinitialiser
+            <RotateCcw className="h-3.5 w-3.5" /> {isEn ? 'Reset' : 'Réinitialiser'}
           </Button>
           <Button size="sm" onClick={onClose} className="text-xs gap-1">
-            <Check className="h-3.5 w-3.5" /> Enregistrer & Fermer
+            <Check className="h-3.5 w-3.5" /> {isEn ? 'Save & Close' : 'Enregistrer & Fermer'}
           </Button>
         </div>
       </div>
@@ -1776,16 +1779,18 @@ export function ChartStyleSettingsModal({ open, onClose, styles, onApplyStyles, 
 }
 
 export function ChartStyleButton({ onClick, className = '' }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   return (
     <Button
       size="sm"
       variant="outline"
       className={`h-7 px-2 text-xs gap-1 ${className}`}
       onClick={onClick}
-      title="Personnaliser les couleurs du graphique (MT5 / TradingView)"
+      title={isEn ? "Customize chart colors (MT5 / TradingView)" : "Personnaliser les couleurs du graphique (MT5 / TradingView)"}
     >
       <Palette className="h-3.5 w-3.5 text-primary" />
-      <span className="hidden xs:inline">Couleurs</span>
+      <span className="hidden xs:inline">{isEn ? "Colors" : "Couleurs"}</span>
     </Button>
   );
 }
@@ -2164,6 +2169,8 @@ export function useChartOverlayManager(chartRef, containerRef) {
 
 // Barre d'action flottante qui apparaît au clic sur un outil/dessin avec bouton Engrenage (paramètres) et Supprimer
 export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, onUpdateStyle, className = '' }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   if (!overlay) return null;
   const label = getToolLabel(overlay.name);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -2273,7 +2280,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
         <span
           className="h-3 w-3 rounded-full border border-white/40 shadow-xs shrink-0"
           style={{ backgroundColor: color }}
-          title={`Couleur: ${color}`}
+          title={isEn ? `Color: ${color}` : `Couleur: ${color}`}
         />
 
         <div className="h-3.5 w-px bg-border mx-0.5" />
@@ -2285,10 +2292,10 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
             variant="outline"
             className="h-6 px-2 text-[11px] gap-1 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500/10 cursor-pointer"
             onClick={handleFinishDrawing}
-            title="Terminer la trajectoire (ou double-clic)"
+            title={isEn ? "Finish drawing (or double-click)" : "Terminer la trajectoire (ou double-clic)"}
           >
             <Check className="h-3 w-3" />
-            <span>Terminer</span>
+            <span>{isEn ? "Finish" : "Terminer"}</span>
           </Button>
         )}
 
@@ -2298,7 +2305,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           variant="ghost"
           className={`h-6 w-6 p-0 hover:bg-muted cursor-pointer transition-colors ${settingsOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           onClick={() => setSettingsOpen((prev) => !prev)}
-          title="Paramètres de l'outil (Couleur, Épaisseur, Trait continu / discontinu)"
+          title={isEn ? "Tool settings (Color, Thickness, Solid / Dashed line)" : "Paramètres de l'outil (Couleur, Épaisseur, Trait continu / discontinu)"}
         >
           <Settings className="h-3.5 w-3.5" />
         </Button>
@@ -2309,10 +2316,10 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           variant="destructive"
           className="h-6 px-2.5 text-xs gap-1 shadow-xs hover:bg-destructive/90 cursor-pointer"
           onClick={() => onDelete?.(overlay)}
-          title="Supprimer cet outil (ou touche Suppr / Backspace)"
+          title={isEn ? "Delete this tool (or Del / Backspace)" : "Supprimer cet outil (ou touche Suppr / Backspace)"}
         >
           <Trash2 className="h-3.5 w-3.5" />
-          <span>Supprimer</span>
+          <span>{isEn ? "Delete" : "Supprimer"}</span>
         </Button>
 
         {/* Bouton Désélectionner */}
@@ -2320,7 +2327,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           type="button"
           onClick={onDeselect}
           className="p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-          title="Désélectionner"
+          title={isEn ? "Deselect" : "Désélectionner"}
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -2332,7 +2339,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           {/* Section 1 : Couleur */}
           <div>
             <div className="flex items-center justify-between text-muted-foreground font-semibold mb-1.5 text-[11px]">
-              <span>Couleur</span>
+              <span>{isEn ? 'Color' : 'Couleur'}</span>
               <span className="font-mono text-[10px] uppercase text-foreground">{color}</span>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -2360,7 +2367,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
               {/* Pipette / Sélecteur personnalisé */}
               <label
                 className="h-5 w-5 rounded-md border border-white/20 flex items-center justify-center cursor-pointer hover:bg-muted transition-colors relative overflow-hidden"
-                title="Couleur personnalisée"
+                title={isEn ? "Custom color" : "Couleur personnalisée"}
               >
                 <Palette className="h-3 w-3 text-muted-foreground" />
                 <input
@@ -2378,7 +2385,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           {/* Section 2 : Épaisseur */}
           <div>
             <div className="flex items-center justify-between text-muted-foreground font-semibold mb-1.5 text-[11px]">
-              <span>Épaisseur</span>
+              <span>{isEn ? 'Thickness' : 'Épaisseur'}</span>
               <span className="text-foreground">{size} px</span>
             </div>
             <div className="grid grid-cols-5 gap-1">
@@ -2405,26 +2412,26 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           {/* Section 3 : Type de trait (Continu vs Discontinu) */}
           <div>
             <div className="text-muted-foreground font-semibold mb-1.5 text-[11px]">
-              Type de trait
+              {isEn ? 'Line style' : 'Type de trait'}
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 onClick={() => applyOverlayStyle(color, size, 'solid')}
                 className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${dashStyle === 'solid' ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title="Trait continu"
+                title={isEn ? "Solid line" : "Trait continu"}
               >
                 <span className="w-5 h-[2px] bg-current inline-block" />
-                <span className="text-[11px]">Continu</span>
+                <span className="text-[11px]">{isEn ? 'Solid' : 'Continu'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => applyOverlayStyle(color, size, 'dashed')}
                 className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${dashStyle === 'dashed' ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title="Trait discontinu"
+                title={isEn ? "Dashed line" : "Trait discontinu"}
               >
                 <span className="w-5 h-[2px] border-b-2 border-dashed border-current inline-block" />
-                <span className="text-[11px]">Discontinu</span>
+                <span className="text-[11px]">{isEn ? 'Dashed' : 'Discontinu'}</span>
               </button>
             </div>
           </div>
@@ -2477,8 +2484,46 @@ export function DrawToolsMenu({ chartRef, overlayManager }) {
     setOpen(false);
   };
 
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+
   // Groupes d'outils
-  const groups = ['Lignes', 'Formes', 'Positions', 'Flèches', 'Elliott & Dessin'];
+  const groups = [
+    { key: 'Lignes', label: isEn ? 'Lines' : 'Lignes' },
+    { key: 'Formes', label: isEn ? 'Shapes' : 'Formes' },
+    { key: 'Positions', label: isEn ? 'Positions & R:R' : 'Positions' },
+    { key: 'Flèches', label: isEn ? 'Arrows' : 'Flèches' },
+    { key: 'Elliott & Dessin', label: isEn ? 'Elliott & Freehand' : 'Elliott & Dessin' }
+  ];
+
+  const getToolDisplayName = (name, fallback) => {
+    if (!isEn) return fallback;
+    const enLabels = {
+      segment: 'Trendline',
+      path: 'Trajectory / Path (TradingView)',
+      horizontalRayLine: 'Horizontal Ray',
+      rayLine: 'Ray Line',
+      horizontalStraightLine: 'Horizontal Line',
+      verticalStraightLine: 'Vertical Line',
+      priceLine: 'Price Line',
+      priceAlertLine: 'Price Alert (TradingView)',
+      parallelStraightLine: 'Parallel Channel',
+      rect: 'Rectangle / Zone',
+      fibonacciLine: 'Fibonacci Retracement',
+      gannBox: 'Gann Box',
+      positionLong: 'Long Position (Buy / R:R)',
+      positionShort: 'Short Position (Sell / R:R)',
+      arrow: 'Arrow',
+      arrowMarker: 'Arrow Marker',
+      arrowUp: 'Up Arrow (▲)',
+      arrowDown: 'Down Arrow (▼)',
+      elliottImpulse: 'Elliott Wave (1-2-3-4-5)',
+      elliottCorrection: 'Elliott Correction (A-B-C)',
+      brush: 'Brush (Freehand)',
+      text: 'Text / Note',
+    };
+    return enLabels[name] || fallback;
+  };
 
   return (
     <Dropdown
@@ -2487,7 +2532,7 @@ export function DrawToolsMenu({ chartRef, overlayManager }) {
       width="w-64"
       trigger={
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setOpen((o) => !o)}>
-          <Pencil className="h-3.5 w-3.5" /> <span className="hidden xs:inline">Outils</span> <ChevronDown className="h-3 w-3" />
+          <Pencil className="h-3.5 w-3.5" /> <span className="hidden xs:inline">{isEn ? 'Tools' : 'Outils'}</span> <ChevronDown className="h-3 w-3" />
         </Button>
       }
     >
@@ -2505,18 +2550,18 @@ export function DrawToolsMenu({ chartRef, overlayManager }) {
                   setOpen(false);
                 }}
               >
-                <Trash2 className="h-3 w-3" /> Supprimer
+                <Trash2 className="h-3 w-3" /> {isEn ? 'Delete' : 'Supprimer'}
               </button>
             </div>
             <div className="border-t my-1" />
           </>
         )}
         {groups.map((grp) => {
-          const tools = DRAW_TOOLS.filter((t) => t.group === grp);
+          const tools = DRAW_TOOLS.filter((t) => t.group === grp.key);
           if (!tools.length) return null;
           return (
-            <div key={grp} className="mb-1">
-              <p className="px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">{grp}</p>
+            <div key={grp.key} className="mb-1">
+              <p className="px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">{grp.label}</p>
               {tools.map(({ name, label, Icon }) => (
                 <button
                   key={name}
@@ -2524,7 +2569,7 @@ export function DrawToolsMenu({ chartRef, overlayManager }) {
                   onClick={() => handleSelectTool(name)}
                 >
                   <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="truncate">{label}</span>
+                  <span className="truncate">{getToolDisplayName(name, label)}</span>
                 </button>
               ))}
             </div>
@@ -2542,7 +2587,7 @@ export function DrawToolsMenu({ chartRef, overlayManager }) {
             setOpen(false);
           }}
         >
-          <Eraser className="h-3.5 w-3.5" /> Effacer tous les dessins
+          <Eraser className="h-3.5 w-3.5" /> {isEn ? 'Clear all drawings' : 'Effacer tous les dessins'}
         </button>
       </div>
     </Dropdown>
@@ -2612,6 +2657,8 @@ export function useCandleCountdown(timeframe, referenceTime = null) {
 }
 
 export function CandleCountdownBadge({ timeframe, referenceTime = null, className = '' }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   const { formatted, remainingSeconds } = useCandleCountdown(timeframe, referenceTime);
   const isUrgent = remainingSeconds <= 30;
 
@@ -2620,10 +2667,10 @@ export function CandleCountdownBadge({ timeframe, referenceTime = null, classNam
       className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono border bg-background/90 shadow-2xs backdrop-blur-xs select-none ${
         isUrgent ? 'border-red-500/60 text-red-500 animate-pulse' : 'border-border/80 text-foreground'
       } ${className}`}
-      title={`Temps restant avant la clôture de la bougie (${timeframe})`}
+      title={isEn ? `Time remaining before candle close (${timeframe})` : `Temps restant avant la clôture de la bougie (${timeframe})`}
     >
       <Clock className="h-3 w-3 text-primary shrink-0" />
-      <span className="text-[10px] uppercase font-semibold text-muted-foreground hidden sm:inline">Clôture :</span>
+      <span className="text-[10px] uppercase font-semibold text-muted-foreground hidden sm:inline">{isEn ? 'Close:' : 'Clôture :'}</span>
       <span className="tabular-nums font-bold tracking-tight">{formatted}</span>
     </div>
   );
@@ -2631,7 +2678,24 @@ export function CandleCountdownBadge({ timeframe, referenceTime = null, classNam
 
 // Menu « Indicateurs » : activation/désactivation par cases cochables.
 export function IndicatorsMenu({ chartRef, active, setActive, panesRef }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   const [open, setOpen] = React.useState(false);
+
+  const getIndicatorDisplayName = (name) => {
+    if (!isEn) return INDICATOR_LABELS[name] || name;
+    const en = {
+      MA: 'Moving Average (MA)',
+      EMA: 'Exponential Moving Average (EMA)',
+      BOLL: 'Bollinger Bands (BOLL)',
+      ICT_KZ: 'ICT Kill Zones (Sessions)',
+      RSI: 'RSI (Relative Strength Index)',
+      MACD: 'MACD',
+      KDJ: 'KDJ Oscillator',
+    };
+    return en[name] || INDICATOR_LABELS[name] || name;
+  };
+
   const toggle = (name) => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -2656,7 +2720,7 @@ export function IndicatorsMenu({ chartRef, active, setActive, panesRef }) {
       className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs hover:bg-muted"
       onClick={() => toggle(name)}
     >
-      <span className="truncate pr-1">{INDICATOR_LABELS[name] || name}</span>
+      <span className="truncate pr-1">{getIndicatorDisplayName(name)}</span>
       <span className={`h-3.5 w-3.5 rounded-sm border shrink-0 ${active[name] ? 'bg-primary border-primary' : 'border-muted-foreground/40'}`} />
     </button>
   );
@@ -2667,14 +2731,14 @@ export function IndicatorsMenu({ chartRef, active, setActive, panesRef }) {
       width="w-56"
       trigger={
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setOpen((o) => !o)}>
-          <FunctionSquare className="h-3.5 w-3.5" /> <span className="hidden xs:inline">Indicateurs</span>{count ? ` (${count})` : ''} <ChevronDown className="h-3 w-3" />
+          <FunctionSquare className="h-3.5 w-3.5" /> <span className="hidden xs:inline">{isEn ? 'Indicators' : 'Indicateurs'}</span>{count ? ` (${count})` : ''} <ChevronDown className="h-3 w-3" />
         </Button>
       }
     >
       <div className="p-1">
-        <p className="px-2 py-1 text-[10px] uppercase font-semibold text-muted-foreground">Sur le prix</p>
+        <p className="px-2 py-1 text-[10px] uppercase font-semibold text-muted-foreground">{isEn ? 'On price' : 'Sur le prix'}</p>
         {MAIN_INDICATORS.map((n) => <Row key={n} name={n} />)}
-        <p className="px-2 py-1 text-[10px] uppercase font-semibold text-muted-foreground border-t mt-1 pt-1">Sous-graphique</p>
+        <p className="px-2 py-1 text-[10px] uppercase font-semibold text-muted-foreground border-t mt-1 pt-1">{isEn ? 'Sub-chart' : 'Sous-graphique'}</p>
         {SUB_INDICATORS.map((n) => <Row key={n} name={n} />)}
       </div>
     </Dropdown>
@@ -2685,6 +2749,8 @@ export function IndicatorsMenu({ chartRef, active, setActive, panesRef }) {
 const CATEGORY_LABELS = { forex: 'Forex', metal: 'Métaux', indice: 'Indices', crypto: 'Crypto', synthetic: 'Synthétiques' };
 
 export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectSymbol, onSelectTimeframe }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   const [open, setOpen] = React.useState(false);
   const [cat, setCat] = React.useState(null);
   const current = (symbols || []).find((s) => s.symbol === symbol);
@@ -2697,6 +2763,13 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
     return out;
   }, [symbols]);
   const activeCat = cat || current?.category || categories[0];
+  const catLabels = {
+    forex: 'Forex',
+    metal: isEn ? 'Metals' : 'Métaux',
+    indice: 'Indices',
+    crypto: 'Crypto',
+    synthetic: isEn ? 'Synthetics' : 'Synthétiques',
+  };
   return (
     <Dropdown
       open={open}
@@ -2706,7 +2779,7 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
         <button
           className="pointer-events-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted/70"
           onClick={() => setOpen((o) => !o)}
-          title="Changer de marché / unité de temps"
+          title={isEn ? "Change market / timeframe" : "Changer de marché / unité de temps"}
         >
           <span className="text-xs font-semibold text-primary">{current?.name || symbol}</span>
           <span className="text-xs font-semibold">{timeframe}</span>
@@ -2722,7 +2795,7 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
               key={c} size="sm" variant={activeCat === c ? 'default' : 'ghost'}
               className="h-6 px-2 text-xs" onClick={() => setCat(c)}
             >
-              {CATEGORY_LABELS[c] || c}
+              {catLabels[c] || c}
             </Button>
           ))}
         </div>
@@ -2741,7 +2814,7 @@ export function MarketPicker({ symbols, timeframes, symbol, timeframe, onSelectS
         </div>
         {/* Unités de temps */}
         <div className="border-t pt-2">
-          <p className="px-1 pb-1 text-[11px] uppercase text-muted-foreground">Unité de temps</p>
+          <p className="px-1 pb-1 text-[11px] uppercase text-muted-foreground">{isEn ? 'Timeframe' : 'Unité de temps'}</p>
           <div className="flex flex-wrap gap-1">
             {(timeframes || []).map((t) => (
               <Button
@@ -2988,8 +3061,10 @@ export function configureMT4Chart(chart) {
   return setupYAxisDrag(chart);
 }
 
-// Boutons de zoom rapide façon MT4/MT5 intégrables dans la toolbar (+, -, ↕+, ↕-, Auto)
 export function ChartZoomControls({ chartRef, className = '' }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+
   const handleZoomIn = () => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -3037,7 +3112,7 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         variant="ghost"
         className="h-6 w-6 p-0 hover:bg-muted"
         onClick={handleZoomIn}
-        title="Zoom horizontal avant (+)"
+        title={isEn ? "Horizontal zoom in (+)" : "Zoom horizontal avant (+)"}
       >
         <span className="font-bold text-xs leading-none">+</span>
       </Button>
@@ -3046,7 +3121,7 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         variant="ghost"
         className="h-6 w-6 p-0 hover:bg-muted"
         onClick={handleZoomOut}
-        title="Zoom horizontal arrière (−)"
+        title={isEn ? "Horizontal zoom out (−)" : "Zoom horizontal arrière (−)"}
       >
         <span className="font-bold text-xs leading-none">−</span>
       </Button>
@@ -3056,7 +3131,7 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         variant="ghost"
         className="h-6 px-1 text-[11px] font-semibold hover:bg-muted"
         onClick={handleStretchY}
-        title="Étirer verticalement l'axe des prix (bougies plus hautes)"
+        title={isEn ? "Stretch price axis vertically (taller candles)" : "Étirer verticalement l'axe des prix (bougies plus hautes)"}
       >
         ↕+
       </Button>
@@ -3065,7 +3140,7 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         variant="ghost"
         className="h-6 px-1 text-[11px] font-semibold hover:bg-muted"
         onClick={handleCompressY}
-        title="Compresser verticalement l'axe des prix (bougies plus plates)"
+        title={isEn ? "Compress price axis vertically (flatter candles)" : "Compresser verticalement l'axe des prix (bougies plus plates)"}
       >
         ↕−
       </Button>
@@ -3075,7 +3150,7 @@ export function ChartZoomControls({ chartRef, className = '' }) {
         variant="ghost"
         className="h-6 px-1.5 text-[10px] font-semibold hover:bg-muted"
         onClick={handleReset}
-        title="Échelle automatique X et Y / Réinitialiser"
+        title={isEn ? "Auto X and Y scale / Reset" : "Échelle automatique X et Y / Réinitialiser"}
       >
         Auto
       </Button>

@@ -4,11 +4,14 @@ import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { fmt } from '../../lib/demoApi';
+import useLanguageStore from '../../store/languageStore';
 
 const LOTS = [0.01, 0.02, 0.05, 0.10, 0.50, 1.00, 2.00, 5.00, 10.00];
 const PENDING_TYPES = ['BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP'];
 
 export default function OrderTicket({ instrument, quote, onMarket, onPending, busy }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   const [mode, setMode] = useState('market'); // 'market' | 'pending'
   const [volume, setVolume] = useState('0.01');
   const [sl, setSl] = useState('');
@@ -21,29 +24,29 @@ export default function OrderTicket({ instrument, quote, onMarket, onPending, bu
 
   const submitMarket = async (side) => {
     const v = Number(volume);
-    if (!(v > 0)) return toast.error('Volume invalide');
+    if (!(v > 0)) return toast.error(isEn ? 'Invalid volume' : 'Volume invalide');
     try {
       await onMarket({ symbol: instrument.symbol, side, volume: v, stop_loss: parseNum(sl), take_profit: parseNum(tp) });
-      toast.success(`${side} ${v} ${instrument.symbol} exécuté`);
+      toast.success(`${side} ${v} ${instrument.symbol} ${isEn ? 'executed' : 'exécuté'}`);
     } catch (e) {
-      toast.error(e.response?.data?.message || "Échec de l'ordre");
+      toast.error(e.response?.data?.message || (isEn ? "Order failed" : "Échec de l'ordre"));
     }
   };
 
   const submitPending = async () => {
     const v = Number(volume);
     const p = Number(price);
-    if (!(v > 0)) return toast.error('Volume invalide');
-    if (!(p > 0)) return toast.error("Prix d'entrée requis");
+    if (!(v > 0)) return toast.error(isEn ? 'Invalid volume' : 'Volume invalide');
+    if (!(p > 0)) return toast.error(isEn ? 'Entry price required' : "Prix d'entrée requis");
     try {
       await onPending({ symbol: instrument.symbol, type: ptype, volume: v, entry_price: p, stop_loss: parseNum(sl), take_profit: parseNum(tp) });
-      toast.success(`Ordre ${ptype.replace('_', ' ')} placé`);
+      toast.success(`${isEn ? 'Order' : 'Ordre'} ${ptype.replace('_', ' ')} ${isEn ? 'placed' : 'placé'}`);
     } catch (e) {
-      toast.error(e.response?.data?.message || "Échec de l'ordre en attente");
+      toast.error(e.response?.data?.message || (isEn ? "Pending order failed" : "Échec de l'ordre en attente"));
     }
   };
 
-  if (!instrument) return <div className="p-3 text-xs text-muted-foreground">Sélectionnez un instrument.</div>;
+  if (!instrument) return <div className="p-3 text-xs text-muted-foreground">{isEn ? 'Select an instrument.' : 'Sélectionnez un instrument.'}</div>;
 
   return (
     <div className="border rounded-xl p-3 space-y-3 bg-card/40">
@@ -59,13 +62,13 @@ export default function OrderTicket({ instrument, quote, onMarket, onPending, bu
 
       {/* Mode */}
       <div className="flex gap-1">
-        <button onClick={() => setMode('market')} className={`flex-1 py-1 text-xs rounded border ${mode === 'market' ? 'bg-primary text-primary-foreground border-primary' : ''}`}>Marché</button>
-        <button onClick={() => setMode('pending')} className={`flex-1 py-1 text-xs rounded border ${mode === 'pending' ? 'bg-primary text-primary-foreground border-primary' : ''}`}>En attente</button>
+        <button onClick={() => setMode('market')} className={`flex-1 py-1 text-xs rounded border ${mode === 'market' ? 'bg-primary text-primary-foreground border-primary' : ''}`}>{isEn ? 'Market' : 'Marché'}</button>
+        <button onClick={() => setMode('pending')} className={`flex-1 py-1 text-xs rounded border ${mode === 'pending' ? 'bg-primary text-primary-foreground border-primary' : ''}`}>{isEn ? 'Pending' : 'En attente'}</button>
       </div>
 
       {/* Volume */}
       <div>
-        <label className="text-[10px] uppercase text-muted-foreground">Volume (lots)</label>
+        <label className="text-[10px] uppercase text-muted-foreground">{isEn ? 'Volume (lots)' : 'Volume (lots)'}</label>
         <div className="flex flex-wrap gap-0.5 mt-1">
           {LOTS.map((l) => (
             <button key={l} onClick={() => setVolume(String(l))}
@@ -76,7 +79,7 @@ export default function OrderTicket({ instrument, quote, onMarket, onPending, bu
         </div>
         <input value={volume} onChange={(e) => setVolume(e.target.value)} type="number" step={instrument.volume_step} min={instrument.min_volume}
           className="mt-1 w-full rounded border bg-background px-2 py-1 text-xs" />
-        <p className="text-[9px] text-muted-foreground mt-0.5">min {instrument.min_volume} · pas {instrument.volume_step} · max {instrument.max_volume}</p>
+        <p className="text-[9px] text-muted-foreground mt-0.5">{isEn ? `min ${instrument.min_volume} · step ${instrument.volume_step} · max ${instrument.max_volume}` : `min ${instrument.min_volume} · pas ${instrument.volume_step} · max ${instrument.max_volume}`}</p>
       </div>
 
       {/* Type + prix pour pending */}
@@ -89,7 +92,7 @@ export default function OrderTicket({ instrument, quote, onMarket, onPending, bu
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-muted-foreground">Prix d'entrée</label>
+            <label className="text-[10px] uppercase text-muted-foreground">{isEn ? 'Entry price' : "Prix d'entrée"}</label>
             <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" step={instrument.pip_size}
               className="mt-1 w-full rounded border bg-background px-2 py-1 text-xs" />
           </div>
@@ -117,7 +120,7 @@ export default function OrderTicket({ instrument, quote, onMarket, onPending, bu
           <Button disabled={busy} onClick={() => submitMarket('BUY')} className="bg-emerald-500 hover:bg-emerald-600 text-white">BUY</Button>
         </div>
       ) : (
-        <Button disabled={busy} onClick={submitPending} className="w-full">Placer l'ordre</Button>
+        <Button disabled={busy} onClick={submitPending} className="w-full">{isEn ? 'Place Order' : "Placer l'ordre"}</Button>
       )}
     </div>
   );

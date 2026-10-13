@@ -779,3 +779,5 @@ export const useLanguageStore = create(
     }
   )
 );
+
+export default useLanguageStore;

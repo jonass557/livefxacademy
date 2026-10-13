@@ -76,7 +76,7 @@ router.get('/', optionalAuth, async (req, res) => {
       return {
         ...v.toObject(),
         id: v._id,
-        admin_name: admin?.full_name,
+        admin_name: 'LivefxTrading',
         like_count,
         liked_by_me,
         share_count: v.share_count || 0,
@@ -133,7 +133,7 @@ router.get('/admin/all', adminOnly, async (req, res) => {
     const result = await Promise.all(videos.map(async (v) => {
       const admin = await User.findById(v.admin_id);
       const uniqueViews = await VideoView.countDocuments({ video_id: v._id });
-      return { ...v.toObject(), id: v._id, admin_name: admin?.full_name, unique_views: uniqueViews };
+      return { ...v.toObject(), id: v._id, admin_name: 'LivefxTrading', unique_views: uniqueViews };
     }));
     
     res.json(result);

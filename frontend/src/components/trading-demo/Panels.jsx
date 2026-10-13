@@ -3,15 +3,26 @@ import React, { useState } from 'react';
 import { X, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { fmt } from '../../lib/demoApi';
+import { useLanguageStore } from '../../store/languageStore';
 
 export function PositionsPanel({ positions, quotes, onClose, onUpdate }) {
-  if (!positions.length) return <Empty text="Aucune position ouverte." />;
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+  if (!positions.length) return <Empty text={isEn ? "No open positions." : "Aucune position ouverte."} />;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="text-muted-foreground text-[10px] uppercase">
           <tr className="border-b">
-            <Th>Symbole</Th><Th>Sens</Th><Th>Vol</Th><Th>Entrée</Th><Th>Actuel</Th><Th>SL</Th><Th>TP</Th><Th>P&L</Th><Th></Th>
+            <Th>{isEn ? 'Symbol' : 'Symbole'}</Th>
+            <Th>{isEn ? 'Side' : 'Sens'}</Th>
+            <Th>{isEn ? 'Vol' : 'Vol'}</Th>
+            <Th>{isEn ? 'Entry' : 'Entrée'}</Th>
+            <Th>{isEn ? 'Current' : 'Actuel'}</Th>
+            <Th>SL</Th>
+            <Th>TP</Th>
+            <Th>P&L</Th>
+            <Th></Th>
           </tr>
         </thead>
         <tbody>
@@ -30,8 +41,8 @@ export function PositionsPanel({ positions, quotes, onClose, onUpdate }) {
                 <Td className={`tabular-nums font-semibold ${p.profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{fmt(p.profit)}</Td>
                 <Td>
                   <div className="flex gap-1">
-                    <button title="Modifier SL/TP" onClick={() => onUpdate(p)}><Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" /></button>
-                    <button title="Fermer" onClick={() => onClose(p)}><X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" /></button>
+                    <button title={isEn ? "Modify SL/TP" : "Modifier SL/TP"} onClick={() => onUpdate(p)}><Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" /></button>
+                    <button title={isEn ? "Close" : "Fermer"} onClick={() => onClose(p)}><X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" /></button>
                   </div>
                 </Td>
               </tr>
@@ -44,12 +55,22 @@ export function PositionsPanel({ positions, quotes, onClose, onUpdate }) {
 }
 
 export function OrdersPanel({ orders, onCancel }) {
-  if (!orders.length) return <Empty text="Aucun ordre en attente." />;
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+  if (!orders.length) return <Empty text={isEn ? "No pending orders." : "Aucun ordre en attente."} />;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="text-muted-foreground text-[10px] uppercase">
-          <tr className="border-b"><Th>Symbole</Th><Th>Type</Th><Th>Vol</Th><Th>Prix</Th><Th>SL</Th><Th>TP</Th><Th></Th></tr>
+          <tr className="border-b">
+            <Th>{isEn ? 'Symbol' : 'Symbole'}</Th>
+            <Th>Type</Th>
+            <Th>{isEn ? 'Vol' : 'Vol'}</Th>
+            <Th>{isEn ? 'Price' : 'Prix'}</Th>
+            <Th>SL</Th>
+            <Th>TP</Th>
+            <Th></Th>
+          </tr>
         </thead>
         <tbody>
           {orders.map((o) => (
@@ -60,7 +81,7 @@ export function OrdersPanel({ orders, onCancel }) {
               <Td className="tabular-nums">{fmt(o.entry_price, 5)}</Td>
               <Td className="tabular-nums">{o.stop_loss ? fmt(o.stop_loss, 5) : '—'}</Td>
               <Td className="tabular-nums">{o.take_profit ? fmt(o.take_profit, 5) : '—'}</Td>
-              <Td><button title="Annuler" onClick={() => onCancel(o)}><X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" /></button></Td>
+              <Td><button title={isEn ? "Cancel" : "Annuler"} onClick={() => onCancel(o)}><X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" /></button></Td>
             </tr>
           ))}
         </tbody>
@@ -70,12 +91,22 @@ export function OrdersPanel({ orders, onCancel }) {
 }
 
 export function HistoryPanel({ trades }) {
-  if (!trades.length) return <Empty text="Aucun trade clôturé." />;
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
+  if (!trades.length) return <Empty text={isEn ? "No closed trades." : "Aucun trade clôturé."} />;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="text-muted-foreground text-[10px] uppercase">
-          <tr className="border-b"><Th>Symbole</Th><Th>Sens</Th><Th>Vol</Th><Th>Entrée</Th><Th>Sortie</Th><Th>Motif</Th><Th>P&L</Th></tr>
+          <tr className="border-b">
+            <Th>{isEn ? 'Symbol' : 'Symbole'}</Th>
+            <Th>{isEn ? 'Side' : 'Sens'}</Th>
+            <Th>{isEn ? 'Vol' : 'Vol'}</Th>
+            <Th>{isEn ? 'Entry' : 'Entrée'}</Th>
+            <Th>{isEn ? 'Exit' : 'Sortie'}</Th>
+            <Th>{isEn ? 'Reason' : 'Motif'}</Th>
+            <Th>P&L</Th>
+          </tr>
         </thead>
         <tbody>
           {trades.map((t) => (
@@ -101,25 +132,29 @@ const Empty = ({ text }) => <p className="p-4 text-center text-xs text-muted-for
 
 // Petite modale de fermeture partielle / édition SL-TP.
 export function CloseDialog({ position, onConfirm, onCancel }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   const [volume, setVolume] = useState(String(position.volume));
   return (
-    <Modal title={`Fermer ${position.symbol}`} onCancel={onCancel}>
-      <label className="text-[10px] uppercase text-muted-foreground">Volume à fermer (max {position.volume})</label>
+    <Modal title={isEn ? `Close ${position.symbol}` : `Fermer ${position.symbol}`} onCancel={onCancel}>
+      <label className="text-[10px] uppercase text-muted-foreground">{isEn ? `Volume to close (max ${position.volume})` : `Volume à fermer (max ${position.volume})`}</label>
       <input value={volume} onChange={(e) => setVolume(e.target.value)} type="number" step="0.01" max={position.volume}
         className="mt-1 w-full rounded border bg-background px-2 py-1 text-sm" />
       <div className="flex gap-2 mt-3">
-        <button onClick={onCancel} className="flex-1 py-1.5 text-sm rounded border">Annuler</button>
-        <button onClick={() => onConfirm(Number(volume))} className="flex-1 py-1.5 text-sm rounded bg-primary text-primary-foreground">Fermer</button>
+        <button onClick={onCancel} className="flex-1 py-1.5 text-sm rounded border">{isEn ? 'Cancel' : 'Annuler'}</button>
+        <button onClick={() => onConfirm(Number(volume))} className="flex-1 py-1.5 text-sm rounded bg-primary text-primary-foreground">{isEn ? 'Close' : 'Fermer'}</button>
       </div>
     </Modal>
   );
 }
 
 export function EditStopsDialog({ position, onConfirm, onCancel }) {
+  const { language } = useLanguageStore();
+  const isEn = language === 'en';
   const [sl, setSl] = useState(position.stop_loss ?? '');
   const [tp, setTp] = useState(position.take_profit ?? '');
   return (
-    <Modal title={`Modifier ${position.symbol}`} onCancel={onCancel}>
+    <Modal title={isEn ? `Modify ${position.symbol}` : `Modifier ${position.symbol}`} onCancel={onCancel}>
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] uppercase text-muted-foreground">Stop Loss</label>
@@ -131,9 +166,9 @@ export function EditStopsDialog({ position, onConfirm, onCancel }) {
         </div>
       </div>
       <div className="flex gap-2 mt-3">
-        <button onClick={onCancel} className="flex-1 py-1.5 text-sm rounded border">Annuler</button>
+        <button onClick={onCancel} className="flex-1 py-1.5 text-sm rounded border">{isEn ? 'Cancel' : 'Annuler'}</button>
         <button onClick={() => onConfirm({ stop_loss: sl === '' ? null : Number(sl), take_profit: tp === '' ? null : Number(tp) })}
-          className="flex-1 py-1.5 text-sm rounded bg-primary text-primary-foreground">Enregistrer</button>
+          className="flex-1 py-1.5 text-sm rounded bg-primary text-primary-foreground">{isEn ? 'Save' : 'Enregistrer'}</button>
       </div>
     </Modal>
   );

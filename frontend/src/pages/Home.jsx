@@ -203,7 +203,7 @@ const Home = () => {
                         <div>
                           <div className="flex items-center gap-1.5">
                             <h3 className="font-bold text-sm sm:text-base leading-tight">
-                              {post.admin_name || 'LivefxTrading Academy'}
+                              LivefxTrading
                             </h3>
                             <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-primary">
                               <ShieldCheck className="h-3 w-3" /> {isEn ? 'Official' : 'Officiel'}
