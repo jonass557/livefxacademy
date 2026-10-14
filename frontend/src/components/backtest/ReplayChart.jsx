@@ -387,30 +387,47 @@ export default function ReplayChart({
   }, [annotate, priceDigits, profitOf, syncTradingOverlays, alertsManager, isEnglish, symbolName]);
 
   // Clic droit sur le graphique Replay : menu contextuel TradingView
-  const handleContextMenu = useCallback((e) => {
-    e.preventDefault();
+  const getPriceFromY = useCallback((clientY) => {
     const el = containerRef.current;
     const chart = chartRef.current;
-    if (!el || !chart) return;
+    if (!el || !chart) return null;
 
     const rect = el.getBoundingClientRect();
-    const relY = e.clientY - rect.top;
-    if (relY < 0 || relY > rect.height) return;
+    const relY = clientY - rect.top;
+    if (relY < 0 || relY > rect.height) return null;
 
-    // Conversion du pixel Y en prix via KLineCharts
-    let clickedPrice = null;
+    let price = null;
     try {
-      const coord = chart.convertFromPixel?.({ y: relY }, { paneId: 'candle_pane' });
-      if (coord && typeof coord.value === 'number' && Number.isFinite(coord.value)) {
-        clickedPrice = coord.value;
+      const res = chart.convertFromPixel?.([{ x: 0, y: relY }], { paneId: 'candle_pane', absolute: true });
+      if (res && typeof res.value === 'number' && Number.isFinite(res.value)) {
+        price = res.value;
       }
     } catch (_) {}
 
-    const currCandle = klineData[indexRef.current] || klineData[klineData.length - 1];
-    if (clickedPrice == null && currCandle?.close) {
-      clickedPrice = currCandle.close;
+    if (price == null || !Number.isFinite(price)) {
+      try {
+        const pane = chart.getDrawPaneById?.('candle_pane');
+        const yAxis = pane?.getAxisComponent?.();
+        const bounding = pane?.getBounding?.();
+        const py = bounding && bounding.top != null ? relY - bounding.top : relY;
+        const val = yAxis?.convertFromPixel?.(py);
+        if (typeof val === 'number' && Number.isFinite(val)) {
+          price = val;
+        }
+      } catch (_) {}
     }
 
+    const currCandle = klineData[indexRef.current] || klineData[klineData.length - 1];
+    if (price == null && currCandle?.close) {
+      price = currCandle.close;
+    }
+
+    return price;
+  }, [klineData]);
+
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault();
+    const clickedPrice = getPriceFromY(e.clientY);
     if (clickedPrice != null) {
       const formatted = clickedPrice.toFixed(priceDigits);
       setContextMenu({
@@ -422,7 +439,7 @@ export default function ReplayChart({
         symbol: symbolName || 'Chart',
       });
     }
-  }, [priceDigits, symbolName, klineData]);
+  }, [getPriceFromY, priceDigits, symbolName]);
 
   // Fermer le menu contextuel lors d'un clic ailleurs
   useEffect(() => {

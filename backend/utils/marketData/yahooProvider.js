@@ -81,16 +81,30 @@ async function fetchCandles({ symbol, granularity, start, end, count }) {
   const q = r.indicators && r.indicators.quote && r.indicators.quote[0]
   if (!q) return []
 
-  const out = []
+  const buckets = new Map()
   for (let i = 0; i < r.timestamp.length; i++) {
     const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i]
     if (o == null || h == null || l == null || c == null) continue // bougie incomplète (gap)
-    out.push({ time: r.timestamp[i], open: o, high: h, low: l, close: c, volume: q.volume ? (q.volume[i] || 0) : 0 })
+    const rawTime = r.timestamp[i]
+    const bucketTime = Math.floor(rawTime / granularity) * granularity
+    const existing = buckets.get(bucketTime)
+    if (!existing) {
+      buckets.set(bucketTime, {
+        time: bucketTime,
+        open: Number(o),
+        high: Number(h),
+        low: Number(l),
+        close: Number(c),
+        volume: Number(q.volume ? (q.volume[i] || 0) : 0),
+      })
+    } else {
+      existing.high = Math.max(existing.high, Number(h))
+      existing.low = Math.min(existing.low, Number(l))
+      existing.close = Number(c)
+      existing.volume += Number(q.volume ? (q.volume[i] || 0) : 0)
+    }
   }
-  out.sort((a, b) => a.time - b.time)
-
-  const isAggregated = [7200, 14400, 21600, 28800].includes(granularity)
-  const candles = isAggregated ? aggregateToGranularity(out, granularity) : out
+  const candles = Array.from(buckets.values()).sort((a, b) => a.time - b.time)
   return candles.length > MAX_CANDLES ? candles.slice(candles.length - MAX_CANDLES) : candles
 }
 

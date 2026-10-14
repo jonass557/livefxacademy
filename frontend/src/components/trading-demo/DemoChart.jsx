@@ -4,7 +4,7 @@
 // à partir du prix `mid` reçu par WebSocket.
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { init, dispose } from 'klinecharts';
-import { Loader2, Maximize2, Minimize2, ChevronDown } from 'lucide-react';
+import { Loader2, Maximize2, Minimize2, ChevronDown, Plus } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import '../backtest/chart-landscape.css';
@@ -41,6 +41,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, price: null, formattedPrice: '', symbol: '' });
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [alertTargetPrice, setAlertTargetPrice] = useState('');
+  const [hoverAxis, setHoverAxis] = useState({ visible: false, y: 0, price: null, formattedPrice: '' });
 
   const { language } = useLanguageStore();
   const isEnglish = language === 'en';
@@ -102,26 +103,38 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
         const data = await demoApi.candles(symbol, timeframe, 300);
         if (cancelled || !chartRef.current) return;
         const raw = data.candles || [];
-        const kline = raw
-          .map((c) => ({
-            timestamp: c.time * 1000,
-            open: Number(c.open),
-            high: Number(c.high),
-            low: Number(c.low),
-            close: Number(c.close),
-            volume: Number(c.volume || 0),
-          }))
-          .filter((c) => (
-            Number.isFinite(c.timestamp) &&
-            Number.isFinite(c.open) &&
-            Number.isFinite(c.high) &&
-            Number.isFinite(c.low) &&
-            Number.isFinite(c.close) &&
-            c.open > 0 &&
-            c.close > 0 &&
-            c.high >= c.low
-          ))
-          .sort((a, b) => a.timestamp - b.timestamp);
+        const tfMs = getTimeframeMs(timeframe);
+        const byBucket = new Map();
+        for (const c of raw) {
+          const rawMs = c.time * 1000;
+          const bucket = Math.floor(rawMs / tfMs) * tfMs;
+          const open = Number(c.open);
+          const high = Number(c.high);
+          const low = Number(c.low);
+          const close = Number(c.close);
+          const volume = Number(c.volume || 0);
+          if (
+            Number.isFinite(bucket) &&
+            Number.isFinite(open) &&
+            Number.isFinite(high) &&
+            Number.isFinite(low) &&
+            Number.isFinite(close) &&
+            open > 0 &&
+            close > 0 &&
+            high >= low
+          ) {
+            const exist = byBucket.get(bucket);
+            if (!exist) {
+              byBucket.set(bucket, { timestamp: bucket, open, high, low, close, volume });
+            } else {
+              exist.high = Math.max(exist.high, high);
+              exist.low = Math.min(exist.low, low);
+              exist.close = close;
+              exist.volume += volume;
+            }
+          }
+        }
+        const kline = Array.from(byBucket.values()).sort((a, b) => a.timestamp - b.timestamp);
 
         if (kline.length) {
           if (!digitsSetRef.current) {
@@ -143,11 +156,8 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
               if (!currentLast) {
                 lastRef.current = latest;
                 chartRef.current.updateData(latest);
-              } else if (latest.timestamp > currentLast.timestamp) {
-                lastRef.current = latest;
-                chartRef.current.updateData(latest);
               } else if (latest.timestamp === currentLast.timestamp) {
-                // Même bougie : mettre à jour le high/low/volume du backend sans écraser le close live
+                // Même bougie en cours : synchroniser high/low/volume du backend sans écraser le close live
                 const merged = {
                   ...latest,
                   close: currentLast.close,
@@ -156,6 +166,10 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
                 };
                 lastRef.current = merged;
                 chartRef.current.updateData(merged);
+              } else if (latest.timestamp > currentLast.timestamp) {
+                // Nouvelle bougie confirmée par le serveur
+                lastRef.current = latest;
+                chartRef.current.updateData(latest);
               }
             }
           }
@@ -188,14 +202,15 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
 
     const tfMs = getTimeframeMs(timeframe);
     const tickTime = Number(q.ts) || Date.now();
-    // Utiliser la base de temps de la dernière bougie pour éviter les décalages d'arrondi
-    const elapsedSinceLast = tickTime - last.timestamp;
+    const currentBucket = Math.floor(tickTime / tfMs) * tfMs;
 
-    if (elapsedSinceLast >= tfMs) {
-      // Nouvelle bougie en temps réel au franchissement strict de la durée du timeframe
-      const nextBucket = last.timestamp + Math.floor(elapsedSinceLast / tfMs) * tfMs;
+    // Protection anti-saut anormal (> 15% de variation instantanée)
+    if (last.close > 0 && Math.abs(mid - last.close) / last.close > 0.15) return;
+
+    if (currentBucket > last.timestamp) {
+      // Clôture naturelle et ouverture d'une nouvelle bougie en temps réel
       const newCandle = {
-        timestamp: nextBucket,
+        timestamp: currentBucket,
         open: mid,
         high: mid,
         low: mid,
@@ -205,8 +220,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
       lastRef.current = newCandle;
       chart.updateData(newCandle);
     } else {
-      // Mise à jour continue et fluide de la bougie en cours
-      if (last.close > 0 && Math.abs(mid - last.close) / last.close > 0.15) return;
+      // Mise à jour continue et fluide de la bougie en cours (TradingView style)
       const updated = {
         ...last,
         close: mid,
@@ -246,30 +260,83 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     }
   }, [symbol, timeframe, alertsManager, isEnglish, symbolName]);
 
-  // Clic droit sur le graphique : ouverture du menu contextuel TradingView
-  const handleContextMenu = useCallback((e) => {
-    e.preventDefault();
+  // Conversion fiable de pixel Y en niveau de prix sur l'échelle
+  const getPriceFromY = useCallback((clientY) => {
     const el = containerRef.current;
     const chart = chartRef.current;
-    if (!el || !chart) return;
+    if (!el || !chart) return null;
 
     const rect = el.getBoundingClientRect();
-    const relY = e.clientY - rect.top;
-    if (relY < 0 || relY > rect.height) return;
+    const relY = clientY - rect.top;
+    if (relY < 0 || relY > rect.height) return null;
 
-    // Conversion du pixel Y en prix via KLineCharts
-    let clickedPrice = null;
+    let price = null;
     try {
-      const coord = chart.convertFromPixel?.({ y: relY }, { paneId: 'candle_pane' });
-      if (coord && typeof coord.value === 'number' && Number.isFinite(coord.value)) {
-        clickedPrice = coord.value;
+      const res = chart.convertFromPixel?.({ x: 0, y: relY }, { paneId: 'candle_pane', absolute: true });
+      if (res && typeof res.value === 'number' && Number.isFinite(res.value)) {
+        price = res.value;
       }
     } catch (_) {}
 
-    if (clickedPrice == null && lastRef.current?.close) {
-      clickedPrice = lastRef.current.close;
+    if (price == null || !Number.isFinite(price)) {
+      try {
+        const pane = chart.getDrawPaneById?.('candle_pane');
+        const yAxis = pane?.getAxisComponent?.();
+        const bounding = pane?.getBounding?.();
+        const py = bounding && bounding.top != null ? relY - bounding.top : relY;
+        const val = yAxis?.convertFromPixel?.(py);
+        if (typeof val === 'number' && Number.isFinite(val)) {
+          price = val;
+        }
+      } catch (_) {}
     }
 
+    if (price == null && lastRef.current?.close) {
+      price = lastRef.current.close;
+    }
+
+    return price;
+  }, []);
+
+  const updateHoverAxis = useCallback((clientY) => {
+    const price = getPriceFromY(clientY);
+    const el = containerRef.current;
+    if (price != null && el) {
+      const rect = el.getBoundingClientRect();
+      const relY = clientY - rect.top;
+      setHoverAxis({
+        visible: true,
+        y: relY,
+        price,
+        formattedPrice: price.toFixed(digits),
+      });
+    }
+  }, [digits, getPriceFromY]);
+
+  const handleMouseMove = useCallback((e) => {
+    updateHoverAxis(e.clientY);
+  }, [updateHoverAxis]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverAxis((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+  }, []);
+
+  const handleTouch = useCallback((e) => {
+    if (e.touches && e.touches[0]) {
+      updateHoverAxis(e.touches[0].clientY);
+    }
+  }, [updateHoverAxis]);
+
+  const handleAddAlert = useCallback((price) => {
+    const val = price != null ? String(Number(price).toFixed(digits)) : (lastRef.current?.close ? String(Number(lastRef.current.close).toFixed(digits)) : '');
+    setAlertTargetPrice(val);
+    setAlertModalOpen(true);
+  }, [digits]);
+
+  // Clic droit sur le graphique : ouverture du menu contextuel TradingView
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault();
+    const clickedPrice = getPriceFromY(e.clientY);
     if (clickedPrice != null) {
       const formatted = clickedPrice.toFixed(digits);
       setContextMenu({
@@ -281,7 +348,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
         symbol: symbolName || symbol,
       });
     }
-  }, [digits, symbol, symbolName]);
+  }, [digits, getPriceFromY, symbol, symbolName]);
 
   // Fermer le menu contextuel lors d'un clic ailleurs
   useEffect(() => {
@@ -374,6 +441,10 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             className="w-full h-full cursor-crosshair"
             style={{ width: '100%', height: '100%', minHeight: '300px' }}
             onContextMenu={handleContextMenu}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            onTouchStart={handleTouch}
+            onTouchMove={handleTouch}
           />
           <ChartWatermark />
           {loading && (
@@ -387,14 +458,47 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             </div>
           )}
 
+          {/* Bouton '+' TradingView sur l'axe des prix (pour souris et écrans tactiles) */}
+          {hoverAxis.visible && hoverAxis.price != null && (
+            <div
+              className="absolute right-0 z-30 flex items-center pointer-events-auto select-none"
+              style={{
+                top: `${Math.max(10, Math.min(hoverAxis.y - 12, (containerRef.current?.clientHeight || 400) - 30))}px`,
+              }}
+            >
+              {/* Ligne pointillée fine vers l'axe */}
+              <div className="hidden sm:block absolute right-7 w-20 border-b border-dashed border-amber-400/50 pointer-events-none" />
+              {/* Bouton '+' TradingView style */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddAlert(hoverAxis.price);
+                }}
+                title={isEnglish ? `Add alert at ${hoverAxis.formattedPrice}` : `Ajouter une alerte à ${hoverAxis.formattedPrice}`}
+                className="flex items-center justify-center w-6 h-6 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold rounded-l shadow-md transition-all hover:w-7"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              </button>
+            </div>
+          )}
+
+          {/* Raccourci rapide '+' alerte pour écrans tactiles mobiles */}
+          <button
+            type="button"
+            onClick={() => handleAddAlert(lastRef.current?.close)}
+            className="sm:hidden absolute bottom-3 right-3 z-20 flex items-center gap-1 px-2.5 py-1 bg-amber-500/90 text-slate-950 text-[11px] font-bold rounded-full shadow-lg active:scale-95 backdrop-blur-xs"
+            title={isEnglish ? 'Add Price Alert' : 'Ajouter une alerte'}
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>{isEnglish ? 'Alert' : 'Alerte'}</span>
+          </button>
+
           {/* Menu contextuel TradingView au clic droit */}
           <ChartContextMenu
             menu={contextMenu}
             onClose={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
-            onAddAlert={(price) => {
-              setAlertTargetPrice(price != null ? String(price) : '');
-              setAlertModalOpen(true);
-            }}
+            onAddAlert={(price) => handleAddAlert(price)}
             isEnglish={isEnglish}
           />
 
@@ -402,10 +506,12 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
           <CreatePriceAlertDialog
             open={alertModalOpen}
             onClose={() => setAlertModalOpen(false)}
+            targetPrice={alertTargetPrice}
             initialPrice={alertTargetPrice}
             symbol={symbolName || symbol}
-            currentPrice={lastRef.current?.close}
+            currentPrice={lastRef.current?.close ? Number(lastRef.current.close).toFixed(digits) : ''}
             isEnglish={isEnglish}
+            alertsManager={alertsManager}
             onCreateAlert={async (data) => {
               await alertsManager.createAlert(data);
             }}

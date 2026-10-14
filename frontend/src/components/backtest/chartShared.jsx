@@ -3712,7 +3712,17 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
 /**
  * Boîte de dialogue modale de création d'alerte (déclenchée par clic droit TradingView).
  */
-export function CreatePriceAlertDialog({ open, onClose, targetPrice, symbol = 'Instrument', alertsManager, isEnglish = false }) {
+export function CreatePriceAlertDialog({
+  open,
+  onClose,
+  targetPrice,
+  initialPrice,
+  symbol = 'Instrument',
+  currentPrice,
+  alertsManager,
+  onCreateAlert,
+  isEnglish = false,
+}) {
   const [condition, setCondition] = useState('crossing');
   const [triggerFrequency, setTriggerFrequency] = useState('once');
   const [expiresAt, setExpiresAt] = useState('');
@@ -3720,25 +3730,36 @@ export function CreatePriceAlertDialog({ open, onClose, targetPrice, symbol = 'I
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [priceInput, setPriceInput] = useState('');
 
+  const effectivePrice = targetPrice ?? initialPrice;
+
   useEffect(() => {
-    if (open && targetPrice != null) {
-      setPriceInput(String(targetPrice));
+    if (open) {
+      if (effectivePrice != null && effectivePrice !== '') {
+        setPriceInput(String(effectivePrice));
+      } else if (currentPrice != null && currentPrice !== '') {
+        setPriceInput(String(currentPrice));
+      }
     }
-  }, [open, targetPrice]);
+  }, [open, effectivePrice, currentPrice]);
 
   if (!open) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!priceInput) return;
-    alertsManager.addAlert({
+    const alertData = {
       targetPrice: priceInput,
       condition,
       triggerFrequency,
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
       note,
       notifyEmail,
-    });
+    };
+    if (typeof onCreateAlert === 'function') {
+      await onCreateAlert(alertData);
+    } else if (alertsManager && typeof alertsManager.addAlert === 'function') {
+      alertsManager.addAlert(alertData);
+    }
     onClose();
   };
 

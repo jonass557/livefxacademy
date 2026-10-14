@@ -202,17 +202,25 @@ async function fetchFromDerivWS({ symbol, granularity, startEpoch, endEpoch, cou
 
       let earliest = cursorEnd
       for (const c of candles) {
-        const t = Number(c.epoch)
-        if (t < earliest) earliest = t
+        const rawEpoch = Number(c.epoch)
+        if (rawEpoch < earliest) earliest = rawEpoch
+        const t = Math.floor(rawEpoch / granularity) * granularity
         const inRange = startEpoch != null ? (t >= startEpoch && t <= endEpoch) : (t <= endEpoch)
-        if (inRange && !byEpoch.has(t)) {
-          byEpoch.set(t, {
-            time: t,
-            open: Number(c.open),
-            high: Number(c.high),
-            low: Number(c.low),
-            close: Number(c.close),
-          })
+        if (inRange) {
+          if (!byEpoch.has(t)) {
+            byEpoch.set(t, {
+              time: t,
+              open: Number(c.open),
+              high: Number(c.high),
+              low: Number(c.low),
+              close: Number(c.close),
+            })
+          } else {
+            const exist = byEpoch.get(t)
+            exist.high = Math.max(exist.high, Number(c.high))
+            exist.low = Math.min(exist.low, Number(c.low))
+            exist.close = Number(c.close)
+          }
         }
       }
 
