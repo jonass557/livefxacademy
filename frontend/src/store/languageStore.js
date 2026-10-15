@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { safeStorage } from '../lib/safeStorage';
 
 // Traductions complètes FR/EN
 const translations = {
@@ -776,6 +777,7 @@ export const useLanguageStore = create(
     }),
     {
       name: 'livefx-language',
+      storage: createJSONStorage(() => safeStorage),
     }
   )
 );

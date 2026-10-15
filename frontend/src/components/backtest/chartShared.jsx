@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import api, { API_URL } from '../../lib/api';
 import { demoApi } from '../../lib/demoApi';
 import { useLanguageStore } from '../../store/languageStore';
+import { useAuthStore } from '../../store/authStore';
+
+// Jeton d'authentification réel (stocké par le store persistant, pas sous la clé 'token').
+// Protégé : un accès au stockage bloqué (Safari iOS) ne doit jamais faire planter le graphique.
+const getAuthToken = () => {
+  try { return useAuthStore.getState().token || null; } catch (_) { return null; }
+};
 import { registerOverlay, registerIndicator, IndicatorSeries } from 'klinecharts';
 
 const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
@@ -3211,7 +3218,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
   // Charger depuis le backend si connecté
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (!token || !symbol || symbol === 'DEFAULT') return;
 
     let mounted = true;
@@ -3283,7 +3290,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     setAlerts((prev) => [newAlert, ...prev]);
 
     // Synchronisation backend (pour surveillance serveur + notification email)
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (token) {
       demoApi.createAlert({
         symbol,
@@ -3308,7 +3315,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
   // Supprimer une alerte
   const removeAlert = useCallback((id) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (token && id && !String(id).includes('_')) {
       demoApi.deleteAlert(id).catch(() => {});
     }
@@ -3325,7 +3332,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     setAlerts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, triggered: !a.triggered } : a))
     );
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (token && id && !String(id).includes('_')) {
       demoApi.toggleAlert(id).catch(() => {});
     }
@@ -3334,7 +3341,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
   // Supprimer toutes les alertes
   const clearAlerts = useCallback(() => {
     setAlerts([]);
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (token) {
       demoApi.clearAlerts(symbol).catch(() => {});
     }
@@ -3435,6 +3442,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     alerts,
     activeCount: alerts.filter((a) => !a.triggered).length,
     addAlert,
+    createAlert: async (data) => addAlert(data),
     removeAlert,
     toggleAlert,
     clearAlerts,
@@ -3755,10 +3763,14 @@ export function CreatePriceAlertDialog({
       note,
       notifyEmail,
     };
-    if (typeof onCreateAlert === 'function') {
-      await onCreateAlert(alertData);
-    } else if (alertsManager && typeof alertsManager.addAlert === 'function') {
-      alertsManager.addAlert(alertData);
+    try {
+      if (alertsManager && typeof alertsManager.addAlert === 'function') {
+        alertsManager.addAlert(alertData);
+      } else if (typeof onCreateAlert === 'function') {
+        await onCreateAlert(alertData);
+      }
+    } catch (err) {
+      console.warn('Création alerte:', err?.message || err);
     }
     onClose();
   };

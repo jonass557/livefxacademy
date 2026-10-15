@@ -70,12 +70,19 @@ api.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Token expired or invalid - logout user
+    // Seule une vraie session expirée (401) déconnecte l'utilisateur. Un 403 signifie
+    // « accès refusé » à une ressource précise : cela ne doit JAMAIS vider la session
+    // (c'était la cause des retours répétés à l'accueil/connexion sur le graphique).
+    // Les appels de fond (trading démo, backtest, marché, alertes) n'entraînent jamais
+    // de redirection : le composant concerné affiche simplement son erreur.
+    const status = error.response?.status;
+    const isBackgroundCall = /\/(demo|backtest|market|alerts|economic|announcements|branding)/.test(url);
+    if (status === 401 && !isBackgroundCall) {
       const currentPath = window.location.pathname;
       if (currentPath !== '/login' && currentPath !== '/register' && currentPath !== '/') {
         authNs.useAuthStore.getState().logout();
-        window.location.href = '/login';
+        // Navigation douce (sans rechargement complet, plus fiable sur Safari iOS) :
+        // ProtectedRoute redirige automatiquement dès que la session est vidée.
       }
     }
     return Promise.reject(error);

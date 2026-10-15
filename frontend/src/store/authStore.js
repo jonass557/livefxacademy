@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { safeStorage } from '../lib/safeStorage';
 
 export const useAuthStore = create(
   persist(
@@ -11,6 +12,7 @@ export const useAuthStore = create(
     }),
     {
       name: 'livefx-auth',
+      storage: createJSONStorage(() => safeStorage),
     }
   )
 );

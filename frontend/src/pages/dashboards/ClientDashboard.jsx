@@ -24,6 +24,7 @@ import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
 import TradingDemo from '../TradingDemo';
+import AppErrorBoundary from '../../components/AppErrorBoundary';
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
@@ -1622,14 +1623,14 @@ const ClientDashboard = () => {
                   >
                     <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back' : 'Retour'}
                   </button>
-                  {renderContent()}
+                  <AppErrorBoundary resetKey={activeSection}>{renderContent()}</AppErrorBoundary>
                 </>
               ) : (
                 <>
                   <Button variant="ghost" className="gap-2" onClick={handleGoBack}>
                     <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back' : 'Retour'}
                   </Button>
-                  {renderContent()}
+                  <AppErrorBoundary resetKey={activeSection}>{renderContent()}</AppErrorBoundary>
                 </>
               )}
             </div>
