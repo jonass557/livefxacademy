@@ -10,7 +10,7 @@ import {
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
   ChartErrorBoundary, Dropdown, usePriceAlerts, ChartAlertsMenu,
-  CreatePriceAlertDialog, ChartContextMenu,
+  CreatePriceAlertDialog, ChartContextMenu, setChartLatestPrice,
 } from './chartShared';
 import { useLanguageStore } from '../../store/languageStore';
 import {
@@ -105,7 +105,7 @@ export default function ReplayChart({
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
 
-  const overlayManager = useChartOverlayManager(chartRef, containerRef);
+  const overlayManager = useChartOverlayManager(chartRef, containerRef, { symbol: symbolName || 'REPLAY' });
 
   const klineData = useMemo(
     () => (candles || []).map((c) => ({
@@ -119,6 +119,16 @@ export default function ReplayChart({
     [candles]
   );
   const priceDigits = useMemo(() => detectPriceDigits(candles), [candles]);
+
+  // Synchronisation du dernier prix initial pour les tracés et positions Long/Short
+  useEffect(() => {
+    if (klineData && klineData.length > 0) {
+      const last = klineData[klineData.length - 1];
+      if (last?.close) {
+        setChartLatestPrice(symbolName || 'REPLAY', last.close);
+      }
+    }
+  }, [klineData, symbolName]);
 
   // Synchronisation lot initial prop
   useEffect(() => {
@@ -369,6 +379,7 @@ export default function ReplayChart({
     try {
       const chart = chartRef.current;
       if (chart && candle.close > 0) {
+        setChartLatestPrice(symbolName || 'REPLAY', candle.close);
         const longOverlays = chart.getOverlayList?.({ name: 'positionLong' }) || [];
         const shortOverlays = chart.getOverlayList?.({ name: 'positionShort' }) || [];
         const allPos = [...longOverlays, ...shortOverlays];

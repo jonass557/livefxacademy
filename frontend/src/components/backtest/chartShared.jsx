@@ -21,6 +21,28 @@ import {
   Trash2, Clock, Route, Bell, BellRing, Volume2, Plus, Mail,
 } from 'lucide-react';
 
+// ---- Store réactif du dernier prix pour l'évolution dynamique des trades (Positions Long/Short TradingView) ----
+const latestPriceMap = new Map();
+
+export const setChartLatestPrice = (symbol, price) => {
+  const p = Number(price);
+  if (Number.isFinite(p) && p > 0) {
+    if (symbol) {
+      const key = String(symbol).toUpperCase().replace(/[\/\s_-]/g, '');
+      latestPriceMap.set(key, p);
+    }
+    latestPriceMap.set('__LAST__', p);
+  }
+};
+
+export const getChartLatestPrice = (symbol) => {
+  if (symbol) {
+    const key = String(symbol).toUpperCase().replace(/[\/\s_-]/g, '');
+    if (latestPriceMap.has(key)) return latestPriceMap.get(key);
+  }
+  return latestPriceMap.get('__LAST__') ?? null;
+};
+
 // ---- Constantes et Thèmes (façon MT4 / MT5 & TradingView) ----
 
 export const CHART_STYLE_STORAGE_KEY = 'livefx_chart_custom_styles_v2';
@@ -637,7 +659,7 @@ export function ensureCustomOverlaysAndIndicators() {
       const pTp = coordinates[1];
       const pSl = coordinates[2] || { x: pTp.x, y: pEntry.y + (pEntry.y - pTp.y) * 0.5 };
       const left = Math.min(pEntry.x, pTp.x, pSl.x);
-      const right = Math.max(pEntry.x + 130, pTp.x, pSl.x);
+      const right = Math.max(pEntry.x + 140, pTp.x, pSl.x);
 
       const entryPrice = overlay.points[0]?.value || 0;
       const tpPrice = overlay.points[1]?.value || 0;
@@ -646,8 +668,12 @@ export function ensureCustomOverlaysAndIndicators() {
       const reward = Math.abs(tpPrice - entryPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
 
-      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché
-      const currentPrice = overlay.extendData?.currentPrice != null ? Number(overlay.extendData.currentPrice) : null;
+      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché avec fallback garanti
+      const rawCurrent = overlay.extendData?.currentPrice;
+      const currentPrice = (rawCurrent != null && Number.isFinite(Number(rawCurrent)))
+        ? Number(rawCurrent)
+        : (getChartLatestPrice(overlay.extendData?.symbol) ?? getChartLatestPrice() ?? entryPrice);
+
       let pCurrentY = null;
       if (currentPrice != null && yAxis?.convertToPixel) {
         pCurrentY = yAxis.convertToPixel(currentPrice);
@@ -669,7 +695,13 @@ export function ensureCustomOverlaysAndIndicators() {
         styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.16)', borderColor: '#ef4444', borderSize: 1 },
       });
 
-      // Si le trade a évolué : colorer la zone parcourue plus foncée (gain ou perte réalisée)
+      // Calcul PnL et pips
+      const diff = currentPrice - entryPrice;
+      const pct = entryPrice > 0 ? (diff / entryPrice) * 100 : 0;
+      const pipSize = entryPrice > 500 ? (entryPrice > 5000 ? 1 : 0.1) : (entryPrice > 20 ? 0.01 : 0.0001);
+      const pips = diff / pipSize;
+
+      // Évolution dynamique du prix (zone parcourue plus foncée + ligne pointillée + badge)
       if (pCurrentY != null && !isNaN(pCurrentY)) {
         if (currentPrice > entryPrice) {
           // Évolution positive vers le TP : zone verte plus foncée
@@ -677,7 +709,7 @@ export function ensureCustomOverlaysAndIndicators() {
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.42)' },
+            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.45)' },
             ignoreEvent: true,
           });
         } else if (currentPrice < entryPrice) {
@@ -686,16 +718,42 @@ export function ensureCustomOverlaysAndIndicators() {
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.42)' },
+            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.45)' },
             ignoreEvent: true,
           });
         }
 
-        // Ligne de pointillés au niveau du prix actuel marquant l'évolution exacte
+        // Ligne pointillée marquant le niveau actuel d'évolution du trade
+        const lineColor = currentPrice >= entryPrice ? '#22c55e' : '#ef4444';
         figures.push({
           type: 'line',
           attrs: { coordinates: [{ x: left, y: pCurrentY }, { x: right, y: pCurrentY }] },
-          styles: { size: 1.5, color: '#38bdf8', style: 'dashed', dashedValue: [5, 4] },
+          styles: { size: 1.5, color: lineColor, style: 'dashed', dashedValue: [5, 4] },
+          ignoreEvent: true,
+        });
+
+        // Trajectoire directe depuis l'entrée vers l'évolution actuelle
+        const pEvolutionX = Math.min(right, left + (right - left) * 0.65);
+        figures.push({
+          type: 'line',
+          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: pEvolutionX, y: pCurrentY }] },
+          styles: { size: 1.2, color: lineColor, style: 'dashed', dashedValue: [3, 3] },
+          ignoreEvent: true,
+        });
+
+        // Badge d'évolution du trade (Gain/Perte en pips et %)
+        const badgeText = `${diff >= 0 ? '+' : ''}${pips.toFixed(1)} pips (${diff >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+        const badgeY = Math.max(pTp.y + 16, Math.min(pSl.y - 16, pCurrentY));
+        figures.push({
+          type: 'rect',
+          attrs: { x: right - 130, y: badgeY - 10, width: 125, height: 20 },
+          styles: { style: 'fill', color: currentPrice >= entryPrice ? 'rgba(22, 163, 74, 0.92)' : 'rgba(220, 38, 38, 0.92)' },
+          ignoreEvent: true,
+        });
+        figures.push({
+          type: 'text',
+          attrs: { x: right - 68, y: badgeY, text: badgeText, align: 'center', baseline: 'middle' },
+          styles: { color: '#ffffff', size: 10, weight: 'bold' },
           ignoreEvent: true,
         });
       }
@@ -707,11 +765,18 @@ export function ensureCustomOverlaysAndIndicators() {
         styles: { size: 1.5, color: '#3b82f6' },
       });
 
-      // Badge R:R
+      // Badge R:R et TP
       figures.push({
         type: 'text',
-        attrs: { x: left + 6, y: pTp.y + 14, text: `R:R ${rr}` },
+        attrs: { x: left + 6, y: pTp.y + 14, text: `TP | R:R ${rr}` },
         styles: { color: '#22c55e', size: 11, weight: 'bold' },
+      });
+
+      // Badge SL
+      figures.push({
+        type: 'text',
+        attrs: { x: left + 6, y: pSl.y - 6, text: `SL` },
+        styles: { color: '#ef4444', size: 11, weight: 'bold' },
       });
 
       // Points de contrôle
@@ -783,7 +848,7 @@ export function ensureCustomOverlaysAndIndicators() {
       const pTp = coordinates[1];
       const pSl = coordinates[2] || { x: pTp.x, y: pEntry.y - (pTp.y - pEntry.y) * 0.5 };
       const left = Math.min(pEntry.x, pTp.x, pSl.x);
-      const right = Math.max(pEntry.x + 130, pTp.x, pSl.x);
+      const right = Math.max(pEntry.x + 140, pTp.x, pSl.x);
 
       const entryPrice = overlay.points[0]?.value || 0;
       const tpPrice = overlay.points[1]?.value || 0;
@@ -792,8 +857,12 @@ export function ensureCustomOverlaysAndIndicators() {
       const reward = Math.abs(entryPrice - tpPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
 
-      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché
-      const currentPrice = overlay.extendData?.currentPrice != null ? Number(overlay.extendData.currentPrice) : null;
+      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché avec fallback garanti
+      const rawCurrent = overlay.extendData?.currentPrice;
+      const currentPrice = (rawCurrent != null && Number.isFinite(Number(rawCurrent)))
+        ? Number(rawCurrent)
+        : (getChartLatestPrice(overlay.extendData?.symbol) ?? getChartLatestPrice() ?? entryPrice);
+
       let pCurrentY = null;
       if (currentPrice != null && yAxis?.convertToPixel) {
         pCurrentY = yAxis.convertToPixel(currentPrice);
@@ -815,7 +884,13 @@ export function ensureCustomOverlaysAndIndicators() {
         styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.16)', borderColor: '#ef4444', borderSize: 1 },
       });
 
-      // Si le trade a évolué : colorer la zone parcourue plus foncée (gain ou perte réalisée)
+      // Calcul PnL et pips pour Short : profit si currentPrice < entryPrice
+      const diff = entryPrice - currentPrice;
+      const pct = entryPrice > 0 ? (diff / entryPrice) * 100 : 0;
+      const pipSize = entryPrice > 500 ? (entryPrice > 5000 ? 1 : 0.1) : (entryPrice > 20 ? 0.01 : 0.0001);
+      const pips = diff / pipSize;
+
+      // Évolution dynamique du prix (zone parcourue plus foncée + ligne pointillée + badge)
       if (pCurrentY != null && !isNaN(pCurrentY)) {
         if (currentPrice < entryPrice) {
           // Évolution positive vers le TP : zone verte plus foncée
@@ -823,7 +898,7 @@ export function ensureCustomOverlaysAndIndicators() {
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.42)' },
+            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.45)' },
             ignoreEvent: true,
           });
         } else if (currentPrice > entryPrice) {
@@ -832,16 +907,42 @@ export function ensureCustomOverlaysAndIndicators() {
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.42)' },
+            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.45)' },
             ignoreEvent: true,
           });
         }
 
-        // Ligne de pointillés au niveau du prix actuel
+        // Ligne pointillée marquant le niveau actuel d'évolution du trade
+        const lineColor = currentPrice <= entryPrice ? '#22c55e' : '#ef4444';
         figures.push({
           type: 'line',
           attrs: { coordinates: [{ x: left, y: pCurrentY }, { x: right, y: pCurrentY }] },
-          styles: { size: 1.5, color: '#38bdf8', style: 'dashed', dashedValue: [5, 4] },
+          styles: { size: 1.5, color: lineColor, style: 'dashed', dashedValue: [5, 4] },
+          ignoreEvent: true,
+        });
+
+        // Trajectoire directe depuis l'entrée vers l'évolution actuelle
+        const pEvolutionX = Math.min(right, left + (right - left) * 0.65);
+        figures.push({
+          type: 'line',
+          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: pEvolutionX, y: pCurrentY }] },
+          styles: { size: 1.2, color: lineColor, style: 'dashed', dashedValue: [3, 3] },
+          ignoreEvent: true,
+        });
+
+        // Badge d'évolution du trade (Gain/Perte en pips et %)
+        const badgeText = `${diff >= 0 ? '+' : ''}${pips.toFixed(1)} pips (${diff >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+        const badgeY = Math.max(pSl.y + 16, Math.min(pTp.y - 16, pCurrentY));
+        figures.push({
+          type: 'rect',
+          attrs: { x: right - 130, y: badgeY - 10, width: 125, height: 20 },
+          styles: { style: 'fill', color: currentPrice <= entryPrice ? 'rgba(22, 163, 74, 0.92)' : 'rgba(220, 38, 38, 0.92)' },
+          ignoreEvent: true,
+        });
+        figures.push({
+          type: 'text',
+          attrs: { x: right - 68, y: badgeY, text: badgeText, align: 'center', baseline: 'middle' },
+          styles: { color: '#ffffff', size: 10, weight: 'bold' },
           ignoreEvent: true,
         });
       }
@@ -853,11 +954,18 @@ export function ensureCustomOverlaysAndIndicators() {
         styles: { size: 1.5, color: '#3b82f6' },
       });
 
-      // Badge R:R
+      // Badge R:R et TP
       figures.push({
         type: 'text',
-        attrs: { x: left + 6, y: pTp.y - 6, text: `R:R ${rr}` },
+        attrs: { x: left + 6, y: pTp.y - 6, text: `TP | R:R ${rr}` },
         styles: { color: '#22c55e', size: 11, weight: 'bold' },
+      });
+
+      // Badge SL
+      figures.push({
+        type: 'text',
+        attrs: { x: left + 6, y: pSl.y + 14, text: `SL` },
+        styles: { color: '#ef4444', size: 11, weight: 'bold' },
       });
 
       // Points de contrôle
@@ -1929,7 +2037,7 @@ export const isOverlayDrawing = (ov) => {
 // - Manipulation fluide des poignées agrandies
 // - Blocage du scroll lors de la manipulation pour éviter le conflit tactile sur mobile
 // - Étirement immédiat au premier point (tactile et souris)
-export function useChartOverlayManager(chartRef, containerRef) {
+export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   const [selectedOverlay, setSelectedOverlay] = useState(null);
   const drawingOverlayIdRef = useRef(null);
   const touchDragInfoRef = useRef(null);
@@ -2013,10 +2121,19 @@ export function useChartOverlayManager(chartRef, containerRef) {
     const chart = chartRef?.current;
     if (!chart) return null;
 
+    const targetSymbol = options?.symbol || extra.extendData?.symbol;
+    const initialPrice = extra.extendData?.currentPrice ?? getChartLatestPrice(targetSymbol);
+    const extendData = {
+      ...(targetSymbol ? { symbol: targetSymbol } : {}),
+      ...(initialPrice != null ? { currentPrice: initialPrice } : {}),
+      ...(extra.extendData || {}),
+    };
+
     const overlayConfig = {
       name,
       groupId: 'draw',
       ...extra,
+      extendData,
       onSelected: ({ overlay }) => {
         setSelectedOverlay(overlay);
         return true;

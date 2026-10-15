@@ -15,7 +15,7 @@ import {
   useChartStyles, ChartStyleButton, ChartStyleSettingsModal,
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
   ChartErrorBoundary, usePriceAlerts, ChartAlertsMenu,
-  CreatePriceAlertDialog, ChartContextMenu,
+  CreatePriceAlertDialog, ChartContextMenu, setChartLatestPrice,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
 import { useLanguageStore } from '../../store/languageStore';
@@ -30,6 +30,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   const lastRef = useRef(null);
   const digitsSetRef = useRef(false);
   const panesRef = useRef({});
+  const loadRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -56,7 +57,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
 
-  const overlayManager = useChartOverlayManager(chartRef, containerRef);
+  const overlayManager = useChartOverlayManager(chartRef, containerRef, { symbol });
 
   useEffect(() => {
     const el = containerRef.current;
@@ -92,14 +93,33 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     return 60 * 1000;
   };
 
+  // Synchronise le dernier cours sur tous les outils de position Long/Short pour afficher leur évolution en continu
+  const syncPositionOverlays = useCallback((price) => {
+    const chart = chartRef.current;
+    if (!chart || price == null || !Number.isFinite(Number(price))) return;
+    try {
+      const longOverlays = chart.getOverlayList?.({ name: 'positionLong' }) || [];
+      const shortOverlays = chart.getOverlayList?.({ name: 'positionShort' }) || [];
+      const allPos = [...longOverlays, ...shortOverlays];
+      if (allPos.length > 0) {
+        allPos.forEach((ov) => {
+          chart.overrideOverlay?.({
+            id: ov.id,
+            extendData: { ...(ov.extendData || {}), currentPrice: Number(price) },
+          });
+        });
+      }
+    } catch (_) {}
+  }, []);
+
   useEffect(() => {
     if (!symbol || !timeframe) return;
     let cancelled = false;
     digitsSetRef.current = false;
 
-    const load = async (isBackground = false) => {
+    const load = async (isBackground = false, retryCount = 0) => {
       try {
-        if (!isBackground) setLoading(true);
+        if (!isBackground && retryCount === 0) setLoading(true);
         const data = await demoApi.candles(symbol, timeframe, 300);
         if (cancelled || !chartRef.current) return;
         const raw = data.candles || [];
@@ -173,20 +193,34 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
               }
             }
           }
+
+          // Mise à jour immédiate du dernier prix pour l'évolution des positions Long/Short
+          const currentClose = kline[kline.length - 1]?.close;
+          if (currentClose) {
+            setChartLatestPrice(symbol, currentClose);
+            syncPositionOverlays(currentClose);
+          }
         }
         setError(null);
       } catch (err) {
-        if (!cancelled && !isBackground) setError(err.response?.data?.message || 'Données indisponibles');
+        if (!cancelled && !isBackground) {
+          if (retryCount < 2) {
+            setTimeout(() => { if (!cancelled) load(false, retryCount + 1); }, 1000);
+            return;
+          }
+          setError(err.response?.data?.message || 'Données indisponibles');
+        }
       } finally {
-        if (!cancelled && !isBackground) setLoading(false);
+        if (!cancelled && !isBackground && (retryCount >= 2 || !error)) setLoading(false);
       }
     };
 
+    loadRef.current = load;
     load(false);
     clearInterval(timerRef.current);
     timerRef.current = setInterval(() => load(true), RELOAD_MS);
     return () => { cancelled = true; clearInterval(timerRef.current); };
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, syncPositionOverlays]);
 
   // Traitement instantané du tick de prix (ouverture nouvelle bougie ou mise à jour courante)
   const processLivePriceTick = useCallback((q) => {
@@ -231,20 +265,9 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
       chart.updateData(updated);
     }
 
-    // Mise à jour en temps réel de l'évolution du prix sur les positions Long / Short
-    try {
-      const longOverlays = chart.getOverlayList?.({ name: 'positionLong' }) || [];
-      const shortOverlays = chart.getOverlayList?.({ name: 'positionShort' }) || [];
-      const allPos = [...longOverlays, ...shortOverlays];
-      if (allPos.length > 0) {
-        allPos.forEach((ov) => {
-          chart.overrideOverlay?.({
-            id: ov.id,
-            extendData: { ...(ov.extendData || {}), currentPrice: mid },
-          });
-        });
-      }
-    } catch (_) {}
+    // Mise à jour en temps réel du store de prix et de l'évolution sur les positions Long / Short
+    setChartLatestPrice(symbol, mid);
+    syncPositionOverlays(mid);
 
     // Détection immédiate d'alertes de prix (TradingView / MT5)
     const triggered = alertsManager.checkLivePrice(mid);
@@ -258,7 +281,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
         );
       });
     }
-  }, [symbol, timeframe, alertsManager, isEnglish, symbolName]);
+  }, [symbol, timeframe, alertsManager, isEnglish, symbolName, syncPositionOverlays]);
 
   // Conversion fiable de pixel Y en niveau de prix sur l'échelle
   const getPriceFromY = useCallback((clientY) => {
@@ -455,8 +478,22 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             </div>
           )}
           {error && !loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-30">
-              <p className="text-sm text-destructive">{error}</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-xs z-30 p-4 text-center">
+              <p className="text-sm font-medium text-destructive mb-3">{error}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setError(null);
+                  setLoading(true);
+                  if (typeof loadRef.current === 'function') {
+                    loadRef.current(false, 2);
+                  }
+                }}
+                className="gap-2 text-xs"
+              >
+                {isEnglish ? 'Retry' : 'Réessayer'}
+              </Button>
             </div>
           )}
 

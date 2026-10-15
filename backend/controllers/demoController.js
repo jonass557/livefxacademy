@@ -96,13 +96,49 @@ exports.getCandles = async (req, res) => {
   try {
     const { symbol, timeframe = 'H1', count = 300 } = req.query;
     if (!symbol) return res.status(400).json({ message: 'symbol requis' });
-    const instrument = await Instrument.findOne({ symbol, enabled: true });
-    if (!instrument) return res.status(404).json({ message: 'Instrument introuvable' });
-    if (!instrument.provider_symbol) return res.json({ symbol, timeframe, candles: [] });
+
+    const rawSym = String(symbol || '').trim();
+    const cleanSym = rawSym.replace(/[\/\s_-]/g, '').toUpperCase();
+
+    let instrument = await Instrument.findOne({
+      $or: [
+        { symbol: rawSym },
+        { symbol: cleanSym },
+        { symbol: new RegExp(`^${cleanSym}$`, 'i') },
+        { name: rawSym },
+        { provider_symbol: rawSym },
+        { provider_symbol: cleanSym },
+        { provider_symbol: `frx${cleanSym}` }
+      ],
+      enabled: true
+    });
+
+    if (!instrument) {
+      instrument = await Instrument.findOne({
+        $or: [
+          { symbol: rawSym },
+          { symbol: cleanSym },
+          { symbol: new RegExp(`^${cleanSym}$`, 'i') },
+          { provider_symbol: cleanSym },
+          { provider_symbol: `frx${cleanSym}` }
+        ]
+      });
+    }
+
+    if (!instrument) {
+      // Instrument virtuel pour assurer l'affichage fluide du graphique sans bloquer l'utilisateur
+      instrument = {
+        symbol: cleanSym,
+        name: rawSym,
+        provider: 'deriv',
+        provider_symbol: `frx${cleanSym}`
+      };
+    }
+
     const candles = await getCandles(instrument, timeframe, count);
-    res.json({ symbol, symbol_name: instrument.name, timeframe, candles });
+    res.json({ symbol: instrument.symbol || cleanSym, symbol_name: instrument.name || rawSym, timeframe, candles: candles || [] });
   } catch (err) {
-    console.error('demo getCandles:', err.message);
+    console.error('demo getCandles error:', err.message);
     res.status(502).json({ message: err.message || 'Données indisponibles' });
   }
 };
