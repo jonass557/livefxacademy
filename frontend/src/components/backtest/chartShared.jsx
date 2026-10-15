@@ -1910,6 +1910,19 @@ export function getToolLabel(name) {
   return name || 'Dessin';
 }
 
+// Vérification sécurisée du statut de dessin d'un overlay pour éviter tout plantage (TypeError)
+export const isOverlayDrawing = (ov) => {
+  if (!ov) return false;
+  if (typeof ov.isDrawing === 'function') {
+    try {
+      return Boolean(ov.isDrawing());
+    } catch (_) {
+      return false;
+    }
+  }
+  return Boolean(ov.isDrawing);
+};
+
 // Hook de gestion des tracés et outils graphiques :
 // - Sélection au clic
 // - Suppression via bouton flottant, touche Suppr / Backspace, ou double-clic
@@ -1982,8 +1995,10 @@ export function useChartOverlayManager(chartRef, containerRef) {
         e.preventDefault();
         deleteSelected();
       } else if (e.key === 'Escape' || e.key === 'Enter') {
-        if (selectedOverlay?.isDrawing?.()) {
-          selectedOverlay.forceComplete?.();
+        if (isOverlayDrawing(selectedOverlay)) {
+          if (typeof selectedOverlay?.forceComplete === 'function') {
+            try { selectedOverlay.forceComplete(); } catch (_) {}
+          }
         } else {
           setSelectedOverlay(null);
         }
@@ -2015,16 +2030,20 @@ export function useChartOverlayManager(chartRef, containerRef) {
         return true;
       },
       onDoubleClick: ({ overlay }) => {
-        if (overlay?.isDrawing?.()) {
-          overlay.forceComplete?.();
+        if (isOverlayDrawing(overlay)) {
+          if (typeof overlay?.forceComplete === 'function') {
+            try { overlay.forceComplete(); } catch (_) {}
+          }
           return true;
         }
         deleteOverlay(overlay);
         return true;
       },
       onRightClick: ({ overlay }) => {
-        if (overlay?.isDrawing?.()) {
-          overlay.forceComplete?.();
+        if (isOverlayDrawing(overlay)) {
+          if (typeof overlay?.forceComplete === 'function') {
+            try { overlay.forceComplete(); } catch (_) {}
+          }
           return true;
         }
         deleteOverlay(overlay);
@@ -2038,8 +2057,8 @@ export function useChartOverlayManager(chartRef, containerRef) {
       try {
         chart.setScrollEnabled?.(false);
       } catch (_) {}
-      const created = chart.getOverlayById?.(id);
-      if (created) setSelectedOverlay(created);
+      // L'outil vient d'être armé : on ne le sélectionne PAS prématurément tant que l'utilisateur
+      // n'a pas posé le premier point sur le graphique, évitant ainsi tout crash de rendu.
     }
     return id;
   }, [chartRef, deleteOverlay]);
@@ -2112,8 +2131,10 @@ export function useChartOverlayManager(chartRef, containerRef) {
               id: info.overlayId,
               points: [info.pt1, pt2],
             });
-            overlay.forceComplete?.();
-            chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.();
+            if (typeof overlay?.forceComplete === 'function') {
+              try { overlay.forceComplete(); } catch (_) {}
+            }
+            try { chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.(); } catch (_) {}
             setSelectedOverlay(overlay);
           }
         } catch (_) {}
@@ -2183,15 +2204,15 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Style local pour l'édition et la synchronisation immédiate (lit ligne ou polygone/rect)
-  const currentLineStyle = overlay.styles?.line || {};
-  const currentPolyStyle = overlay.styles?.polygon || overlay.styles?.rect || {};
+  const currentLineStyle = overlay?.styles?.line || {};
+  const currentPolyStyle = overlay?.styles?.polygon || overlay?.styles?.rect || {};
   const [color, setColor] = useState(currentPolyStyle.borderColor || currentLineStyle.color || '#3b82f6');
   const [size, setSize] = useState(currentPolyStyle.borderSize || currentLineStyle.size || 2.5);
   const [dashStyle, setDashStyle] = useState(currentPolyStyle.borderStyle || currentLineStyle.style || 'solid');
 
   useEffect(() => {
-    const sLine = overlay.styles?.line || {};
-    const sPoly = overlay.styles?.polygon || overlay.styles?.rect || {};
+    const sLine = overlay?.styles?.line || {};
+    const sPoly = overlay?.styles?.polygon || overlay?.styles?.rect || {};
     const c = sPoly.borderColor || sLine.color;
     if (c) setColor(c);
     const sz = sPoly.borderSize || sLine.size;
@@ -2199,7 +2220,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     const st = sPoly.borderStyle || sLine.style;
     if (st) setDashStyle(st);
     setSettingsOpen(false);
-  }, [overlay.id]);
+  }, [overlay?.id]);
 
   const applyOverlayStyle = (newColor, newSize, newDashStyle) => {
     setColor(newColor);
@@ -2265,12 +2286,14 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
   };
 
   const handleFinishDrawing = () => {
-    if (overlay.forceComplete) {
-      overlay.forceComplete();
+    if (typeof overlay?.forceComplete === 'function') {
+      try {
+        overlay.forceComplete();
+      } catch (_) {}
     }
   };
 
-  const isDrawing = overlay.isDrawing?.();
+  const isDrawing = isOverlayDrawing(overlay);
 
   return (
     <div className={`pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center ${className}`}>
@@ -3204,6 +3227,7 @@ export const playAlertSound = () => {
  * Synchronise les lignes d'alerte sur le graphique KlineCharts et surveille les franchissements.
  */
 export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
+  const token = useAuthStore((s) => s.token);
   const storageKey = `livefx_chart_alerts_${symbol}`;
   const [alerts, setAlerts] = useState(() => {
     try {
@@ -3216,24 +3240,32 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
   const lastCheckedPriceRef = useRef(null);
 
-  // Charger depuis le backend si connecté
+  // Charger depuis le backend dès que connecté ou sur changement d'appareil / symbole
   useEffect(() => {
-    const token = getAuthToken();
-    if (!token || !symbol || symbol === 'DEFAULT') return;
+    const activeToken = token || getAuthToken();
+    if (!activeToken || !symbol || symbol === 'DEFAULT') return;
 
     let mounted = true;
     demoApi.alerts(symbol).then((remoteAlerts) => {
       if (!mounted || !Array.isArray(remoteAlerts)) return;
       setAlerts((local) => {
         const map = new Map();
-        local.forEach((a) => map.set(String(a.id), a));
+        // Les alertes distantes du compte sur le serveur font autorité absolue pour synchroniser les appareils
         remoteAlerts.forEach((a) => map.set(String(a.id), a));
+        // Conserver les alertes locales temporaires créées il y a quelques secondes
+        local.forEach((a) => {
+          if (String(a.id).includes('_') && !map.has(String(a.id))) {
+            map.set(String(a.id), a);
+          }
+        });
         return Array.from(map.values());
       });
-    }).catch(() => {});
+    }).catch((err) => {
+      console.warn('Sync alerte backend get:', err?.message || err);
+    });
 
     return () => { mounted = false; };
-  }, [symbol]);
+  }, [symbol, token]);
 
   // Sauvegarder dans le localStorage
   useEffect(() => {
@@ -3289,9 +3321,9 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
     setAlerts((prev) => [newAlert, ...prev]);
 
-    // Synchronisation backend (pour surveillance serveur + notification email)
-    const token = getAuthToken();
-    if (token) {
+    // Synchronisation backend (pour surveillance serveur + synchronisation multi-appareils + notification email)
+    const activeToken = token || getAuthToken();
+    if (activeToken) {
       demoApi.createAlert({
         symbol,
         target_price: numPrice,
@@ -3310,13 +3342,13 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     }
 
     return newAlert;
-  }, [symbol]);
+  }, [symbol, token]);
 
   // Supprimer une alerte
   const removeAlert = useCallback((id) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
-    const token = getAuthToken();
-    if (token && id && !String(id).includes('_')) {
+    const activeToken = token || getAuthToken();
+    if (activeToken && id && !String(id).includes('_')) {
       demoApi.deleteAlert(id).catch(() => {});
     }
     const chart = chartRef?.current;
@@ -3325,24 +3357,24 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
         chart.removeOverlay({ id: `alert_${id}` });
       } catch (_) {}
     }
-  }, [chartRef]);
+  }, [chartRef, token]);
 
   // Réinitialiser / basculer le statut d'une alerte
   const toggleAlert = useCallback((id) => {
     setAlerts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, triggered: !a.triggered } : a))
     );
-    const token = getAuthToken();
-    if (token && id && !String(id).includes('_')) {
+    const activeToken = token || getAuthToken();
+    if (activeToken && id && !String(id).includes('_')) {
       demoApi.toggleAlert(id).catch(() => {});
     }
-  }, []);
+  }, [token]);
 
   // Supprimer toutes les alertes
   const clearAlerts = useCallback(() => {
     setAlerts([]);
-    const token = getAuthToken();
-    if (token) {
+    const activeToken = token || getAuthToken();
+    if (activeToken) {
       demoApi.clearAlerts(symbol).catch(() => {});
     }
     const chart = chartRef?.current;
@@ -3351,7 +3383,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
         chart.removeOverlay({ name: 'priceAlertLine' });
       } catch (_) {}
     }
-  }, [chartRef, symbol]);
+  }, [chartRef, symbol, token]);
 
   // Vérifier les alertes en temps réel sur un tick / prix direct (Trading Démo)
   const checkLivePrice = useCallback((currentPrice) => {

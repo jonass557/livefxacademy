@@ -93,6 +93,83 @@ router.get('/', optionalAuth, async (req, res) => {
 });
 
 /**
+ * Route publique de partage d'annonce (Open Graph pour WhatsApp, Facebook, Telegram, Twitter, etc.)
+ * Permet d'afficher directement le flyer/affiche de la publication au lieu du logo générique du site.
+ */
+router.get('/share/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await AnnouncementVideo.findById(id);
+    const origin = process.env.FRONTEND_URL || 'https://livefx-trading.com';
+    const redirectUrl = `${origin}/#announcement-${id}`;
+
+    if (!post) {
+      return res.redirect(origin);
+    }
+
+    let flyerUrl = post.cloudinary_url || '';
+    if (flyerUrl && !flyerUrl.startsWith('http')) {
+      const apiBase = process.env.API_PUBLIC_URL || (req.protocol + '://' + req.get('host'));
+      flyerUrl = `${apiBase}${flyerUrl.startsWith('/') ? '' : '/'}${flyerUrl}`;
+    }
+    if (!flyerUrl) {
+      flyerUrl = `${origin}/logo.png`;
+    }
+
+    const escapeHtml = (str) => (str || '').replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+
+    const title = escapeHtml(post.title || 'Publication LivefxTrading');
+    const desc = escapeHtml((post.description || 'Découvrez cette actualité sur LivefxTrading').slice(0, 240));
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title} - LivefxTrading</title>
+  <meta name="description" content="${desc}">
+
+  <!-- Open Graph / Facebook / WhatsApp -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="LivefxTrading">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${desc}">
+  <meta property="og:image" content="${flyerUrl}">
+  <meta property="og:image:secure_url" content="${flyerUrl}">
+  <meta property="og:url" content="${req.protocol}://${req.get('host')}/api/announcements/share/${id}">
+
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${desc}">
+  <meta name="twitter:image" content="${flyerUrl}">
+
+  <meta http-equiv="refresh" content="0;url=${redirectUrl}">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #090d16; color: #f8fafc; text-align: center; padding: 40px 20px;">
+  <div style="max-width: 500px; margin: 0 auto; background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    <img src="${flyerUrl}" alt="${title}" style="max-width: 100%; max-height: 280px; object-fit: contain; border-radius: 12px; margin-bottom: 16px;" onerror="this.src='${origin}/logo.png'">
+    <h1 style="font-size: 18px; font-weight: bold; margin: 0 0 10px 0;">${title}</h1>
+    <p style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin: 0 0 20px 0;">${desc}</p>
+    <a href="${redirectUrl}" style="display: inline-block; background: #f59e0b; color: #0f172a; font-weight: bold; padding: 10px 20px; border-radius: 8px; text-decoration: none;">Voir la publication sur LivefxTrading</a>
+  </div>
+  <script>
+    window.location.replace("${redirectUrl}");
+  </script>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    console.error('Share announcement error:', err);
+    res.redirect(process.env.FRONTEND_URL || 'https://livefx-trading.com');
+  }
+});
+
+/**
  * @swagger
  * /api/announcements/:id/view:
  *   post:

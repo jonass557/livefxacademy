@@ -377,7 +377,16 @@ function publicTrade(t) {
 exports.getAlerts = async (req, res) => {
   try {
     const filter = { user_id: req.user.id };
-    if (req.query.symbol) filter.symbol = req.query.symbol;
+    if (req.query.symbol) {
+      const raw = String(req.query.symbol).trim();
+      const clean = raw.replace(/[\/\s_-]/g, '').toUpperCase();
+      filter.$or = [
+        { symbol: raw },
+        { symbol: clean },
+        { symbol: new RegExp(`^${clean}$`, 'i') },
+        { symbol: new RegExp(`^${raw}$`, 'i') },
+      ];
+    }
     const alerts = await PriceAlert.find(filter).sort({ created_at: -1 });
     res.json(alerts.map(publicAlert));
   } catch (err) {
@@ -397,12 +406,14 @@ exports.createAlert = async (req, res) => {
     if (!symbol || !tp || isNaN(tp)) {
       return res.status(400).json({ message: 'Symbole et prix cible valides requis' });
     }
-    const quote = liveFeed.getQuote(symbol);
+    const rawSym = String(symbol).trim();
+    const cleanSym = rawSym.replace(/[\/\s_-]/g, '').toUpperCase();
+    const quote = liveFeed.getQuote(cleanSym) || liveFeed.getQuote(rawSym);
     const created_price = quote?.mid || null;
 
     const alert = await PriceAlert.create({
       user_id: req.user.id,
-      symbol,
+      symbol: cleanSym || rawSym,
       target_price: tp,
       condition,
       trigger_frequency: ['once', 'every_time'].includes(trigger_frequency) ? trigger_frequency : 'once',
@@ -450,7 +461,15 @@ exports.deleteAlert = async (req, res) => {
 exports.clearAlerts = async (req, res) => {
   try {
     const filter = { user_id: req.user.id };
-    if (req.query.symbol) filter.symbol = req.query.symbol;
+    if (req.query.symbol) {
+      const raw = String(req.query.symbol).trim();
+      const clean = raw.replace(/[\/\s_-]/g, '').toUpperCase();
+      filter.$or = [
+        { symbol: raw },
+        { symbol: clean },
+        { symbol: new RegExp(`^${clean}$`, 'i') },
+      ];
+    }
     await PriceAlert.deleteMany(filter);
     res.json({ message: 'Alertes effacées' });
   } catch (err) {

@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import api from '../lib/api';
+import api, { API_URL } from '../lib/api';
 import {
   Heart, Share2, MessageSquare, Send, Check, Copy,
-  ExternalLink, Reply, User, ShieldCheck
+  ExternalLink, Reply, User, ShieldCheck, Image as ImageIcon
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -54,7 +54,22 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
     }
   };
 
+  // URL absolue vers le flyer/affiche de la publication
+  const getFlyerUrl = () => {
+    const raw = video.cloudinary_url || '';
+    if (!raw) return '';
+    if (raw.startsWith('http')) return raw;
+    const base = API_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://livefx-trading.com');
+    return `${base}${raw.startsWith('/') ? '' : '/'}${raw}`;
+  };
+
+  // URL de partage dynamique Open Graph qui intègre la photo du flyer
   const getShareUrl = () => {
+    const id = video.id || video._id;
+    const apiBase = API_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://livefx-trading.com');
+    if (id) {
+      return `${apiBase}/api/announcements/share/${id}`;
+    }
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/`;
     }
@@ -65,31 +80,55 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
 
   const handleSocialShare = async (platform) => {
     const url = getShareUrl();
+    const flyer = getFlyerUrl();
     const encodedUrl = encodeURIComponent(url);
-    const encodedText = encodeURIComponent(shareText);
 
     let targetUrl = '';
     switch (platform) {
-      case 'whatsapp':
-        targetUrl = `https://api.whatsapp.com/send?text=${encodedText}%20${encodedUrl}`;
+      case 'whatsapp': {
+        const waText = `*${video.title}*\n\n${video.description ? video.description + '\n\n' : ''}Découvrez la publication complète : ${url}${flyer ? `\n\nFlyer : ${flyer}` : ''}`;
+        targetUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(waText)}`;
         break;
+      }
       case 'facebook':
         targetUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
         break;
       case 'telegram':
-        targetUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`;
+        targetUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(shareText)}`;
         break;
       case 'twitter':
-        targetUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
+        targetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodedUrl}`;
         break;
       case 'native':
-        if (navigator.share) {
+        if (typeof navigator !== 'undefined' && navigator.share) {
           try {
-            await navigator.share({ title: video.title, text: video.description || video.title, url });
+            const shareData = {
+              title: video.title,
+              text: `${video.title}\n\n${video.description || ''}`,
+              url,
+            };
+
+            // Partage du fichier image flyer direct (iOS iPhone / Safari / Android)
+            if (flyer) {
+              try {
+                const response = await fetch(flyer, { mode: 'cors' });
+                if (response.ok) {
+                  const blob = await response.blob();
+                  const mime = blob.type || 'image/jpeg';
+                  const ext = mime.split('/')[1] || 'jpg';
+                  const file = new File([blob], `flyer-${video.id || 'publication'}.${ext}`, { type: mime });
+                  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    shareData.files = [file];
+                  }
+                }
+              } catch (_) {}
+            }
+
+            await navigator.share(shareData);
             await notifyShare();
             toast.success('Partagé avec succès !');
           } catch (e) {
-            // Annulé
+            // Annulé par l'utilisateur
           }
           setShowShareModal(false);
           return;
@@ -219,10 +258,31 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
 
             {/* Menu Popover Partage Réseaux Sociaux */}
             {showShareModal && (
-              <div className="absolute left-0 bottom-full mb-2 w-56 rounded-xl border bg-card p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1 border-b mb-1">
-                  Partager sur les réseaux
-                </p>
+              <div className="absolute left-0 bottom-full mb-2 w-64 rounded-xl border bg-card p-2.5 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between border-b pb-1.5 mb-1.5 px-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Partager la publication
+                  </p>
+                  {getFlyerUrl() && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded">
+                      <ImageIcon className="w-3 h-3" />
+                      Flyer inclus
+                    </span>
+                  )}
+                </div>
+
+                {/* Aperçu du flyer */}
+                {getFlyerUrl() && (
+                  <div className="mb-2 rounded-lg overflow-hidden border border-border bg-black/40 max-h-24 flex items-center justify-center">
+                    <img
+                      src={getFlyerUrl()}
+                      alt={video.title}
+                      className="w-full h-full object-cover max-h-24"
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-1 text-xs">
                   {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
                     <button
