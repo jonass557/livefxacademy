@@ -1350,12 +1350,14 @@ export default function ReplayChart({
             onReset={resetDefault}
           />
 
-          <SelectedOverlayBar
-            overlay={overlayManager.selectedOverlay}
-            chartRef={chartRef}
-            onDelete={overlayManager.deleteSelected}
-            onDeselect={() => overlayManager.setSelectedOverlay(null)}
-          />
+          {overlayManager?.selectedOverlay && (
+            <SelectedOverlayBar
+              overlay={overlayManager.selectedOverlay}
+              chartRef={chartRef}
+              onDelete={overlayManager.deleteSelected}
+              onDeselect={() => overlayManager.setSelectedOverlay(null)}
+            />
+          )}
 
           {/* En-tête flottant du graphique */}
           <div className="pointer-events-none absolute left-1 top-1 z-20 flex items-center gap-2 rounded-md bg-background/90 backdrop-blur-sm border px-2 py-1 shadow-sm sm:left-2 sm:top-2">

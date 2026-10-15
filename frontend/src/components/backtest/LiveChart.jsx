@@ -188,12 +188,14 @@ export default function LiveChart({
           />
 
           {/* Barre d'action contextuelle au clic sur un outil de dessin (Paramètres & Suppression) */}
-          <SelectedOverlayBar
-            overlay={overlayManager.selectedOverlay}
-            chartRef={chartRef}
-            onDelete={overlayManager.deleteSelected}
-            onDeselect={() => overlayManager.setSelectedOverlay(null)}
-          />
+          {overlayManager?.selectedOverlay && (
+            <SelectedOverlayBar
+              overlay={overlayManager.selectedOverlay}
+              chartRef={chartRef}
+              onDelete={overlayManager.deleteSelected}
+              onDeselect={() => overlayManager.setSelectedOverlay(null)}
+            />
+          )}
 
           {/* Entête OHLC en surimpression avec compte à rebours de clôture, façon MT5 */}
           {last && typeof last.close === 'number' && typeof last.open === 'number' && (

@@ -429,12 +429,14 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
           />
 
           {/* Barre d'action contextuelle au clic sur un outil de dessin (Paramètres couleur/épaisseur/style & Suppression) */}
-          <SelectedOverlayBar
-            overlay={overlayManager.selectedOverlay}
-            chartRef={chartRef}
-            onDelete={overlayManager.deleteSelected}
-            onDeselect={() => overlayManager.setSelectedOverlay(null)}
-          />
+          {overlayManager?.selectedOverlay && (
+            <SelectedOverlayBar
+              overlay={overlayManager.selectedOverlay}
+              chartRef={chartRef}
+              onDelete={overlayManager.deleteSelected}
+              onDeselect={() => overlayManager.setSelectedOverlay(null)}
+            />
+          )}
 
           <div
             ref={containerRef}

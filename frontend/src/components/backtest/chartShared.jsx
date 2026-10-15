@@ -2199,8 +2199,6 @@ export function useChartOverlayManager(chartRef, containerRef) {
 export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, onUpdateStyle, className = '' }) {
   const { language } = useLanguageStore();
   const isEn = language === 'en';
-  if (!overlay) return null;
-  const label = getToolLabel(overlay.name);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Style local pour l'édition et la synchronisation immédiate (lit ligne ou polygone/rect)
@@ -2211,6 +2209,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
   const [dashStyle, setDashStyle] = useState(currentPolyStyle.borderStyle || currentLineStyle.style || 'solid');
 
   useEffect(() => {
+    if (!overlay) return;
     const sLine = overlay?.styles?.line || {};
     const sPoly = overlay?.styles?.polygon || overlay?.styles?.rect || {};
     const c = sPoly.borderColor || sLine.color;
@@ -2221,6 +2220,9 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     if (st) setDashStyle(st);
     setSettingsOpen(false);
   }, [overlay?.id]);
+
+  if (!overlay) return null;
+  const label = getToolLabel(overlay.name);
 
   const applyOverlayStyle = (newColor, newSize, newDashStyle) => {
     setColor(newColor);
