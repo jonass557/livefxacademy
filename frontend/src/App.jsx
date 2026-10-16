@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
@@ -28,7 +29,7 @@ function AppLayout({ children }) {
   const isChartSection = section === 'trading-demo' || section === 'backtesting';
 
   // Toujours débloquer le scroll et remonter en haut de page lors d'un changement de route/section (indispensable sur iOS Safari)
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isChartSection) {
       document.body.style.overflow = '';
       window.scrollTo(0, 0);
