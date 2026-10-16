@@ -67,13 +67,40 @@ exports.resetAccount = async (req, res) => {
   }
 };
 
+const FALLBACK_INSTRUMENTS = [
+  { symbol: 'EURUSD', name: 'EUR / USD', category: 'FOREX', digits: 5, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.0001, spread_pips: 1.2 },
+  { symbol: 'GBPUSD', name: 'GBP / USD', category: 'FOREX', digits: 5, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.0001, spread_pips: 1.5 },
+  { symbol: 'USDJPY', name: 'USD / JPY', category: 'FOREX', digits: 3, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.01, spread_pips: 1.3 },
+  { symbol: 'USDCHF', name: 'USD / CHF', category: 'FOREX', digits: 5, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.0001, spread_pips: 1.6 },
+  { symbol: 'AUDUSD', name: 'AUD / USD', category: 'FOREX', digits: 5, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.0001, spread_pips: 1.4 },
+  { symbol: 'USDCAD', name: 'USD / CAD', category: 'FOREX', digits: 5, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.0001, spread_pips: 1.6 },
+  { symbol: 'NZDUSD', name: 'NZD / USD', category: 'FOREX', digits: 5, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.0001, spread_pips: 1.8 },
+  { symbol: 'EURGBP', name: 'EUR / GBP', category: 'FOREX', digits: 5, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.0001, spread_pips: 1.5 },
+  { symbol: 'EURJPY', name: 'EUR / JPY', category: 'FOREX', digits: 3, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.01, spread_pips: 1.8 },
+  { symbol: 'GBPJPY', name: 'GBP / JPY', category: 'FOREX', digits: 3, min_volume: 0.01, max_volume: 100, volume_step: 0.01, pip_size: 0.01, spread_pips: 2.2 },
+  { symbol: 'XAUUSD', name: 'Or / USD (Gold)', category: 'METALS', digits: 2, min_volume: 0.01, max_volume: 50, volume_step: 0.01, pip_size: 0.1, spread_pips: 2.5 },
+  { symbol: 'XAGUSD', name: 'Argent / USD (Silver)', category: 'METALS', digits: 3, min_volume: 0.01, max_volume: 50, volume_step: 0.01, pip_size: 0.01, spread_pips: 2.0 },
+  { symbol: 'BTCUSDT', name: 'Bitcoin / USDT', category: 'CRYPTO', digits: 2, min_volume: 0.01, max_volume: 10, volume_step: 0.01, pip_size: 1, spread_pips: 15 },
+  { symbol: 'ETHUSDT', name: 'Ethereum / USDT', category: 'CRYPTO', digits: 2, min_volume: 0.01, max_volume: 50, volume_step: 0.01, pip_size: 0.1, spread_pips: 10 },
+  { symbol: 'SOLUSDT', name: 'Solana / USDT', category: 'CRYPTO', digits: 2, min_volume: 0.1, max_volume: 500, volume_step: 0.1, pip_size: 0.01, spread_pips: 5 },
+  { symbol: 'BNBUSDT', name: 'BNB / USDT', category: 'CRYPTO', digits: 2, min_volume: 0.1, max_volume: 200, volume_step: 0.1, pip_size: 0.1, spread_pips: 5 },
+  { symbol: 'US30', name: 'Wall Street 30 (Dow Jones)', category: 'INDICES', digits: 1, min_volume: 0.1, max_volume: 50, volume_step: 0.1, pip_size: 1, spread_pips: 2.5 },
+  { symbol: 'NAS100', name: 'US Tech 100 (Nasdaq)', category: 'INDICES', digits: 1, min_volume: 0.1, max_volume: 50, volume_step: 0.1, pip_size: 1, spread_pips: 2.0 },
+  { symbol: 'SPX500', name: 'US 500 (S&P 500)', category: 'INDICES', digits: 1, min_volume: 0.1, max_volume: 50, volume_step: 0.1, pip_size: 1, spread_pips: 1.0 },
+];
+
 // GET /api/demo/instruments — liste des instruments activés (+ dernière cotation connue).
 exports.getInstruments = async (req, res) => {
   try {
     const { category } = req.query;
     const filter = { enabled: true };
     if (category) filter.category = category;
-    const instruments = await Instrument.find(filter).sort({ category: 1, symbol: 1 });
+    let instruments = await Instrument.find(filter).sort({ category: 1, symbol: 1 }).catch(() => []);
+    if (!instruments || instruments.length === 0) {
+      instruments = category
+        ? FALLBACK_INSTRUMENTS.filter((i) => i.category === category)
+        : FALLBACK_INSTRUMENTS;
+    }
     const out = instruments.map((i) => {
       const q = liveFeed.getQuote(i.symbol);
       return {
@@ -87,7 +114,7 @@ exports.getInstruments = async (req, res) => {
     res.json({ instruments: out });
   } catch (err) {
     console.error('demo getInstruments:', err.message);
-    res.status(500).json({ message: 'Erreur instruments' });
+    res.json({ instruments: FALLBACK_INSTRUMENTS });
   }
 };
 
@@ -410,16 +437,19 @@ function publicTrade(t) {
 }
 
 // --- ALERTES DE PRIX (TradingView / MT5 avec notifications email) ---
+const alertWatcher = require('../utils/alerts/alertWatcher');
+
 exports.getAlerts = async (req, res) => {
   try {
     const filter = { user_id: req.user.id };
     if (req.query.symbol) {
       const raw = String(req.query.symbol).trim();
-      const clean = raw.replace(/[\/\s_-]/g, '').toUpperCase();
+      const clean = raw.replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
       filter.$or = [
         { symbol: raw },
         { symbol: clean },
-        { symbol: new RegExp(`^${clean}$`, 'i') },
+        { symbol: `frx${clean}` },
+        { symbol: new RegExp(`^(frx)?${clean}$`, 'i') },
         { symbol: new RegExp(`^${raw}$`, 'i') },
       ];
     }
@@ -436,16 +466,18 @@ exports.createAlert = async (req, res) => {
     const {
       symbol, target_price, condition = 'crossing',
       trigger_frequency = 'once', expires_at = null,
-      note = '', notify_email = true,
+      note = '', notify_email = true, created_price: clientCreatedPrice = null,
     } = req.body || {};
     const tp = parseFloat(target_price);
     if (!symbol || !tp || isNaN(tp)) {
       return res.status(400).json({ message: 'Symbole et prix cible valides requis' });
     }
     const rawSym = String(symbol).trim();
-    const cleanSym = rawSym.replace(/[\/\s_-]/g, '').toUpperCase();
+    const cleanSym = rawSym.replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
+    watcher.ensure(cleanSym || rawSym);
     const quote = liveFeed.getQuote(cleanSym) || liveFeed.getQuote(rawSym);
-    const created_price = quote?.mid || null;
+    const parsedClientPrice = clientCreatedPrice != null ? parseFloat(clientCreatedPrice) : null;
+    const created_price = quote?.mid || (parsedClientPrice && !isNaN(parsedClientPrice) ? parsedClientPrice : null);
 
     const alert = await PriceAlert.create({
       user_id: req.user.id,
@@ -455,7 +487,7 @@ exports.createAlert = async (req, res) => {
       trigger_frequency: ['once', 'every_time'].includes(trigger_frequency) ? trigger_frequency : 'once',
       expires_at: expires_at ? new Date(expires_at) : null,
       note: (note || '').slice(0, 200),
-      notify_email: Boolean(notify_email),
+      notify_email: notify_email !== false,
       created_price,
       status: 'active',
     });
@@ -473,7 +505,9 @@ exports.toggleAlert = async (req, res) => {
     if (!alert) return res.status(404).json({ message: 'Alerte introuvable' });
     alert.status = alert.status === 'active' ? 'triggered' : 'active';
     if (alert.status === 'active') {
-      const quote = liveFeed.getQuote(alert.symbol);
+      const cleanSym = String(alert.symbol || '').replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
+      watcher.ensure(cleanSym || alert.symbol);
+      const quote = liveFeed.getQuote(cleanSym) || liveFeed.getQuote(alert.symbol);
       alert.created_price = quote?.mid || null;
       alert.email_sent = false;
     }
@@ -481,6 +515,50 @@ exports.toggleAlert = async (req, res) => {
     res.json(publicAlert(alert));
   } catch (err) {
     res.status(400).json({ message: err.message || 'Modification alerte impossible' });
+  }
+};
+
+exports.triggerAlert = async (req, res) => {
+  try {
+    const alert = await PriceAlert.findOne({ _id: req.params.id, user_id: req.user.id });
+    if (!alert) return res.status(404).json({ message: 'Alerte introuvable' });
+
+    const rawPrice = parseFloat(req.body?.triggered_price ?? req.body?.price);
+    const quote = liveFeed.getQuote(alert.symbol);
+    const currentPrice = (!isNaN(rawPrice) && rawPrice > 0)
+      ? rawPrice
+      : (quote?.mid || alert.target_price);
+
+    const now = new Date();
+    const shouldSendEmail = alert.notify_email !== false && (
+      !alert.email_sent ||
+      alert.trigger_frequency === 'every_time'
+    );
+
+    alert.triggered_at = now;
+    alert.triggered_price = currentPrice;
+    if (alert.trigger_frequency !== 'every_time') {
+      alert.status = 'triggered';
+    } else {
+      alert.created_price = currentPrice;
+    }
+
+    if (shouldSendEmail) {
+      alert.email_sent = true;
+      await alert.save();
+      if (alertWatcher && typeof alertWatcher.sendAlertEmail === 'function') {
+        alertWatcher.sendAlertEmail(alert, currentPrice).catch((e) => {
+          console.error('[triggerAlert] sendAlertEmail error:', e.message);
+        });
+      }
+    } else {
+      await alert.save();
+    }
+
+    res.json(publicAlert(alert));
+  } catch (err) {
+    console.error('demo triggerAlert:', err.message);
+    res.status(400).json({ message: err.message || 'Déclenchement alerte impossible' });
   }
 };
 
@@ -499,11 +577,12 @@ exports.clearAlerts = async (req, res) => {
     const filter = { user_id: req.user.id };
     if (req.query.symbol) {
       const raw = String(req.query.symbol).trim();
-      const clean = raw.replace(/[\/\s_-]/g, '').toUpperCase();
+      const clean = raw.replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
       filter.$or = [
         { symbol: raw },
         { symbol: clean },
-        { symbol: new RegExp(`^${clean}$`, 'i') },
+        { symbol: `frx${clean}` },
+        { symbol: new RegExp(`^(frx)?${clean}$`, 'i') },
       ];
     }
     await PriceAlert.deleteMany(filter);
@@ -530,3 +609,4 @@ function publicAlert(a) {
     createdAt: a.created_at,
   };
 }
+

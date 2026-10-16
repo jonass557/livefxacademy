@@ -3432,8 +3432,8 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
       condition,
       triggerFrequency: triggerFrequency || 'once',
       expiresAt: expiresAt || null,
-      note: note.trim(),
-      notifyEmail: Boolean(notifyEmail),
+      note: (note || '').trim(),
+      notifyEmail: notifyEmail !== false,
       triggered: false,
       createdAt: new Date().toISOString(),
     };
@@ -3447,13 +3447,28 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
         symbol,
         target_price: numPrice,
         condition,
-        trigger_frequency: triggerFrequency,
+        trigger_frequency: triggerFrequency || 'once',
         expires_at: expiresAt,
-        note: note.trim(),
-        notify_email: Boolean(notifyEmail),
+        note: (note || '').trim(),
+        notify_email: notifyEmail !== false,
+        created_price: lastCheckedPriceRef.current || null,
       }).then((saved) => {
         if (saved && saved.id) {
-          setAlerts((prev) => prev.map((a) => a.id === tempId ? { ...a, ...saved } : a));
+          let wasAlreadyTriggeredLocally = false;
+          let localTriggeredPrice = numPrice;
+          setAlerts((prev) => prev.map((a) => {
+            if (a.id === tempId) {
+              if (a.triggered) {
+                wasAlreadyTriggeredLocally = true;
+                localTriggeredPrice = a.triggeredPrice || numPrice;
+              }
+              return { ...a, ...saved, triggered: a.triggered || saved.triggered };
+            }
+            return a;
+          }));
+          if (wasAlreadyTriggeredLocally && demoApi.triggerAlert) {
+            demoApi.triggerAlert(saved.id, { triggered_price: localTriggeredPrice }).catch(() => {});
+          }
         }
       }).catch((err) => {
         console.warn('Sync alerte backend:', err.message);
@@ -3534,7 +3549,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
         if (isHit) {
           triggeredList.push(alert);
-          return { ...alert, triggered: true, triggeredAt: new Date().toISOString() };
+          return { ...alert, triggered: true, triggeredPrice: currentPrice, triggeredAt: new Date().toISOString() };
         }
         return alert;
       })
@@ -3542,10 +3557,18 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
     if (triggeredList.length > 0) {
       playAlertSound();
+      const activeToken = token || getAuthToken();
+      if (activeToken && demoApi.triggerAlert) {
+        triggeredList.forEach((al) => {
+          if (al.id && !String(al.id).includes('_')) {
+            demoApi.triggerAlert(al.id, { triggered_price: currentPrice }).catch(() => {});
+          }
+        });
+      }
     }
 
     return triggeredList;
-  }, []);
+  }, [token]);
 
   // Vérifier les alertes sur une bougie de Replay (Backtesting)
   const checkCandle = useCallback((candle, prevClose) => {
@@ -3576,7 +3599,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
         if (isHit) {
           triggeredList.push(alert);
-          return { ...alert, triggered: true, triggeredAt: new Date().toISOString() };
+          return { ...alert, triggered: true, triggeredPrice: close, triggeredAt: new Date().toISOString() };
         }
         return alert;
       })
@@ -3584,10 +3607,18 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
 
     if (triggeredList.length > 0) {
       playAlertSound();
+      const activeToken = token || getAuthToken();
+      if (activeToken && demoApi.triggerAlert) {
+        triggeredList.forEach((al) => {
+          if (al.id && !String(al.id).includes('_')) {
+            demoApi.triggerAlert(al.id, { triggered_price: close }).catch(() => {});
+          }
+        });
+      }
     }
 
     return triggeredList;
-  }, []);
+  }, [token]);
 
   return {
     alerts,
@@ -3601,6 +3632,7 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     checkCandle,
   };
 }
+
 
 /**
  * Menu Déroulant / Modal d'Alertes de Prix intégré dans la barre d'outils du graphique.

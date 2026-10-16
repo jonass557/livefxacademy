@@ -1,10 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateToken, optionalAuth } = require('../middleware/authMiddleware');
 const backtestController = require('../controllers/backtestController');
-
-// Toutes les routes de backtest nécessitent une session authentifiée.
-router.use(authenticateToken);
 
 /**
  * @swagger
@@ -13,7 +10,20 @@ router.use(authenticateToken);
  *     summary: Métadonnées (fournisseurs, symboles, timeframes, indicateurs, templates)
  *     tags: [Backtests]
  */
-router.get('/meta', backtestController.getMeta);
+router.get('/meta', optionalAuth, backtestController.getMeta);
+
+/**
+ * @swagger
+ * /api/backtests/candles:
+ *   get:
+ *     summary: Bougies récentes d'un marché (graphique en direct)
+ *     tags: [Backtests]
+ */
+// NB: déclarée avant '/:id' pour ne pas être interprétée comme un id.
+router.get('/candles', optionalAuth, backtestController.getMarketCandles);
+
+// Les routes suivantes (historique personnel, sauvegarde) nécessitent une session authentifiée.
+router.use(authenticateToken);
 
 /**
  * @swagger
@@ -32,16 +42,6 @@ router.post('/run', backtestController.runBacktest);
  *     tags: [Backtests]
  */
 router.get('/', backtestController.listBacktests);
-
-/**
- * @swagger
- * /api/backtests/candles:
- *   get:
- *     summary: Bougies récentes d'un marché (graphique en direct)
- *     tags: [Backtests]
- */
-// NB: déclarée avant '/:id' pour ne pas être interprétée comme un id.
-router.get('/candles', backtestController.getMarketCandles);
 
 /**
  * @swagger

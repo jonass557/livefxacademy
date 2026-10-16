@@ -10,5 +10,7 @@ router.get('/my-stats', authenticateToken, referralController.getMyReferralStats
 router.get('/admin/overview', authenticateToken, requireRole(['admin']), referralController.getAdminReferralOverview);
 router.patch('/admin/users/:userId/toggle', authenticateToken, requireRole(['admin']), referralController.toggleUserReferral);
 router.post('/admin/referrers/:referrerId/pay-commissions', authenticateToken, requireRole(['admin']), referralController.markCommissionsPaid);
+router.post('/admin/users/:referrerId/pay', authenticateToken, requireRole(['admin']), referralController.markCommissionsPaid);
 
 module.exports = router;
+

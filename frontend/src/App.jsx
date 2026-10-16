@@ -21,15 +21,22 @@ function AppLayout({ children }) {
 
   const isDashboard = location.pathname.startsWith('/dashboard');
   const isAdmin = user?.role === 'admin';
-  const isTrainer = user?.role === 'trainer';
 
   // Sections graphiques : pas de navbar pour maximiser l'espace.
   const searchParams = new URLSearchParams(location.search);
   const section = searchParams.get('section');
   const isChartSection = section === 'trading-demo' || section === 'backtesting';
 
+  // Toujours débloquer le scroll et remonter en haut de page lors d'un changement de route/section (indispensable sur iOS Safari)
+  React.useEffect(() => {
+    if (!isChartSection) {
+      document.body.style.overflow = '';
+      window.scrollTo(0, 0);
+    }
+  }, [location.pathname, location.search, isChartSection]);
+
   // Admin dashboard layout: Navbar fixe + contenu avec défilement autonome indestructible
-  if (isDashboard && isAdmin) {
+  if (isDashboard && isAdmin && !section) {
     return (
       <div className="h-screen w-full overflow-hidden flex flex-col p-0 m-0 bg-background text-foreground">
         <Navbar />
@@ -40,8 +47,8 @@ function AppLayout({ children }) {
     );
   }
 
-  // Trainer and Client dashboard have their own full-width layout with sidebar
-  if (isDashboard && (isTrainer || user?.role === 'client')) {
+  // Trainer and Client dashboard have their own full-width layout
+  if (isDashboard) {
     return (
       <div className={isChartSection ? "h-screen w-screen max-w-full overflow-hidden flex flex-col p-0 m-0 bg-background text-foreground" : "min-h-screen bg-background text-foreground"}>
         {!isChartSection && <Navbar />}
@@ -62,6 +69,7 @@ function AppLayout({ children }) {
     </div>
   );
 }
+
 
 // Protected Route wrapper - redirects to landing if not logged in
 function ProtectedRoute({ children }) {

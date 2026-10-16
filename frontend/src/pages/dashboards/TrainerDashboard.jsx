@@ -32,7 +32,11 @@ import {
   FileText,
   ArrowLeft,
   History,
-  Calendar
+  Calendar,
+  Share2,
+  LineChart,
+  Link as LinkIcon,
+  MessageSquare
 } from 'lucide-react';
 
 const TrainerDashboard = () => {
@@ -66,10 +70,16 @@ const TrainerDashboard = () => {
     { id: 'profile', icon: User, label: 'Mon Profil' },
     { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
     { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
-    { id: 'economics', icon: Calendar, label: 'Annonces éco' },
+    { id: 'referral', icon: Share2, label: 'Parrainage & Gains' },
+    { id: 'trading-demo', icon: LineChart, label: 'Graphique (Démo)' },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
     { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
+    { id: 'economics', icon: Calendar, label: 'Annonces éco' },
+    { id: 'services', icon: Briefcase, label: 'Services' },
+    { id: 'broker', icon: LinkIcon, label: 'Lien Brokers' },
+    { id: 'contact', icon: MessageSquare, label: 'Contact' },
   ];
+
 
   return (
     <div className="min-h-[calc(100vh-4rem)]">

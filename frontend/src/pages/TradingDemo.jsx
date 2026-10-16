@@ -5,7 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LineChart, ShoppingCart, List, Clock, History as HistoryIcon, Star, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { demoApi, DEMO_CATEGORIES } from '../lib/demoApi';
+import { demoApi, DEMO_CATEGORIES, DEFAULT_DEMO_INSTRUMENTS } from '../lib/demoApi';
 import { useMarketSocket } from '../hooks/useMarketSocket';
 import AccountHeader from '../components/trading-demo/AccountHeader';
 import Watchlist from '../components/trading-demo/Watchlist';
@@ -41,8 +41,8 @@ export default function TradingDemo() {
   };
 
   const [account, setAccount] = useState(null);
-  const [instruments, setInstruments] = useState([]);
-  const [favorites, setFavorites] = useState([]);
+  const [instruments, setInstruments] = useState(DEFAULT_DEMO_INSTRUMENTS);
+  const [favorites, setFavorites] = useState(['EURUSD', 'GBPUSD', 'XAUUSD', 'BTCUSD', 'R_75']);
   const [positions, setPositions] = useState([]);
   const [orders, setOrders] = useState([]);
   const [trades, setTrades] = useState([]);
@@ -72,16 +72,28 @@ export default function TradingDemo() {
     }
   }, [quotes]);
 
-  const selectedInstrument = useMemo(() => instruments.find((i) => i.symbol === selected) || null, [instruments, selected]);
+  const selectedInstrument = useMemo(
+    () => instruments.find((i) => i.symbol === selected) || DEFAULT_DEMO_INSTRUMENTS.find((i) => i.symbol === selected) || DEFAULT_DEMO_INSTRUMENTS[0],
+    [instruments, selected]
+  );
   const selectedQuote = quotes[selected] || null;
 
-  // Chargements initiaux.
+  // Chargements initiaux (résilients : chaque appel a un fallback indépendant).
   const loadStatic = async () => {
     try {
-      const [inst, wl] = await Promise.all([demoApi.instruments(), demoApi.watchlist()]);
-      setInstruments(inst.instruments || []);
-      setFavorites(wl.symbols || []);
-    } catch (e) { toast.error('Chargement des marchés impossible'); }
+      const inst = await demoApi.instruments();
+      if (Array.isArray(inst?.instruments) && inst.instruments.length > 0) {
+        setInstruments(inst.instruments);
+      }
+    } catch (_) {
+      setInstruments((prev) => (prev && prev.length ? prev : DEFAULT_DEMO_INSTRUMENTS));
+    }
+    try {
+      const wl = await demoApi.watchlist();
+      if (Array.isArray(wl?.symbols) && wl.symbols.length > 0) {
+        setFavorites(wl.symbols);
+      }
+    } catch (_) {}
   };
   const refresh = async () => {
     try {
@@ -126,13 +138,15 @@ export default function TradingDemo() {
   // En vue graphique : bloquer le scroll du document pour que le graphique et le logo restent parfaitement fixes
   useEffect(() => {
     if (isChartView) {
-      const prevOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       return () => {
-        document.body.style.overflow = prevOverflow;
+        document.body.style.overflow = '';
       };
+    } else {
+      document.body.style.overflow = '';
     }
   }, [isChartView]);
+
 
   return (
     <div className={`w-full ${isChartView ? 'h-full flex-1 min-h-0 flex flex-col overflow-hidden bg-background pb-[52px] lg:pb-0' : 'space-y-4 p-3 sm:p-5 max-w-7xl mx-auto pb-20'}`}>

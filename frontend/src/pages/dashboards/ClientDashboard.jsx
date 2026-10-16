@@ -92,12 +92,22 @@ const ClientDashboard = () => {
 
   // Subscriptions & Payment state
   const [plans, setPlans] = useState([]);
+  const [mySubscriptions, setMySubscriptions] = useState([]);
+  const [userProfile, setUserProfile] = useState(user || null);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [payForm, setPayForm] = useState({ phone: '', operator: 'mtn', country: 'BJ', otp_code: '' });
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [paymentResult, setPaymentResult] = useState(null);
+
+  // Toujours débloquer le scroll et remonter en haut lors d'un changement de section (indispensable sur iOS iPhone)
+  useEffect(() => {
+    if (activeSection !== 'trading-demo' && activeSection !== 'backtesting') {
+      document.body.style.overflow = '';
+      window.scrollTo(0, 0);
+    }
+  }, [activeSection]);
 
   const textsToTranslate = useMemo(() => {
     const list = [];
@@ -118,15 +128,18 @@ const ClientDashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch announcement videos, vacation programs and services
-        const [videosRes, vacationRes, servicesRes] = await Promise.all([
-          api.get('/announcements'),
-          api.get('/vacation-programs'),
-          api.get('/services')
+        const [videosRes, vacationRes, servicesRes, meRes] = await Promise.all([
+          api.get('/announcements').catch(() => ({ data: [] })),
+          api.get('/vacation-programs').catch(() => ({ data: [] })),
+          api.get('/services').catch(() => ({ data: [] })),
+          api.get('/auth/me').catch(() => ({ data: null })),
         ]);
-        setVideos(videosRes.data);
-        setVacationPrograms(vacationRes.data);
-        setServices(servicesRes.data || []);
+        setVideos(Array.isArray(videosRes.data) ? videosRes.data : []);
+        setVacationPrograms(Array.isArray(vacationRes.data) ? vacationRes.data : []);
+        setServices(Array.isArray(servicesRes.data) ? servicesRes.data : []);
+        if (meRes.data) {
+          setUserProfile(meRes.data);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -196,6 +209,7 @@ const ClientDashboard = () => {
       setReferralStats(res.data);
     } catch (err) {
       console.error('Error fetching referral stats:', err);
+      setReferralStats({ is_referral_enabled: false, enabled: false });
     } finally {
       setLoadingReferral(false);
     }
@@ -204,8 +218,14 @@ const ClientDashboard = () => {
   const fetchPlans = async () => {
     setLoadingPlans(true);
     try {
-      const res = await api.get('/subscriptions/plans');
-      setPlans(res.data || []);
+      const [plansRes, historyRes, meRes] = await Promise.all([
+        api.get('/subscriptions/plans').catch(() => ({ data: [] })),
+        api.get('/subscriptions/my-history').catch(() => ({ data: [] })),
+        api.get('/auth/me').catch(() => ({ data: null })),
+      ]);
+      setPlans(Array.isArray(plansRes.data) ? plansRes.data : []);
+      setMySubscriptions(Array.isArray(historyRes.data) ? historyRes.data : []);
+      if (meRes.data) setUserProfile(meRes.data);
     } catch (err) {
       console.error('Error fetching plans:', err);
     } finally {
@@ -221,6 +241,7 @@ const ClientDashboard = () => {
       fetchPlans();
     }
   }, [activeSection]);
+
 
   const handleCopyReferralLink = (code) => {
     const origin = window.location.origin;
@@ -641,17 +662,17 @@ const ClientDashboard = () => {
         <MessageSquare className="h-6 w-6" /> {t('client.contactTitle')}
       </h2>
       
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="hover:shadow-lg transition-shadow">
           <CardContent className="pt-6 text-center space-y-4">
             <div className="inline-flex p-4 rounded-full bg-green-500/10">
               <Phone className="h-10 w-10 text-green-500" />
             </div>
             <h3 className="text-xl font-bold">{t('client.whatsapp')}</h3>
-            <p className="text-muted-foreground">Contactez-nous directement</p>
-            <a href="https://wa.me/VOTRE_NUMERO" target="_blank" rel="noopener noreferrer">
-              <Button className="w-full gap-2 bg-green-600 hover:bg-green-700">
-                Ouvrir WhatsApp <ExternalLink className="h-4 w-4" />
+            <p className="text-muted-foreground">{isEn ? 'Contact us directly' : 'Contactez-nous directement'}</p>
+            <a href="https://wa.me/237699000000" target="_blank" rel="noopener noreferrer" className="block">
+              <Button className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white">
+                {isEn ? 'Open WhatsApp' : 'Ouvrir WhatsApp'} <ExternalLink className="h-4 w-4" />
               </Button>
             </a>
           </CardContent>
@@ -663,10 +684,10 @@ const ClientDashboard = () => {
               <Send className="h-10 w-10 text-blue-500" />
             </div>
             <h3 className="text-xl font-bold">{t('client.telegram')}</h3>
-            <p className="text-muted-foreground">Rejoignez notre canal</p>
-            <a href="https://t.me/livefxtrading" target="_blank" rel="noopener noreferrer">
-              <Button className="w-full gap-2 bg-blue-500 hover:bg-blue-600">
-                Ouvrir Telegram <ExternalLink className="h-4 w-4" />
+            <p className="text-muted-foreground">{isEn ? 'Join our official channel' : 'Rejoignez notre canal'}</p>
+            <a href="https://t.me/livefxtrading" target="_blank" rel="noopener noreferrer" className="block">
+              <Button className="w-full gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+                {isEn ? 'Open Telegram' : 'Ouvrir Telegram'} <ExternalLink className="h-4 w-4" />
               </Button>
             </a>
           </CardContent>
@@ -678,10 +699,25 @@ const ClientDashboard = () => {
               <Facebook className="h-10 w-10 text-blue-600" />
             </div>
             <h3 className="text-xl font-bold">{t('client.facebook')}</h3>
-            <p className="text-muted-foreground">Suivez notre page</p>
-            <a href="https://facebook.com/livefxtrading" target="_blank" rel="noopener noreferrer">
-              <Button className="w-full gap-2 bg-blue-600 hover:bg-blue-700">
-                Ouvrir Facebook <ExternalLink className="h-4 w-4" />
+            <p className="text-muted-foreground">{isEn ? 'Follow our page' : 'Suivez notre page'}</p>
+            <a href="https://facebook.com/livefxtrading" target="_blank" rel="noopener noreferrer" className="block">
+              <Button className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                {isEn ? 'Open Facebook' : 'Ouvrir Facebook'} <ExternalLink className="h-4 w-4" />
+              </Button>
+            </a>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardContent className="pt-6 text-center space-y-4">
+            <div className="inline-flex p-4 rounded-full bg-primary/10">
+              <Mail className="h-10 w-10 text-primary" />
+            </div>
+            <h3 className="text-xl font-bold">Email</h3>
+            <p className="text-muted-foreground">contact@livefx-trading.com</p>
+            <a href="mailto:contact@livefx-trading.com" className="block">
+              <Button variant="outline" className="w-full gap-2">
+                {isEn ? 'Send an Email' : 'Envoyer un Email'} <Mail className="h-4 w-4" />
               </Button>
             </a>
           </CardContent>
@@ -689,6 +725,7 @@ const ClientDashboard = () => {
       </div>
     </div>
   );
+
 
   // Section: Consultation Form
   const renderConsultation = () => (
@@ -1317,6 +1354,10 @@ const ClientDashboard = () => {
 
   // Section: Subscription Plans & SEBPAY Mobile Money Payment
   const renderSubscription = () => {
+    const expiresAt = userProfile?.subscription_expires_at ? new Date(userProfile.subscription_expires_at) : null;
+    const hasActiveSub = Boolean(expiresAt && expiresAt > new Date());
+    const activePlanName = userProfile?.subscription_plan_name || (isEn ? 'Active Subscription' : 'Abonnement Actif');
+
     return (
       <div className="space-y-6">
         <div>
@@ -1330,12 +1371,40 @@ const ClientDashboard = () => {
           </p>
         </div>
 
+        {/* Statut d'abonnement actif (incluant le mois gratuit offert par l'administrateur) */}
+        {hasActiveSub && (
+          <Card className="border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-card to-primary/5 shadow-sm">
+            <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-3 rounded-xl bg-emerald-500/15 text-emerald-600 shrink-0">
+                  <CheckCircle className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-base text-foreground">{activePlanName}</h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white">
+                      {isEn ? 'ACTIVE' : 'ACTIF'}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                    {isEn ? 'Valid until: ' : 'Valable jusqu’au : '}
+                    <span className="font-semibold text-foreground">
+                      {expiresAt.toLocaleDateString(isEn ? 'en-US' : 'fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {loadingPlans ? (
           <div className="py-12 text-center text-muted-foreground">
             {isEn ? 'Loading subscription plans...' : 'Chargement des plans...'}
           </div>
         ) : plans.length === 0 ? (
           <Card className="p-8 text-center border-dashed">
+
             <CreditCard className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <h3 className="font-bold text-lg">{isEn ? 'No active plans right now' : 'Aucun plan disponible actuellement'}</h3>
             <p className="text-sm text-muted-foreground mt-1">

@@ -11,6 +11,8 @@ router.get('/admin/plans', authenticateToken, requireRole(['admin']), subscripti
 router.post('/admin/plans', authenticateToken, requireRole(['admin']), subscriptionController.createPlan);
 router.put('/admin/plans/:id', authenticateToken, requireRole(['admin']), subscriptionController.updatePlan);
 router.delete('/admin/plans/:id', authenticateToken, requireRole(['admin']), subscriptionController.deletePlan);
+router.post('/admin/grant-free/:userId', authenticateToken, requireRole(['admin']), subscriptionController.grantFreeMonth);
+router.post('/admin/revoke/:userId', authenticateToken, requireRole(['admin']), subscriptionController.revokeSubscription);
 
 // Paiements Mobile Money (SEBPAY)
 router.post('/pay/mobile', authenticateToken, subscriptionController.initiateMobilePayment);
@@ -21,3 +23,4 @@ router.get('/my-history', authenticateToken, subscriptionController.getMySubscri
 router.post('/webhook/sebpay', subscriptionController.sebpayWebhook);
 
 module.exports = router;
+

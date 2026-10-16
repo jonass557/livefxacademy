@@ -9,11 +9,12 @@ const paymentTransactionSchema = new mongoose.Schema({
   plan_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SubscriptionPlan',
-    required: true
+    default: null
   },
   amount: {
     type: Number,
-    required: true
+    required: true,
+    default: 0
   },
   currency: {
     type: String,
@@ -21,15 +22,15 @@ const paymentTransactionSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: true
+    default: 'ADMIN-FREE'
   },
   operator: {
     type: String,
-    required: true // mtn, moov, orange, wave, etc.
+    default: 'free_admin' // mtn, moov, orange, wave, free_admin, etc.
   },
   country: {
     type: String,
-    required: true // BJ, CI, SN, CM, etc.
+    default: 'BJ' // BJ, CI, SN, CM, etc.
   },
   external_reference: {
     type: String,

@@ -3,14 +3,30 @@ import { useAuthStore } from '../store/authStore';
 import ClientDashboard from './dashboards/ClientDashboard';
 import TrainerDashboard from './dashboards/TrainerDashboard';
 import AdminDashboard from './dashboards/AdminDashboard';
-import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
+const SHARED_CLIENT_SECTIONS = new Set([
+  'trading-demo',
+  'backtesting',
+  'backtest-history',
+  'economics',
+  'services',
+  'trading',
+  'academy',
+  'broker',
+  'contact',
+  'consultation',
+  'vacation',
+  'announcements',
+  'referral',
+  'subscription',
+]);
 
 const Dashboard = () => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const section = searchParams.get('section');
-  const isChartSection = section === 'trading-demo' || section === 'backtesting';
 
   React.useEffect(() => {
     if (!user) {
@@ -20,8 +36,9 @@ const Dashboard = () => {
 
   if (!user) return <div>Loading...</div>;
 
-  // Si une section graphique ou de backtest est demandée, afficher l'interface graphique dédiée
-  if (isChartSection) {
+  // Si une section fonctionnelle (Graphique, Backtesting, Services, Lien Brokers, Contact, etc.) est demandée,
+  // afficher directement ClientDashboard qui gère l'ensemble de ces sections sur tous les appareils (dont iOS iPhone).
+  if (section && SHARED_CLIENT_SECTIONS.has(section)) {
     return <ClientDashboard />;
   }
 
@@ -30,28 +47,14 @@ const Dashboard = () => {
     return <AdminDashboard />;
   }
 
-  // Trainer has its own sidebar layout
+  // Trainer has its own sidebar layout for trainer-specific sections (dashboard, profile, registration, strategies)
   if (user.role === 'trainer') {
     return <TrainerDashboard />;
   }
 
-  // Client dashboard
-  if (user.role === 'client') {
-    return <ClientDashboard />;
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Tableau de bord</h1>
-        <span className="px-3 py-1 bg-secondary rounded-full text-sm font-medium uppercase">
-          {user.role}
-        </span>
-      </div>
-      
-      {user.role === 'client' && <ClientDashboard />}
-    </div>
-  );
+  // Par défaut (client, élève, etc.)
+  return <ClientDashboard />;
 };
 
 export default Dashboard;
+

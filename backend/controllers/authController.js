@@ -115,7 +115,11 @@ exports.login = async (req, res) => {
         full_name: user.full_name,
         is_referral_enabled: !!user.is_referral_enabled,
         referral_code: user.referral_code || '',
-        custom_referral_percentage: user.custom_referral_percentage
+        custom_referral_percentage: user.custom_referral_percentage,
+        subscription_plan_name: user.subscription_plan_name || null,
+        subscription_expires_at: user.subscription_expires_at || null,
+        is_free_trial_granted: !!user.is_free_trial_granted,
+        has_active_subscription: Boolean(user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
       }
     });
   } catch (err) {
@@ -165,10 +169,15 @@ exports.getMe = async (req, res) => {
       is_referral_enabled: !!user.is_referral_enabled,
       referral_code: user.referral_code || '',
       custom_referral_percentage: user.custom_referral_percentage,
-      referred_by: user.referred_by
+      referred_by: user.referred_by,
+      subscription_plan_name: user.subscription_plan_name || null,
+      subscription_expires_at: user.subscription_expires_at || null,
+      is_free_trial_granted: !!user.is_free_trial_granted,
+      has_active_subscription: Boolean(user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
     });
   } catch (err) {
     console.error('getMe error:', err);
     res.status(500).json({ message: 'Erreur serveur' });
   }
 };
+

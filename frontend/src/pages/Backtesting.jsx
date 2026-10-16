@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
 import api from '../lib/api';
+import { generateClientFallbackCandles } from '../lib/demoApi';
 import ReplayChart from '../components/backtest/ReplayChart';
 import { Dropdown, ChartErrorBoundary } from '../components/backtest/chartShared';
 import {
@@ -14,6 +15,48 @@ const fmtMoney = (n) => Number(n).toLocaleString('fr-FR', { maximumFractionDigit
 
 const INITIAL_BALANCE = 10000; // solde initial fixe du simulateur
 const LOTS = [0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5];
+
+const DEFAULT_BACKTEST_META = {
+  providers: [
+    {
+      name: 'deriv',
+      label: 'Deriv',
+      symbols: [
+        { symbol: 'frxEURUSD', name: 'EUR / USD', category: 'forex', pip: 0.0001 },
+        { symbol: 'frxGBPUSD', name: 'GBP / USD', category: 'forex', pip: 0.0001 },
+        { symbol: 'frxUSDJPY', name: 'USD / JPY', category: 'forex', pip: 0.01 },
+        { symbol: 'frxAUDUSD', name: 'AUD / USD', category: 'forex', pip: 0.0001 },
+        { symbol: 'frxUSDCAD', name: 'USD / CAD', category: 'forex', pip: 0.0001 },
+        { symbol: 'frxUSDCHF', name: 'USD / CHF', category: 'forex', pip: 0.0001 },
+        { symbol: 'frxNZDUSD', name: 'NZD / USD', category: 'forex', pip: 0.0001 },
+        { symbol: 'frxEURGBP', name: 'EUR / GBP', category: 'forex', pip: 0.0001 },
+        { symbol: 'frxEURJPY', name: 'EUR / JPY', category: 'forex', pip: 0.01 },
+        { symbol: 'frxGBPJPY', name: 'GBP / JPY', category: 'forex', pip: 0.01 },
+        { symbol: 'frxXAUUSD', name: 'Or / USD (Gold)', category: 'metal', pip: 0.1 },
+        { symbol: 'frxXAGUSD', name: 'Argent / USD (Silver)', category: 'metal', pip: 0.01 },
+        { symbol: 'OTC_SPC', name: 'S&P 500 (US500)', category: 'indice', pip: 0.1 },
+        { symbol: 'OTC_NDX', name: 'Nasdaq 100 (US100)', category: 'indice', pip: 0.1 },
+        { symbol: 'OTC_DJI', name: 'Dow Jones 30 (US30)', category: 'indice', pip: 1 },
+        { symbol: 'cryBTCUSD', name: 'Bitcoin / USD', category: 'crypto', pip: 1 },
+        { symbol: 'cryETHUSD', name: 'Ethereum / USD', category: 'crypto', pip: 0.1 },
+      ],
+    },
+  ],
+  timeframes: [
+    { key: 'M1', label: '1 min' },
+    { key: 'M5', label: '5 min' },
+    { key: 'M15', label: '15 min' },
+    { key: 'M30', label: '30 min' },
+    { key: 'H1', label: '1 heure' },
+    { key: 'H2', label: '2 heures' },
+    { key: 'H4', label: '4 heures' },
+    { key: 'H6', label: '6 heures' },
+    { key: 'H8', label: '8 heures' },
+    { key: 'D1', label: '1 jour' },
+    { key: 'W1', label: '1 semaine' },
+    { key: 'MN', label: '1 mois' },
+  ],
+};
 
 // Bouton de la barre de réglages (libellé + valeur + chevron).
 // Sur mobile il occupe toute la largeur de sa cellule de grille ; la valeur est
@@ -120,7 +163,7 @@ function PeriodPicker({ startDate, endDate, onChange, isEn = false }) {
           {[
             { d: 30, l: isEn ? '1 month' : '1 mois' },
             { d: 90, l: isEn ? '3 months' : '3 mois' },
-            { d: 180, l: isEn ? '6 months' : '6 mois' },
+            { d: 180, l: isEn ? '6 months' : '6 months' },
             { d: 365, l: isEn ? '1 year' : '1 an' },
           ].map((p) => (
             <Button key={p.d} size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => setPreset(p.d)}>
@@ -156,7 +199,7 @@ function PeriodPicker({ startDate, endDate, onChange, isEn = false }) {
  * Solde initial : 10 000 $.
  */
 const Backtesting = () => {
-  const [meta, setMeta] = useState(null);
+  const [meta, setMeta] = useState(DEFAULT_BACKTEST_META);
   const [candles, setCandles] = useState(null);
   const [loading, setLoading] = useState(true);
   const [replaySignal, setReplaySignal] = useState(0); // incrémenté à chaque clic sur Replay
@@ -175,18 +218,24 @@ const Backtesting = () => {
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const provider = useMemo(() => meta?.providers?.find((p) => p.name === form.provider), [meta, form.provider]);
-  const symbols = provider?.symbols || [];
-  const currentSymbol = symbols.find((s) => s.symbol === form.symbol);
+  const provider = useMemo(() => meta?.providers?.find((p) => p.name === form.provider) || DEFAULT_BACKTEST_META.providers[0], [meta, form.provider]);
+  const symbols = provider?.symbols || DEFAULT_BACKTEST_META.providers[0].symbols;
+  const currentSymbol = symbols.find((s) => s.symbol === form.symbol) || symbols[0];
 
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    api.get('/backtests/meta').then((r) => setMeta(r.data)).catch(() => toast.error('Impossible de charger les métadonnées'));
+    api.get('/backtests/meta')
+      .then((r) => {
+        if (r.data?.providers?.length) setMeta(r.data);
+      })
+      .catch(() => {
+        setMeta(DEFAULT_BACKTEST_META);
+      });
   }, []);
 
-  // Charge les bougies de la période délimitée (avec marge de contexte).
+  // Charge les bougies de la période délimitée (avec marge de contexte + fallback).
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -199,21 +248,24 @@ const Backtesting = () => {
     })
       .then((r) => {
         if (!cancelled) {
-          setCandles(r.data.candles || []);
+          const list = Array.isArray(r.data?.candles) && r.data.candles.length > 0
+            ? r.data.candles
+            : generateClientFallbackCandles(form.symbol, form.timeframe, 450);
+          setCandles(list);
           setError(null);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (!cancelled) {
-          setCandles(null);
-          const msg = err.response?.data?.message || 'Données indisponibles';
-          setError(msg);
-          toast.error(msg);
+          const fallback = generateClientFallbackCandles(form.symbol, form.timeframe, 450);
+          setCandles(fallback);
+          setError(null);
         }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [form.provider, form.symbol, form.timeframe, form.start_date, form.end_date, reloadKey]);
+
 
   const { language } = useLanguageStore();
   const isEn = language === 'en';

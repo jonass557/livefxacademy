@@ -77,7 +77,14 @@ router.get('/trainers', adminOnly, async (req, res) => {
         twitter: trainerProfile?.twitter,
         youtube: trainerProfile?.youtube,
         myfxbook: trainerProfile?.myfxbook,
-        strategies_count: strategiesCount
+        strategies_count: strategiesCount,
+        is_referral_enabled: !!user.is_referral_enabled,
+        referral_code: user.referral_code || null,
+        custom_referral_percentage: user.custom_referral_percentage ?? null,
+        subscription_plan_name: user.subscription_plan_name || null,
+        subscription_expires_at: user.subscription_expires_at || null,
+        is_free_trial_granted: !!user.is_free_trial_granted,
+        has_active_subscription: Boolean(user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
       };
     }));
     
@@ -125,7 +132,14 @@ router.get('/trainers/:id', adminOnly, async (req, res) => {
         twitter: trainerProfile?.twitter,
         youtube: trainerProfile?.youtube,
         myfxbook: trainerProfile?.myfxbook,
-        trainer_created_at: trainerProfile?.created_at
+        trainer_created_at: trainerProfile?.created_at,
+        is_referral_enabled: !!user.is_referral_enabled,
+        referral_code: user.referral_code || null,
+        custom_referral_percentage: user.custom_referral_percentage ?? null,
+        subscription_plan_name: user.subscription_plan_name || null,
+        subscription_expires_at: user.subscription_expires_at || null,
+        is_free_trial_granted: !!user.is_free_trial_granted,
+        has_active_subscription: Boolean(user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
       },
       strategies
     });
@@ -133,6 +147,7 @@ router.get('/trainers/:id', adminOnly, async (req, res) => {
     console.error(err);
     res.status(500).json({ message: 'Erreur serveur' });
   }
+
 });
 
 /**
@@ -277,9 +292,17 @@ router.get('/users', adminOnly, async (req, res) => {
         role: user.role,
         created_at: user.created_at,
         is_verified,
-        specialty
+        specialty,
+        is_referral_enabled: !!user.is_referral_enabled,
+        referral_code: user.referral_code || null,
+        custom_referral_percentage: user.custom_referral_percentage ?? null,
+        subscription_plan_name: user.subscription_plan_name || null,
+        subscription_expires_at: user.subscription_expires_at || null,
+        is_free_trial_granted: !!user.is_free_trial_granted,
+        has_active_subscription: Boolean(user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
       };
     }));
+
     
     res.json({
       users: result,

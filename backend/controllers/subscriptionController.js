@@ -182,6 +182,13 @@ exports.initiateMobilePayment = async (req, res) => {
       transaction.sebpay_response = resData;
       if (dataPayload.status === 'completed' || dataPayload.status === 'success') {
         transaction.status = 'completed';
+        const durationMs = (Number(plan.duration_days) || 30) * 24 * 60 * 60 * 1000;
+        const baseDate = (user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
+          ? new Date(user.subscription_expires_at)
+          : new Date();
+        user.subscription_expires_at = new Date(baseDate.getTime() + durationMs);
+        user.subscription_plan_name = plan.name;
+        await user.save();
       }
       await transaction.save();
 
@@ -222,13 +229,26 @@ exports.sebpayWebhook = async (req, res) => {
       return res.status(400).json({ message: 'Missing external_reference' });
     }
 
-    const transaction = await PaymentTransaction.findOne({ external_reference: ref });
+    const transaction = await PaymentTransaction.findOne({ external_reference: ref }).populate('plan_id');
     if (!transaction) {
       return res.status(404).json({ message: 'Transaction not found' });
     }
 
     if (status === 'completed' || status === 'success' || status === 'paid') {
+      const wasCompleted = transaction.status === 'completed';
       transaction.status = 'completed';
+      if (!wasCompleted && transaction.user_id) {
+        const user = await User.findById(transaction.user_id);
+        if (user) {
+          const durationDays = Number(transaction.plan_id?.duration_days) || 30;
+          const baseDate = (user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
+            ? new Date(user.subscription_expires_at)
+            : new Date();
+          user.subscription_expires_at = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+          user.subscription_plan_name = transaction.plan_id?.name || 'Plan Souscription';
+          await user.save();
+        }
+      }
     } else if (status === 'failed' || status === 'cancelled' || status === 'expired') {
       transaction.status = 'failed';
     }
@@ -254,7 +274,7 @@ exports.checkPaymentStatus = async (req, res) => {
     res.json({
       status: transaction.status,
       amount: transaction.amount,
-      plan_name: transaction.plan_id?.name,
+      plan_name: transaction.plan_id?.name || transaction.sebpay_response?.plan_name || 'Abonnement',
       external_reference: transaction.external_reference,
       provider_link: transaction.provider_link
     });
@@ -269,10 +289,145 @@ exports.getMySubscriptions = async (req, res) => {
   try {
     const list = await PaymentTransaction.find({ user_id: req.user.id })
       .populate('plan_id', 'name price_xaf duration_days')
-      .sort({ createdAt: -1 });
-    res.json(list);
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const enriched = list.map((tx) => ({
+      ...tx,
+      plan_id: tx.plan_id || {
+        name: tx.sebpay_response?.plan_name || 'Abonnement Offert (1 Mois Gratuit)',
+        price_xaf: tx.amount || 0,
+        duration_days: tx.sebpay_response?.duration_days || 30,
+      },
+    }));
+
+    res.json(enriched);
   } catch (err) {
     console.error('getMySubscriptions error:', err);
     res.status(500).json({ message: 'Erreur serveur' });
   }
 };
+
+// Admin : Activer 1 mois d'abonnement gratuit (ou durée personnalisée) à un utilisateur
+exports.grantFreeMonth = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const days = Number(req.body?.days) > 0 ? Number(req.body.days) : 30;
+    const planName = req.body?.plan_name || 'Abonnement Offert (1 Mois Gratuit)';
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+
+    const now = new Date();
+    const currentExpiry = user.subscription_expires_at ? new Date(user.subscription_expires_at) : null;
+    const baseDate = (currentExpiry && currentExpiry > now) ? currentExpiry : now;
+    const expiresAt = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+
+    user.subscription_plan_name = planName;
+    user.subscription_expires_at = expiresAt;
+    user.is_free_trial_granted = true;
+    await user.save();
+
+    const externalRef = `FREE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const transaction = await PaymentTransaction.create({
+      user_id: user._id,
+      plan_id: null,
+      amount: 0,
+      currency: 'XOF',
+      phone: user.phone || 'ADMIN-FREE',
+      operator: 'free_admin',
+      country: 'BJ',
+      external_reference: externalRef,
+      transaction_id: externalRef,
+      status: 'completed',
+      sebpay_response: {
+        granted_by_admin: req.user?.id || null,
+        plan_name: planName,
+        duration_days: days,
+        expires_at: expiresAt.toISOString(),
+      },
+    });
+
+    // Notification email à l'utilisateur (non-bloquant)
+    try {
+      const { sendMail } = require('../utils/mailer');
+      if (user.email) {
+        const expStr = expiresAt.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+        sendMail({
+          to: user.email,
+          subject: `🎁 1 Mois d'Abonnement Gratuit Activé — LiveFX Academy`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0b0e11; color: #eaecef; border: 1px solid #1e2329; border-radius: 10px; overflow: hidden;">
+              <div style="background: linear-gradient(90deg, #10b981, #059669); padding: 16px 22px; color: #ffffff; font-weight: bold; font-size: 17px;">
+                🎁 Abonnement Gratuit Activé — LiveFX Academy
+              </div>
+              <div style="padding: 22px;">
+                <p style="margin: 0 0 12px; font-size: 14px; color: #eaecef;">Bonjour <strong>${user.full_name || 'Trader'}</strong>,</p>
+                <p style="margin: 0 0 16px; font-size: 14px; color: #cbd5e1; line-height: 1.6;">
+                  L'administrateur <strong>LivefxTrading</strong> vient d'activer pour votre compte un abonnement gratuit de <strong>${days} jours</strong> !
+                </p>
+                <div style="background: #131722; border: 1px solid #2a2e39; border-radius: 8px; padding: 14px; margin-bottom: 18px;">
+                  <div style="font-size: 13px; color: #94a3b8; margin-bottom: 6px;">Formule activée : <strong style="color: #10b981;">${planName}</strong></div>
+                  <div style="font-size: 13px; color: #94a3b8;">Valable jusqu'au : <strong style="color: #f0b90b;">${expStr}</strong></div>
+                </div>
+                <div style="text-align: center; margin-top: 20px;">
+                  <a href="${process.env.FRONTEND_URL || 'https://livefx-trading.com'}/dashboard" style="display: inline-block; background: #f0b90b; color: #0b0e11; text-decoration: none; font-weight: bold; padding: 10px 22px; border-radius: 6px; font-size: 13px;">
+                    Accéder à mon espace LiveFX
+                  </a>
+                </div>
+              </div>
+            </div>
+          `,
+        }).catch(() => {});
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `1 mois d'abonnement gratuit activé pour ${user.full_name} (valable jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}).`,
+      user: {
+        id: user._id,
+        full_name: user.full_name,
+        email: user.email,
+        subscription_plan_name: user.subscription_plan_name,
+        subscription_expires_at: user.subscription_expires_at,
+        is_free_trial_granted: user.is_free_trial_granted,
+        has_active_subscription: true,
+      },
+      transaction_id: transaction._id,
+    });
+  } catch (err) {
+    console.error('grantFreeMonth error:', err);
+    res.status(500).json({ message: 'Erreur lors de l\'activation du mois gratuit' });
+  }
+};
+
+// Admin : Révoquer l'abonnement actif d'un utilisateur
+exports.revokeSubscription = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    user.subscription_expires_at = null;
+    user.subscription_plan_name = null;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: `Abonnement révoqué pour ${user.full_name}`,
+      user: {
+        id: user._id,
+        subscription_plan_name: null,
+        subscription_expires_at: null,
+        has_active_subscription: false,
+      },
+    });
+  } catch (err) {
+    console.error('revokeSubscription error:', err);
+    res.status(500).json({ message: 'Erreur lors de la révocation de l\'abonnement' });
+  }
+};
+

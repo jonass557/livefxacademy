@@ -3,7 +3,7 @@ import AnnouncementInteractions from '../../components/AnnouncementInteractions'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Users, Video, TrendingUp, Image as ImageIcon, Trash2, MessageSquare, CheckCircle, XCircle, Clock, RefreshCw, BarChart3, Mail, GraduationCap, Eye, UserCheck, UserX, Lightbulb, ExternalLink, User, Phone, Calendar, Award, Briefcase, X, FileCheck, Send, AlertCircle, Target, ChevronDown, ChevronUp, Upload, Play, Pause, Edit2, Search, Globe, ArrowRight } from 'lucide-react';
+import { Users, Video, TrendingUp, Image as ImageIcon, Trash2, MessageSquare, CheckCircle, XCircle, Clock, RefreshCw, BarChart3, Mail, GraduationCap, Eye, UserCheck, UserX, Lightbulb, ExternalLink, User, Phone, Calendar, Award, Briefcase, X, FileCheck, Send, AlertCircle, Target, ChevronDown, ChevronUp, Upload, Play, Pause, Edit2, Search, Globe, ArrowRight, Share2, CreditCard, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { API_URL } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
@@ -213,9 +213,14 @@ const AdminDashboard = () => {
     setLoadingReferralsOverview(true);
     try {
       const res = await api.get('/referrals/admin/overview');
-      setReferralsOverview(res.data || []);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.referrers || []);
+      setReferralsOverview(list);
+      if (res.data?.global_percentage != null) {
+        setReferralPercentageInput(res.data.global_percentage);
+      }
     } catch (err) {
       console.error("Error fetching referrals overview", err);
+      setReferralsOverview([]);
     } finally {
       setLoadingReferralsOverview(false);
     }
@@ -230,8 +235,50 @@ const AdminDashboard = () => {
       toast.success(res.data?.message || 'Accès parrainage mis à jour');
       fetchReferralsOverview();
       fetchUsers();
+      fetchTrainers();
+      if (selectedTrainer && String(selectedTrainer.id) === String(userId)) {
+        fetchTrainerDetails(userId);
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erreur lors de la modification');
+    }
+  };
+
+  const handleGrantFreeMonth = async (userId, userName) => {
+    const daysInput = window.prompt(
+      `Activer un abonnement gratuit pour ${userName} :\nNombre de jours à offrir (par défaut 30 jours = 1 mois) :`,
+      "30"
+    );
+    if (daysInput === null) return;
+    const duration_days = Number(daysInput) > 0 ? Number(daysInput) : 30;
+    try {
+      const res = await api.post(`/subscriptions/admin/grant-free/${userId}`, {
+        duration_days,
+        plan_name: duration_days === 30 ? '1 Mois Offert (Admin)' : `${duration_days} Jours Offerts (Admin)`
+      });
+      toast.success(res.data?.message || `1 mois d'abonnement gratuit activé pour ${userName} !`);
+      fetchUsers();
+      fetchTrainers();
+      if (selectedTrainer && String(selectedTrainer.id) === String(userId)) {
+        fetchTrainerDetails(userId);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de l'activation de l'abonnement gratuit");
+    }
+  };
+
+  const handleRevokeSubscription = async (userId, userName) => {
+    if (!window.confirm(`Voulez-vous désactiver l'abonnement actif de ${userName} ?`)) return;
+    try {
+      const res = await api.post(`/subscriptions/admin/revoke/${userId}`);
+      toast.success(res.data?.message || 'Abonnement désactivé');
+      fetchUsers();
+      fetchTrainers();
+      if (selectedTrainer && String(selectedTrainer.id) === String(userId)) {
+        fetchTrainerDetails(userId);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de la révocation de l'abonnement");
     }
   };
 
@@ -1748,21 +1795,64 @@ const AdminDashboard = () => {
                         <p className="flex items-center gap-2">
                           <Calendar className="h-3 w-3" /> Inscrit le {new Date(trainer.created_at).toLocaleDateString('fr-FR')}
                         </p>
+                        <div className="pt-1 flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${trainer.is_referral_enabled ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                            <Share2 className="h-3 w-3" />
+                            {trainer.is_referral_enabled
+                              ? `Parrainage Actif (${trainer.custom_referral_percentage || branding.referral_percentage || 10}%) - Code: ${trainer.referral_code || 'Généré'}`
+                              : 'Parrainage Inactif'}
+                          </span>
+                          {trainer.has_active_subscription && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                              <Gift className="h-3 w-3" />
+                              Abonnement Actif ({trainer.subscription_plan_name || 'VIP'}) jusqu'au {new Date(trainer.subscription_expires_at).toLocaleDateString('fr-FR')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     
                     <div className="flex flex-col gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedTrainer(trainer);
-                          fetchTrainerDetails(trainer.id);
-                        }}
-                      >
-                        <Eye className="h-4 w-4 mr-1" /> Voir détails
-                      </Button>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <Button
+                          size="sm"
+                          variant={trainer.is_referral_enabled ? "outline" : "default"}
+                          className="text-xs gap-1.5"
+                          onClick={() => {
+                            const newStatus = !trainer.is_referral_enabled;
+                            let custom = null;
+                            if (newStatus) {
+                              const input = window.prompt("Pourcentage de parrainage pour ce formateur (% ou vide pour défaut) :", trainer.custom_referral_percentage || branding.referral_percentage || "10");
+                              if (input === null) return;
+                              custom = input.trim() ? Number(input) : null;
+                            }
+                            handleToggleUserReferral(trainer.id, newStatus, custom);
+                          }}
+                        >
+                          <Share2 className="h-3.5 w-3.5" />
+                          {trainer.is_referral_enabled ? "Désactiver Parrainage" : "Activer Parrainage"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs gap-1.5 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400"
+                          onClick={() => handleGrantFreeMonth(trainer.id, trainer.full_name)}
+                        >
+                          <Gift className="h-3.5 w-3.5" />
+                          +1 Mois Gratuit
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedTrainer(trainer);
+                            fetchTrainerDetails(trainer.id);
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-1" /> Voir détails
+                        </Button>
+                      </div>
+                      <div className="flex gap-2 justify-end">
                         {!trainer.is_verified ? (
                           <Button 
                             size="sm" 
@@ -1955,7 +2045,32 @@ const AdminDashboard = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-4 pt-4 border-t">
+                <div className="flex flex-wrap gap-3 pt-4 border-t">
+                  <Button
+                    variant={trainerDetails.trainer.is_referral_enabled ? "outline" : "default"}
+                    className="gap-1.5"
+                    onClick={() => {
+                      const newStatus = !trainerDetails.trainer.is_referral_enabled;
+                      let custom = null;
+                      if (newStatus) {
+                        const input = window.prompt("Pourcentage de parrainage pour ce formateur (% ou vide pour défaut) :", trainerDetails.trainer.custom_referral_percentage || branding.referral_percentage || "10");
+                        if (input === null) return;
+                        custom = input.trim() ? Number(input) : null;
+                      }
+                      handleToggleUserReferral(trainerDetails.trainer.id, newStatus, custom);
+                    }}
+                  >
+                    <Share2 className="h-4 w-4" />
+                    {trainerDetails.trainer.is_referral_enabled ? "Désactiver Lien Parrainage" : "Activer Lien Parrainage"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-1.5 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400"
+                    onClick={() => handleGrantFreeMonth(trainerDetails.trainer.id, trainerDetails.trainer.full_name)}
+                  >
+                    <Gift className="h-4 w-4" />
+                    Activer 1 Mois Gratuit
+                  </Button>
                   {!trainerDetails.trainer.is_verified ? (
                     <Button 
                       className="flex-1 bg-green-600 hover:bg-green-700"
@@ -2617,10 +2732,41 @@ const AdminDashboard = () => {
                             <Share2 className="h-3 w-3" />
                             {u.is_referral_enabled ? `Parrainage Actif (${u.custom_referral_percentage || branding.referral_percentage || 10}%) - Code: ${u.referral_code || 'Généré'}` : 'Parrainage Inactif'}
                           </span>
+                          {u.has_active_subscription ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                              <Gift className="h-3 w-3" />
+                              Abonnement Actif ({u.subscription_plan_name || 'VIP'}) jusqu'au {new Date(u.subscription_expires_at).toLocaleDateString('fr-FR')}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                              <CreditCard className="h-3 w-3" />
+                              Aucun abonnement actif
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs gap-1.5 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400"
+                        onClick={() => handleGrantFreeMonth(u.id, u.full_name)}
+                      >
+                        <Gift className="h-3.5 w-3.5" />
+                        +1 Mois Gratuit
+                      </Button>
+                      {u.has_active_subscription && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs gap-1 text-amber-600 border-amber-500/30 hover:bg-amber-50"
+                          onClick={() => handleRevokeSubscription(u.id, u.full_name)}
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                          Révoquer Abo
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant={u.is_referral_enabled ? "outline" : "default"}
@@ -3911,9 +4057,12 @@ const AdminDashboard = () => {
 
   // Section: Parrainage & Commissions (Admin)
   const renderAdminReferrals = () => {
-    const totalGenerated = referralsOverview.reduce((sum, r) => sum + (r.total_generated_xaf || 0), 0);
-    const totalPending = referralsOverview.reduce((sum, r) => sum + (r.pending_payout_xaf || 0), 0);
-    const totalPaid = referralsOverview.reduce((sum, r) => sum + (r.paid_payout_xaf || 0), 0);
+    const safeReferrals = Array.isArray(referralsOverview)
+      ? referralsOverview
+      : (Array.isArray(referralsOverview?.referrers) ? referralsOverview.referrers : []);
+    const totalGenerated = safeReferrals.reduce((sum, r) => sum + (r.total_generated_xaf || 0), 0);
+    const totalPending = safeReferrals.reduce((sum, r) => sum + (r.pending_payout_xaf ?? r.pending_to_pay_xaf ?? 0), 0);
+    const totalPaid = safeReferrals.reduce((sum, r) => sum + (r.paid_payout_xaf ?? r.total_paid_xaf ?? 0), 0);
 
     return (
       <div className="space-y-6">
@@ -3923,13 +4072,23 @@ const AdminDashboard = () => {
               <Share2 className="h-6 w-6 text-primary" /> Parrainage & Commissions d'Affiliation
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Gérez les liens de parrainage activés, suivez les revenus générés par chaque affilié et payez leurs commissions.
+              Gérez les liens de parrainage activés (élèves et formateurs), suivez les revenus générés par chaque affilié et payez leurs commissions.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchReferralsOverview} disabled={loadingReferralsOverview} className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${loadingReferralsOverview ? 'animate-spin' : ''}`} />
-            Actualiser
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setActiveSection('trainers')} className="gap-1.5">
+              <GraduationCap className="h-4 w-4 text-emerald-600" />
+              Activer pour un Formateur
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setActiveSection('users')} className="gap-1.5">
+              <Users className="h-4 w-4 text-primary" />
+              Activer pour un Utilisateur
+            </Button>
+            <Button variant="outline" size="sm" onClick={fetchReferralsOverview} disabled={loadingReferralsOverview} className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${loadingReferralsOverview ? 'animate-spin' : ''}`} />
+              Actualiser
+            </Button>
+          </div>
         </div>
 
         {/* Global Stats */}
@@ -3940,8 +4099,8 @@ const AdminDashboard = () => {
               <Users className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{referralsOverview.length}</div>
-              <p className="text-xs text-muted-foreground">Membres avec lien actif</p>
+              <div className="text-2xl font-bold">{safeReferrals.length}</div>
+              <p className="text-xs text-muted-foreground">Membres & formateurs avec lien actif</p>
             </CardContent>
           </Card>
 
@@ -3987,11 +4146,11 @@ const AdminDashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {referralsOverview.length === 0 ? (
+            {safeReferrals.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground space-y-3">
-                <p>Aucun utilisateur n'a actuellement de lien de parrainage activé.</p>
+                <p>Aucun utilisateur ou formateur n'a actuellement de lien de parrainage activé.</p>
                 <p className="text-xs">
-                  Allez dans l'onglet <strong>Utilisateurs</strong> pour activer le parrainage sur les membres éligibles.
+                  Allez dans l'onglet <strong>Formateurs</strong> ou <strong>Utilisateurs</strong> pour activer le parrainage sur les membres choisis.
                 </p>
               </div>
             ) : (
@@ -3999,7 +4158,7 @@ const AdminDashboard = () => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
-                      <th className="text-left py-2 px-3">Parrain / Utilisateur</th>
+                      <th className="text-left py-2 px-3">Parrain / Formateur</th>
                       <th className="text-left py-2 px-3">Code</th>
                       <th className="text-left py-2 px-3">Taux (%)</th>
                       <th className="text-center py-2 px-3">Inscrits</th>
@@ -4011,49 +4170,61 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {referralsOverview.map((item) => (
-                      <tr key={item.id} className="border-b hover:bg-muted/30">
-                        <td className="py-3 px-3">
-                          <p className="font-semibold">{item.full_name}</p>
-                          <p className="text-xs text-muted-foreground">{item.email} • {item.phone}</p>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-mono font-bold text-xs bg-primary/10 text-primary px-2 py-1 rounded">
-                            {item.referral_code}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 font-semibold">{item.percentage}%</td>
-                        <td className="py-3 px-3 text-center">{item.referees_count || 0}</td>
-                        <td className="py-3 px-3 text-center font-semibold text-emerald-600">{item.subscribed_count || 0}</td>
-                        <td className="py-3 px-3 text-right font-bold">{(item.total_generated_xaf || 0).toLocaleString()} XAF</td>
-                        <td className="py-3 px-3 text-right font-extrabold text-amber-600">
-                          {(item.pending_payout_xaf || 0).toLocaleString()} XAF
-                        </td>
-                        <td className="py-3 px-3 text-right text-muted-foreground">
-                          {(item.paid_payout_xaf || 0).toLocaleString()} XAF
-                        </td>
-                        <td className="py-3 px-3 text-right space-x-1">
-                          {item.pending_payout_xaf > 0 && (
+                    {safeReferrals.map((item) => {
+                      const pendingPayout = item.pending_payout_xaf ?? item.pending_to_pay_xaf ?? 0;
+                      const paidPayout = item.paid_payout_xaf ?? item.total_paid_xaf ?? 0;
+                      const pct = item.percentage ?? item.effective_percentage ?? 10;
+                      const refCount = item.referees_count ?? item.total_referred ?? 0;
+                      const subCount = item.subscribed_count ?? item.users_with_plan ?? 0;
+                      return (
+                        <tr key={item.id} className="border-b hover:bg-muted/30">
+                          <td className="py-3 px-3">
+                            <p className="font-semibold flex items-center gap-1.5">
+                              {item.full_name}
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${item.role === 'trainer' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {item.role === 'trainer' ? 'Formateur' : 'Élève'}
+                              </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground">{item.email} {item.phone ? `• ${item.phone}` : ''}</p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-mono font-bold text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                              {item.referral_code}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-semibold">{pct}%</td>
+                          <td className="py-3 px-3 text-center">{refCount}</td>
+                          <td className="py-3 px-3 text-center font-semibold text-emerald-600">{subCount}</td>
+                          <td className="py-3 px-3 text-right font-bold">{(item.total_generated_xaf || 0).toLocaleString()} XAF</td>
+                          <td className="py-3 px-3 text-right font-extrabold text-amber-600">
+                            {pendingPayout.toLocaleString()} XAF
+                          </td>
+                          <td className="py-3 px-3 text-right text-muted-foreground">
+                            {paidPayout.toLocaleString()} XAF
+                          </td>
+                          <td className="py-3 px-3 text-right space-x-1">
+                            {pendingPayout > 0 && (
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs"
+                                onClick={() => handleMarkCommissionsPaid(item.id, item.full_name)}
+                              >
+                                <CheckCircle className="h-3.5 w-3.5" /> Payer
+                              </Button>
+                            )}
                             <Button
                               size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs"
-                              onClick={() => handleMarkCommissionsPaid(item.id, item.full_name)}
+                              variant="destructive"
+                              className="text-xs"
+                              onClick={() => handleToggleUserReferral(item.id, false, null)}
+                              title="Désactiver le lien"
                             >
-                              <CheckCircle className="h-3.5 w-3.5" /> Payer
+                              Désactiver
                             </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="text-xs"
-                            onClick={() => handleToggleUserReferral(item.id, false, null)}
-                            title="Désactiver le lien"
-                          >
-                            Désactiver
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -4066,6 +4237,7 @@ const AdminDashboard = () => {
 
   // Section: Plans & Souscriptions (Admin)
   const renderAdminSubscriptions = () => {
+    const safePlans = Array.isArray(adminPlans) ? adminPlans : [];
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -4074,10 +4246,18 @@ const AdminDashboard = () => {
               <CreditCard className="h-6 w-6 text-primary" /> Plans de Souscription Mensuels
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Créez et configurez les offres de souscription payables via SEBPAY Mobile Money.
+              Créez et configurez les offres de souscription ou offrez 1 mois gratuit à un utilisateur.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setActiveSection('users')}
+              className="gap-1.5 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400"
+            >
+              <Gift className="h-4 w-4" />
+              Offrir 1 Mois Gratuit à un Utilisateur
+            </Button>
             <Button
               onClick={() => {
                 setEditingPlan(null);
@@ -4191,7 +4371,7 @@ const AdminDashboard = () => {
         {/* Plans Grid */}
         {loadingAdminPlans ? (
           <div className="py-12 text-center text-muted-foreground">Chargement des plans...</div>
-        ) : adminPlans.length === 0 ? (
+        ) : safePlans.length === 0 ? (
           <Card className="p-8 text-center border-dashed">
             <CreditCard className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
             <p className="font-semibold">Aucun plan de souscription configuré</p>
@@ -4199,7 +4379,7 @@ const AdminDashboard = () => {
           </Card>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {adminPlans.map((p) => {
+            {safePlans.map((p) => {
               const feats = Array.isArray(p.features) ? p.features : [];
               return (
                 <Card key={p.id} className="relative flex flex-col justify-between">

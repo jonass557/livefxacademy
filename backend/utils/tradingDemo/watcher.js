@@ -106,11 +106,14 @@ function ensure(symbol) {
 // Réconcilie les abonnements serveur avec les symboles réellement « à surveiller ».
 async function reconcile() {
   try {
-    const [posSyms, ordSyms] = await Promise.all([
+    const { PriceAlert } = require('../../models');
+    const [posSyms, ordSyms, alertSyms] = await Promise.all([
       Position.distinct('symbol', { status: 'OPEN' }),
       PendingOrder.distinct('symbol', { status: 'PENDING' }),
+      PriceAlert ? PriceAlert.distinct('symbol', { status: 'active' }).catch(() => []) : Promise.resolve([]),
     ]);
-    const needed = new Set([...posSyms, ...ordSyms, ...CONVERSION_SYMBOLS]);
+    const cleanAlerts = (alertSyms || []).map((s) => String(s || '').replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase()).filter(Boolean);
+    const needed = new Set([...posSyms, ...ordSyms, ...cleanAlerts, ...CONVERSION_SYMBOLS]);
     for (const s of needed) if (!serverSubs.has(s)) { if (liveFeed.subscribe(s)) serverSubs.add(s); }
     for (const s of Array.from(serverSubs)) if (!needed.has(s)) { liveFeed.unsubscribe(s); serverSubs.delete(s); }
   } catch (err) {

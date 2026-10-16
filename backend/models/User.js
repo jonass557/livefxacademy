@@ -46,9 +46,23 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+  // Abonnement actif (payant ou 1 mois gratuit offert par l'administrateur)
+  subscription_plan_name: {
+    type: String,
+    default: null
+  },
+  subscription_expires_at: {
+    type: Date,
+    default: null
+  },
+  is_free_trial_granted: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }
 });
 
 module.exports = mongoose.model('User', userSchema);
+

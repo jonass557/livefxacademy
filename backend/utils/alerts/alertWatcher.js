@@ -9,6 +9,58 @@ const liveFeed = require('../marketData/liveFeed');
 const { PriceAlert, User } = require('../../models');
 const { sendMail } = require('../mailer');
 
+async function sendAlertEmail(alert, currentPrice) {
+  if (!alert || !alert.notify_email) return false;
+  try {
+    let userObj = alert.user_id;
+    if (!userObj || !userObj.email) {
+      userObj = await User.findById(alert.user_id).select('email full_name').lean();
+    }
+    if (!userObj || !userObj.email) return false;
+
+    const userEmail = userObj.email;
+    const userName = userObj.full_name || 'Trader';
+    const symbol = alert.symbol;
+    const tp = alert.target_price;
+    const execPrice = currentPrice ?? tp;
+    const condLabel = alert.condition === 'above'
+      ? 'franchi à la hausse (>=)'
+      : alert.condition === 'below'
+      ? 'franchi à la baisse (<=)'
+      : 'croisé';
+
+    const subject = `🔔 Alerte LivefxTrading : ${symbol} a atteint ${tp}`;
+    const title = `Alerte de Prix Déclenchée : ${symbol}`;
+    const html = `
+      <p>Bonjour <strong>${userName}</strong>,</p>
+      <p>Votre alerte de prix configurée sur <strong>${symbol}</strong> vient de se déclencher :</p>
+      <div style="background:#f3f4f6; border-left:4px solid #6366f1; padding:15px; margin:15px 0; border-radius:4px;">
+        <p style="margin:4px 0;"><strong>Instrument :</strong> ${symbol}</p>
+        <p style="margin:4px 0;"><strong>Prix cible :</strong> <span style="font-size:16px; font-weight:bold; color:#4f46e5;">${tp}</span></p>
+        <p style="margin:4px 0;"><strong>Prix d'exécution :</strong> ${execPrice}</p>
+        <p style="margin:4px 0;"><strong>Condition :</strong> ${condLabel}</p>
+        ${alert.note ? `<p style="margin:4px 0;"><strong>Note / Commentaire :</strong> ${alert.note}</p>` : ''}
+        <p style="margin:4px 0; font-size:12px; color:#6b7280;">Déclenché le : ${new Date().toLocaleString('fr-FR')}</p>
+      </div>
+      <p style="margin-top:20px;">
+        <a href="${process.env.FRONTEND_URL || 'https://livefx-trading.com'}/dashboard?section=trading-demo"
+           style="display:inline-block; background:#4f46e5; color:#ffffff; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold;">
+          Accéder au Graphique en Direct
+        </a>
+      </p>
+    `;
+
+    const sent = await sendMail({ to: userEmail, subject, title, html });
+    if (sent) {
+      console.log(`[alertWatcher] Email envoyé à ${userEmail} pour ${symbol} @ ${tp}`);
+    }
+    return sent;
+  } catch (mailErr) {
+    console.error(`[alertWatcher] Erreur envoi email:`, mailErr.message);
+    return false;
+  }
+}
+
 class AlertWatcher {
   constructor() {
     this.started = false;
@@ -31,17 +83,27 @@ class AlertWatcher {
 
   async handleQuote(quote) {
     if (!quote || !quote.symbol || !(quote.mid > 0)) return;
-    const symbol = quote.symbol;
-    const currentPrice = quote.mid;
-    const prevPrice = this.lastPrices.get(symbol) ?? quote.mid;
+    const rawSym = String(quote.symbol).trim();
+    const symbol = rawSym.replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
+    const currentPrice = Number(quote.mid);
+    const prevPrice = this.lastPrices.get(symbol) ?? currentPrice;
     this.lastPrices.set(symbol, currentPrice);
 
     if (this.processing.has(symbol)) return;
     this.processing.add(symbol);
 
     try {
-      // Trouver toutes les alertes actives pour ce symbole
-      const activeAlerts = await PriceAlert.find({ symbol, status: 'active' }).populate('user_id');
+      // Trouver toutes les alertes actives pour ce symbole (avec ou sans préfixe frx)
+      const activeAlerts = await PriceAlert.find({
+        status: 'active',
+        $or: [
+          { symbol },
+          { symbol: `FRX${symbol}` },
+          { symbol: `frx${symbol}` },
+          { symbol: new RegExp(`^(frx)?${symbol}$`, 'i') },
+        ],
+      }).populate('user_id');
+
       if (!activeAlerts || activeAlerts.length === 0) return;
 
       for (const alert of activeAlerts) {
@@ -52,73 +114,46 @@ class AlertWatcher {
           continue;
         }
 
-        let isHit = false;
-        const tp = alert.target_price;
-        const refPrice = alert.created_price ?? prevPrice;
+        const tp = Number(alert.target_price);
+        if (!tp || isNaN(tp)) continue;
 
+        // Si l'alerte n'avait pas encore de prix de référence à la création, on l'initialise
+        if (alert.created_price == null) {
+          alert.created_price = prevPrice;
+        }
+        const refPrice = Number(alert.created_price);
+
+        let isHit = false;
         if (alert.condition === 'above') {
-          isHit = currentPrice >= tp && (prevPrice < tp || refPrice < tp);
+          isHit = currentPrice >= tp && (prevPrice <= tp || refPrice <= tp);
         } else if (alert.condition === 'below') {
-          isHit = currentPrice <= tp && (prevPrice > tp || refPrice > tp);
+          isHit = currentPrice <= tp && (prevPrice >= tp || refPrice >= tp);
         } else {
           // 'crossing' (croisement dans un sens ou dans l'autre)
           isHit =
             (prevPrice <= tp && currentPrice >= tp) ||
             (prevPrice >= tp && currentPrice <= tp) ||
             (refPrice <= tp && currentPrice >= tp) ||
-            (refPrice >= tp && currentPrice <= tp);
+            (refPrice >= tp && currentPrice <= tp) ||
+            Math.abs(currentPrice - tp) <= Math.abs(tp) * 0.00005;
         }
 
         if (isHit) {
           const isEveryTime = alert.trigger_frequency === 'every_time';
+          const alreadyEmailed = alert.email_sent && !isEveryTime;
+
           if (!isEveryTime) {
             alert.status = 'triggered';
           } else {
-            // Réinitialiser le prix de référence pour le prochain déclenchement
             alert.created_price = currentPrice;
           }
           alert.triggered_at = new Date();
           alert.triggered_price = currentPrice;
 
-          // Envoi d'email de notification si configuré
-          if (alert.notify_email && alert.user_id && alert.user_id.email) {
-            try {
-              const userEmail = alert.user_id.email;
-              const userName = alert.user_id.full_name || 'Trader';
-              const condLabel = alert.condition === 'above'
-                ? 'franchi à la hausse (>=)'
-                : alert.condition === 'below'
-                ? 'franchi à la baisse (<=)'
-                : 'croisé';
-
-              const subject = `🔔 Alerte Livefx : ${symbol} a atteint ${tp}`;
-              const title = `Alerte de Prix Déclenchée : ${symbol}`;
-              const html = `
-                <p>Bonjour <strong>${userName}</strong>,</p>
-                <p>Votre alerte de prix configurée sur <strong>${symbol}</strong> vient de se déclencher :</p>
-                <div style="background:#f3f4f6; border-left:4px solid #6366f1; padding:15px; margin:15px 0; border-radius:4px;">
-                  <p style="margin:4px 0;"><strong>Instrument :</strong> ${symbol}</p>
-                  <p style="margin:4px 0;"><strong>Prix cible :</strong> <span style="font-size:16px; font-weight:bold; color:#4f46e5;">${tp}</span></p>
-                  <p style="margin:4px 0;"><strong>Prix d'exécution :</strong> ${currentPrice}</p>
-                  <p style="margin:4px 0;"><strong>Condition :</strong> ${condLabel}</p>
-                  ${alert.note ? `<p style="margin:4px 0;"><strong>Note / Commentaire :</strong> ${alert.note}</p>` : ''}
-                  <p style="margin:4px 0; font-size:12px; color:#6b7280;">Déclenché le : ${new Date().toLocaleString('fr-FR')}</p>
-                </div>
-                <p style="margin-top:20px;">
-                  <a href="${process.env.FRONTEND_URL || 'https://livefx-trading.com'}/dashboard?section=trading-demo"
-                     style="display:inline-block; background:#4f46e5; color:#ffffff; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold;">
-                    Accéder au Graphique en Direct
-                  </a>
-                </p>
-              `;
-
-              const sent = await sendMail({ to: userEmail, subject, title, html });
-              if (sent) {
-                alert.email_sent = true;
-                console.log(`[alertWatcher] Email envoyé à ${userEmail} pour ${symbol} @ ${tp}`);
-              }
-            } catch (mailErr) {
-              console.error(`[alertWatcher] Erreur envoi email:`, mailErr.message);
+          if (!alreadyEmailed && alert.notify_email) {
+            const sent = await sendAlertEmail(alert, currentPrice);
+            if (sent) {
+              alert.email_sent = true;
             }
           }
 
@@ -131,4 +166,7 @@ class AlertWatcher {
   }
 }
 
-module.exports = new AlertWatcher();
+const instance = new AlertWatcher();
+instance.sendAlertEmail = sendAlertEmail;
+module.exports = instance;
+
