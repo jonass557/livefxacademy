@@ -12,6 +12,15 @@ const connectDB = require('./db');
 
 dotenv.config();
 
+// Empêcher tout crash du processus Node.js en cas d'erreur asynchrone non interceptée
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL] Uncaught Exception (intercepted, server kept alive):', err?.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRITICAL] Unhandled Rejection (intercepted, server kept alive):', reason?.message || reason);
+});
+
 // Connect to MongoDB
 connectDB();
 
@@ -48,12 +57,46 @@ const app = express();
 
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+// Configuration CORS universelle : accepte livefx-trading.com, www.livefx-trading.com,
+// tous les sous-domaines, WebViews mobiles (iOS/Android) et réseaux lents (cache preflight 24h).
+const corsOptions = {
+  origin: (origin, callback) => {
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Cache-Control',
+    'Pragma',
+  ],
+  maxAge: 86400,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false,
 }));
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// S'assurer que MongoDB est connecté avant de traiter une requête API si la connexion initiale avait pris du retard
+app.use('/api', async (req, res, next) => {
+  if (mongoose.connection.readyState === 0) {
+    try {
+      await connectDB();
+    } catch (_) {}
+  }
+  next();
+});
 
 // Serve static files (uploaded images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -99,18 +142,26 @@ app.get('/', (req, res) => {
   res.send('LivefxTrading API Running');
 });
 
-app.get('/health', (req, res) => {
+const healthHandler = (req, res) => {
   const mongoState = mongoose.connection.readyState;
-  res.status(mongoState === 1 ? 200 : 503).json({
-    status: mongoState === 1 ? 'ok' : 'degraded',
-    database: mongoState === 1 ? 'connected' : 'disconnected',
+  res.status(200).json({
+    status: mongoState === 1 ? 'ok' : 'connecting',
+    database: mongoState === 1 ? 'connected' : 'reconnecting',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
-});
+};
+
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 // Serveur HTTP explicite pour pouvoir attacher le serveur WebSocket (marché temps réel).
 const server = http.createServer(app);
+
+// Timeouts généreux pour tolérer les connexions mobiles lentes (2G/3G/4G/Satellite) partout dans le monde
+server.keepAliveTimeout = 120000;
+server.headersTimeout = 125000;
+server.timeout = 120000;
 
 // Serveur WebSocket des cotations temps réel (/ws/market).
 marketSocket.attach(server);

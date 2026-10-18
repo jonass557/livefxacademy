@@ -2929,15 +2929,15 @@ const AdminDashboard = () => {
 
             <Button type="submit" disabled={uploadingVideo} className="w-full md:w-auto">
               {uploadingVideo ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                  Publication en cours...
-                </>
+                <span key="uploading" className="inline-flex items-center">
+                  <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2 inline-block"></span>
+                  <span>Publication en cours...</span>
+                </span>
               ) : (
-                <>
+                <span key="idle" className="inline-flex items-center">
                   <Upload className="h-4 w-4 mr-2" />
-                  Publier dans le fil d'actualité
-                </>
+                  <span>Publier dans le fil d'actualité</span>
+                </span>
               )}
             </Button>
           </form>
@@ -2949,7 +2949,7 @@ const AdminDashboard = () => {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5" /> Publications du Fil d'actualité ({announcements.length})
+              <Video className="h-5 w-5" /> <span>Publications du Fil d'actualité ({announcements.length})</span>
             </CardTitle>
             <Button variant="outline" size="sm" onClick={() => { fetchAnnouncements(); fetchAnnouncementStats(); }}>
               <RefreshCw className="h-4 w-4" />
@@ -2965,27 +2965,33 @@ const AdminDashboard = () => {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {announcements.map((post) => {
                 const isImg = post.media_type === 'image' || /\.(jpg|jpeg|png|webp|gif|svg|avif)(\?.*)?$/i.test(post.cloudinary_url || '');
+                const postId = post.id || post._id;
 
                 return (
-                  <div key={post.id} className="border rounded-lg overflow-hidden bg-card flex flex-col">
+                  <div key={postId} className="border rounded-lg overflow-hidden bg-card flex flex-col">
                     <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">
                       {isImg ? (
                         <img
+                          key="img"
                           src={formatMediaUrl(post.cloudinary_url)}
                           alt={post.title}
                           className="w-full h-full object-cover"
                         />
                       ) : (
                         <video
+                          key="vid"
                           src={formatMediaUrl(post.cloudinary_url)}
                           poster={cloudinaryVideoThumb(formatMediaUrl(post.cloudinary_url)) || undefined}
                           preload="none"
+                          playsInline
                           className="w-full h-full object-cover"
                           controls
                         />
                       )}
                       <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded text-[11px] font-medium flex items-center gap-1">
-                        {isImg ? <ImageIcon className="h-3 w-3" /> : <Video className="h-3 w-3" />}
+                        <span key={isImg ? 'img-icon' : 'vid-icon'} className="inline-flex">
+                          {isImg ? <ImageIcon className="h-3 w-3" /> : <Video className="h-3 w-3" />}
+                        </span>
                         <span>{isImg ? 'Image' : 'Vidéo'}</span>
                       </div>
                       {!post.is_active && (
@@ -2995,8 +3001,8 @@ const AdminDashboard = () => {
                       )}
                     </div>
                     <div className="p-4 flex-1 flex flex-col justify-between">
-                      {editingAnnouncement?.id === post.id ? (
-                        <div className="space-y-2">
+                      {editingAnnouncement?.id === postId ? (
+                        <div key="editing" className="space-y-2">
                           <Input
                             value={editingAnnouncement.title}
                             onChange={(e) => setEditingAnnouncement({...editingAnnouncement, title: e.target.value})}
@@ -3009,7 +3015,7 @@ const AdminDashboard = () => {
                             placeholder="Description"
                           />
                           <div className="flex gap-2">
-                            <Button size="sm" onClick={() => handleUpdateAnnouncement(post.id, editingAnnouncement)}>
+                            <Button size="sm" onClick={() => handleUpdateAnnouncement(postId, editingAnnouncement)}>
                               Enregistrer
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => setEditingAnnouncement(null)}>
@@ -3018,11 +3024,11 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                       ) : (
-                        <div>
+                        <div key="viewing">
                           <h4 className="font-semibold text-base">{post.title}</h4>
                           <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{post.description}</p>
                           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {post.view_count || 0} vues</span>
+                            <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> <span>{post.view_count || 0} vues</span></span>
                             <span>{new Date(post.created_at).toLocaleDateString('fr-FR')}</span>
                           </div>
                           <div className="flex gap-2 mt-3">
@@ -3032,11 +3038,13 @@ const AdminDashboard = () => {
                             <Button 
                               size="sm" 
                               variant={post.is_active ? "outline" : "default"}
-                              onClick={() => handleToggleAnnouncement(post.id)}
+                              onClick={() => handleToggleAnnouncement(postId)}
                             >
-                              {post.is_active ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                              <span key={post.is_active ? 'pause' : 'play'} className="inline-flex">
+                                {post.is_active ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                              </span>
                             </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDeleteAnnouncement(post.id)}>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeleteAnnouncement(postId)}>
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>

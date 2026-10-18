@@ -11,6 +11,12 @@
   RewriteCond %{HTTPS} off
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 
+  # Relais same-origin optionnel vers api.livefx-trading.com pour les réseaux/opérateurs
+  # qui filtrent les sous-domaines ou requêtes cross-origin
+  <IfModule mod_proxy.c>
+    RewriteRule ^api/(.*)$ https://api.livefx-trading.com/api/$1 [P,L]
+  </IfModule>
+
   # Ne pas réécrire les fichiers/dossiers réels (assets, images, index.html...)
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

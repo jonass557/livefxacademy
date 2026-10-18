@@ -30,6 +30,15 @@ const isImageFile = (post) => {
   return /\.(jpg|jpeg|png|webp|gif|svg|avif)(\?.*)?$/i.test(url);
 };
 
+const isDirectVideoUrl = (url = '') => {
+  if (!url) return false;
+  return (
+    url.includes('/uploads/') ||
+    url.includes('cloudinary.com') ||
+    /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(url)
+  );
+};
+
 const Home = () => {
   const { user } = useAuthStore();
   const { language, t } = useLanguageStore();
@@ -190,9 +199,10 @@ const Home = () => {
           <div className="space-y-6">
             {posts.map((post) => {
               const isImg = isImageFile(post);
+              const mediaUrl = getMediaUrl(post.cloudinary_url);
 
               return (
-                <Card key={post.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
+                <Card key={post.id || post._id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
                   {/* Entête de publication */}
                   <CardHeader className="p-4 sm:p-5 pb-3">
                     <div className="flex items-center justify-between">
@@ -206,7 +216,7 @@ const Home = () => {
                               LivefxTrading
                             </h3>
                             <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-primary">
-                              <ShieldCheck className="h-3 w-3" /> {isEn ? 'Official' : 'Officiel'}
+                              <ShieldCheck className="h-3 w-3" /> <span>{isEn ? 'Official' : 'Officiel'}</span>
                             </span>
                           </div>
                           <p className="text-[11px] text-muted-foreground">
@@ -223,7 +233,9 @@ const Home = () => {
 
                       {/* Indicateur média */}
                       <span className="text-xs text-muted-foreground flex items-center gap-1 bg-muted px-2 py-0.5 rounded-full">
-                        {isImg ? <ImageIcon className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
+                        <span key={isImg ? 'img' : 'vid'} className="inline-flex">
+                          {isImg ? <ImageIcon className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
+                        </span>
                         <span className="capitalize">{isImg ? 'Image' : (isEn ? 'Video' : 'Vidéo')}</span>
                       </span>
                     </div>
@@ -246,30 +258,41 @@ const Home = () => {
                     {isImg ? (
                       <div
                         className="relative group cursor-pointer overflow-hidden rounded-xl bg-muted border mx-4 sm:mx-0 max-h-[540px] flex items-center justify-center"
-                        onClick={() => setSelectedImage(getMediaUrl(post.cloudinary_url))}
+                        onClick={() => setSelectedImage(mediaUrl)}
                       >
                         <img
-                          src={getMediaUrl(post.cloudinary_url)}
+                          src={mediaUrl}
                           alt={post.title}
                           className="w-full h-auto max-h-[540px] object-contain transition-transform duration-300 group-hover:scale-[1.01]"
                           loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-background/90 text-foreground text-xs font-semibold shadow-lg">
-                            <Maximize2 className="h-3.5 w-3.5" /> {isEn ? 'Enlarge image' : "Agrandir l'image"}
+                            <Maximize2 className="h-3.5 w-3.5" /> <span>{isEn ? 'Enlarge image' : "Agrandir l'image"}</span>
                           </span>
                         </div>
                       </div>
                     ) : (
                       <div className="relative aspect-video w-full overflow-hidden bg-black rounded-none sm:rounded-xl mx-0">
-                        <ReactPlayer
-                          url={getMediaUrl(post.cloudinary_url)}
-                          width="100%"
-                          height="100%"
-                          controls
-                          light={cloudinaryVideoThumb(getMediaUrl(post.cloudinary_url)) || true}
-                          onPlay={() => handleVideoView(post.id)}
-                        />
+                        {isDirectVideoUrl(mediaUrl) ? (
+                          <video
+                            src={mediaUrl}
+                            poster={cloudinaryVideoThumb(mediaUrl) || undefined}
+                            controls
+                            playsInline
+                            preload="metadata"
+                            className="w-full h-full object-contain bg-black"
+                            onPlay={() => handleVideoView(post.id || post._id)}
+                          />
+                        ) : (
+                          <ReactPlayer
+                            url={mediaUrl}
+                            width="100%"
+                            height="100%"
+                            controls
+                            onPlay={() => handleVideoView(post.id || post._id)}
+                          />
+                        )}
                       </div>
                     )}
 

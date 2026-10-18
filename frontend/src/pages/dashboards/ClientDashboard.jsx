@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
-import api from '../../lib/api';
+import api, { API_URL } from '../../lib/api';
 import { getServiceIcon } from '../../lib/serviceIcons';
 import { useAuthStore } from '../../store/authStore';
 import { useLanguageStore } from '../../store/languageStore';
@@ -25,6 +25,29 @@ import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
 import TradingDemo from '../TradingDemo';
 import AppErrorBoundary from '../../components/AppErrorBoundary';
+
+const getMediaUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `${API_URL}${url}`;
+};
+
+const isImageFile = (post) => {
+  if (!post) return false;
+  if (post.media_type === 'image') return true;
+  if (post.media_type === 'video') return false;
+  const url = post.cloudinary_url || '';
+  return /\.(jpg|jpeg|png|webp|gif|svg|avif)(\?.*)?$/i.test(url);
+};
+
+const isDirectVideoUrl = (url = '') => {
+  if (!url) return false;
+  return (
+    url.includes('/uploads/') ||
+    url.includes('cloudinary.com') ||
+    /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(url)
+  );
+};
 
 const ClientDashboard = () => {
   const { user } = useAuthStore();
@@ -332,7 +355,7 @@ const ClientDashboard = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Video className="h-5 w-5" /> {t('client.latestAnnouncements')}
+            <Video className="h-5 w-5" /> <span>{t('client.latestAnnouncements')}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -340,24 +363,49 @@ const ClientDashboard = () => {
             <p className="text-center py-8 text-muted-foreground">{t('client.noAnnouncements')}</p>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {videos.slice(0, 6).map((video) => (
-                <div key={video.id} className="border rounded-lg overflow-hidden">
-                  <div className="aspect-video bg-black">
-                    <ReactPlayer
-                      url={video.cloudinary_url}
-                      width="100%"
-                      height="100%"
-                      controls
-                      light={cloudinaryVideoThumb(video.cloudinary_url) || true}
-                      onPlay={() => handleVideoView(video.id)}
-                    />
+              {videos.slice(0, 6).map((video) => {
+                const isImg = isImageFile(video);
+                const mediaUrl = getMediaUrl(video.cloudinary_url);
+                const itemId = video.id || video._id;
+                return (
+                  <div key={itemId} className="border rounded-lg overflow-hidden">
+                    <div className="aspect-video bg-black flex items-center justify-center overflow-hidden">
+                      {isImg ? (
+                        <img
+                          src={mediaUrl}
+                          alt={video.title}
+                          className="w-full h-full object-contain"
+                          loading="lazy"
+                        />
+                      ) : isDirectVideoUrl(mediaUrl) ? (
+                        <video
+                          src={mediaUrl}
+                          poster={cloudinaryVideoThumb(mediaUrl) || undefined}
+                          controls
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-contain bg-black"
+                          onPlay={() => handleVideoView(itemId)}
+                        />
+                      ) : (
+                        <ReactPlayer
+                          url={mediaUrl}
+                          width="100%"
+                          height="100%"
+                          controls
+                          onPlay={() => handleVideoView(itemId)}
+                        />
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <h4 className="font-semibold text-sm">{tr(video.title)}</h4>
+                      <p className="text-xs text-muted-foreground">
+                        <span>{t('client.by')}</span> <span>{video.admin_name || 'Admin'}</span>
+                      </p>
+                    </div>
                   </div>
-                  <div className="p-3">
-                    <h4 className="font-semibold text-sm">{video.title}</h4>
-                    <p className="text-xs text-muted-foreground">{t('client.by')} {video.admin_name || 'Admin'}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -365,11 +413,11 @@ const ClientDashboard = () => {
     </div>
   );
 
-  // Section: Announcements (Videos)
+  // Section: Announcements (Videos & Images)
   const renderAnnouncements = () => (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold flex items-center gap-2">
-        <Video className="h-6 w-6" /> {t('client.latestAnnouncements')}
+        <Video className="h-6 w-6" /> <span>{t('client.latestAnnouncements')}</span>
       </h2>
       {videos.length === 0 ? (
         <Card>
@@ -379,28 +427,53 @@ const ClientDashboard = () => {
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {videos.map((video) => (
-            <Card key={video.id} className="overflow-hidden">
-              <div className="aspect-video bg-black">
-                <ReactPlayer
-                  url={video.cloudinary_url}
-                  width="100%"
-                  height="100%"
-                  controls
-                  light={cloudinaryVideoThumb(video.cloudinary_url) || true}
-                  onPlay={() => handleVideoView(video.id)}
-                />
-              </div>
-              <CardHeader>
-                <CardTitle className="text-lg">{tr(video.title)}</CardTitle>
-                <p className="text-sm text-muted-foreground">{t('client.by')} {video.admin_name || 'Admin'}</p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm">{tr(video.description)}</p>
-                <AnnouncementInteractions video={video} isAdmin={false} />
-              </CardContent>
-            </Card>
-          ))}
+          {videos.map((video) => {
+            const isImg = isImageFile(video);
+            const mediaUrl = getMediaUrl(video.cloudinary_url);
+            const itemId = video.id || video._id;
+            return (
+              <Card key={itemId} className="overflow-hidden">
+                <div className="aspect-video bg-black flex items-center justify-center overflow-hidden">
+                  {isImg ? (
+                    <img
+                      src={mediaUrl}
+                      alt={video.title}
+                      className="w-full h-full object-contain"
+                      loading="lazy"
+                    />
+                  ) : isDirectVideoUrl(mediaUrl) ? (
+                    <video
+                      src={mediaUrl}
+                      poster={cloudinaryVideoThumb(mediaUrl) || undefined}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-contain bg-black"
+                      onPlay={() => handleVideoView(itemId)}
+                    />
+                  ) : (
+                    <ReactPlayer
+                      url={mediaUrl}
+                      width="100%"
+                      height="100%"
+                      controls
+                      onPlay={() => handleVideoView(itemId)}
+                    />
+                  )}
+                </div>
+                <CardHeader>
+                  <CardTitle className="text-lg">{tr(video.title)}</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    <span>{t('client.by')}</span> <span>{video.admin_name || 'Admin'}</span>
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm whitespace-pre-wrap">{tr(video.description)}</p>
+                  <AnnouncementInteractions video={video} isAdmin={false} />
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

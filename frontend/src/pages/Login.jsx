@@ -16,7 +16,7 @@ import { getErrorMessage } from '../lib/errors';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string().min(6),
 });
 

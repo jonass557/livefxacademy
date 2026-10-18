@@ -266,7 +266,7 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                   {getFlyerUrl() && (
                     <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded">
                       <ImageIcon className="w-3 h-3" />
-                      Flyer inclus
+                      <span>Flyer inclus</span>
                     </span>
                   )}
                 </div>
@@ -290,7 +290,7 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                       className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted font-medium text-left"
                     >
                       <Share2 className="h-4 w-4 text-primary" />
-                      Partager via l'appareil...
+                      <span>Partager via l'appareil...</span>
                     </button>
                   )}
                   <button
@@ -321,7 +321,9 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                     onClick={handleCopyLink}
                     className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted font-medium text-left border-t mt-1 pt-1.5"
                   >
-                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4 text-muted-foreground" />}
+                    <span key={copied ? 'check' : 'copy'} className="inline-flex">
+                      {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4 text-muted-foreground" />}
+                    </span>
                     <span>{copied ? 'Copié !' : 'Copier le lien'}</span>
                   </button>
                 </div>
@@ -377,7 +379,7 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${comment.is_admin ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground border'}`}>
-                          {comment.is_admin ? <ShieldCheck className="h-3.5 w-3.5" /> : (comment.author_name?.[0] || 'U')}
+                          {comment.is_admin ? <ShieldCheck key="admin" className="h-3.5 w-3.5" /> : <span key="user">{comment.author_name?.[0] || 'U'}</span>}
                         </div>
                         <span className="font-semibold text-foreground">
                           {comment.is_admin ? 'Admin (LiveFX)' : comment.author_name}
@@ -403,7 +405,7 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                         className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1"
                       >
                         <Reply className="h-3 w-3" />
-                        {isReplying ? 'Annuler' : 'Répondre'}
+                        <span>{isReplying ? 'Annuler' : 'Répondre'}</span>
                       </button>
                     </div>
 
@@ -420,7 +422,7 @@ const AnnouncementInteractions = ({ video, isAdmin = false }) => {
                                     <span className="bg-primary/20 text-primary text-[8px] font-bold px-1 rounded">Officiel</span>
                                   </>
                                 ) : (
-                                  reply.author_name
+                                  <span>{reply.author_name}</span>
                                 )}
                               </span>
                               <span className="text-[9px] text-muted-foreground">

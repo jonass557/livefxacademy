@@ -4,33 +4,36 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 
 const registerSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string().min(6),
-  full_name: z.string().min(2),
+  full_name: z.string().trim().min(2),
   role: z.enum(['client', 'trainer', 'admin']).optional(),
   phone: z.string().optional(),
   referral_code: z.string().optional(),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   password: z.string(),
 });
 
 const resetPasswordSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email(),
   phone: z.string().min(4),
   password: z.string().min(6),
 });
 
 // Garde uniquement les chiffres pour comparer deux numéros (gère espaces, +, indicatifs)
 const normalizePhone = (s) => (s || '').replace(/\D/g, '');
+const escapeRegex = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 exports.register = async (req, res) => {
   try {
-    const { email, password, full_name, role, phone, referral_code } = registerSchema.parse(req.body);
+    const parsed = registerSchema.parse(req.body);
+    const email = parsed.email.trim().toLowerCase();
+    const { password, full_name, role, phone, referral_code } = parsed;
     
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') });
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
@@ -76,9 +79,13 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = loginSchema.parse(req.body);
+    const parsed = loginSchema.parse(req.body);
+    const email = parsed.email.trim();
+    const { password } = parsed;
     
-    const user = await User.findOne({ email });
+    const user =
+      (await User.findOne({ email: email.toLowerCase() })) ||
+      (await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }));
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
@@ -88,23 +95,28 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
+    const secret = process.env.JWT_SECRET || 'livefx_default_jwt_secret';
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || secret;
+
     const accessToken = jwt.sign(
       { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      secret,
+      { expiresIn: '30d' }
     );
 
     const refreshToken = jwt.sign(
       { id: user._id },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: '7d' }
+      refreshSecret,
+      { expiresIn: '30d' }
     );
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-    });
+    try {
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      });
+    } catch (_) {}
 
     res.json({
       accessToken,
@@ -132,9 +144,13 @@ exports.login = async (req, res) => {
 // au même compte avant d'autoriser le changement de mot de passe.
 exports.resetPassword = async (req, res) => {
   try {
-    const { email, phone, password } = resetPasswordSchema.parse(req.body);
+    const parsed = resetPasswordSchema.parse(req.body);
+    const email = parsed.email.trim();
+    const { phone, password } = parsed;
 
-    const user = await User.findOne({ email });
+    const user =
+      (await User.findOne({ email: email.toLowerCase() })) ||
+      (await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }));
     const phoneInput = normalizePhone(phone);
     if (!user || !phoneInput || normalizePhone(user.phone) !== phoneInput) {
       return res.status(400).json({

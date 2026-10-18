@@ -24,9 +24,9 @@ const Register = () => {
   const [referralCode, setReferralCode] = useState(refCodeFromUrl);
 
   const registerSchema = z.object({
-    full_name: z.string().min(2, t('register.nameTooShort')),
-    email: z.string().email(t('register.invalidEmail')),
-    phone: z.string().min(8, t('register.invalidPhone')),
+    full_name: z.string().trim().min(2, t('register.nameTooShort')),
+    email: z.string().trim().email(t('register.invalidEmail')),
+    phone: z.string().trim().min(8, t('register.invalidPhone')),
     password: z.string().min(6, t('register.passwordTooShort')),
   });
 

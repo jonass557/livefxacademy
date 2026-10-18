@@ -1,7 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Livefx Trading</title>
@@ -28,13 +29,56 @@
     <meta name="twitter:image" content="https://livefx-trading.com/logo.png" />
 
     <script>
+      // Protection universelle du DOM contre l'erreur "Failed to execute 'insertBefore' / 'removeChild' on 'Node'"
+      // causée par les traducteurs automatiques de navigateurs (Chrome/Safari), extensions ou lecteurs médias.
+      (function () {
+        if (typeof Node === 'function' && Node.prototype) {
+          var originalRemoveChild = Node.prototype.removeChild;
+          Node.prototype.removeChild = function (child) {
+            if (child && child.parentNode !== this) {
+              if (child.parentNode) {
+                try {
+                  return originalRemoveChild.call(child.parentNode, child);
+                } catch (_) {}
+              }
+              return child;
+            }
+            try {
+              return originalRemoveChild.apply(this, arguments);
+            } catch (_) {
+              return child;
+            }
+          };
+
+          var originalInsertBefore = Node.prototype.insertBefore;
+          Node.prototype.insertBefore = function (newNode, referenceNode) {
+            if (referenceNode && referenceNode.parentNode !== this) {
+              try {
+                return this.appendChild(newNode);
+              } catch (_) {
+                return newNode;
+              }
+            }
+            try {
+              return originalInsertBefore.apply(this, arguments);
+            } catch (_) {
+              try {
+                return this.appendChild(newNode);
+              } catch (_e) {
+                return newNode;
+              }
+            }
+          };
+        }
+      })();
+
       // Rechargement automatique en cas de mise à jour des versions JavaScript sur le serveur
       window.addEventListener('vite:preloadError', function () {
         window.location.reload();
       });
     </script>
   </head>
-  <body>
+  <body translate="no" class="notranslate">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

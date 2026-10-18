@@ -16,8 +16,8 @@ const ForgotPasswordModal = ({ open, onClose }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const schema = z.object({
-    email: z.string().email(t('register.invalidEmail')),
-    phone: z.string().min(4, t('register.invalidPhone')),
+    email: z.string().trim().email(t('register.invalidEmail')),
+    phone: z.string().trim().min(4, t('register.invalidPhone')),
     password: z.string().min(6, t('register.passwordTooShort')),
   });
 
