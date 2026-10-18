@@ -98,13 +98,16 @@ Le `.htaccess` (routing SPA, versionné dans `frontend/public/.htaccess`) évite
 
 ---
 
-## Mises à jour ultérieures
+## Mises à jour ultérieures (Commande unique Terminal cPanel)
+Le frontend étant pré-compilé dans `frontend/dist.zip` (pour éviter la limite RAM CloudLinux sur `esbuild`), exécuter simplement dans le Terminal cPanel :
 ```bash
-cd ~/repos/livefxacademy && git pull
-# frontend
-source <venv-activate> ; cd frontend && npm ci && VITE_API_URL=https://api.livefx-trading.com npm run build
-cp -r dist/. ~/livefx-trading.com/
-# backend : Run NPM Install (si package.json a changé) puis Restart dans cPanel
+cd ~/repos/livefxacademy && \
+git fetch origin main && \
+git reset --hard origin/main && \
+unzip -o frontend/dist.zip -d ~/livefx-trading.com/ && \
+mkdir -p ~/repos/livefxacademy/backend/tmp && \
+touch ~/repos/livefxacademy/backend/tmp/restart.txt && \
+pkill -u katdscho -f lsnode || pkill -u katdscho -f node || true
 ```
 
 ## Déploiement automatique GitHub Actions
