@@ -8,7 +8,7 @@ import {
   Palmtree, Briefcase, CheckCircle, ArrowRight, ArrowLeft, ExternalLink,
   User, MapPin, Clock, Target, BookOpen, Star, AlertCircle,
   DollarSign, BarChart3, Calendar, Globe, Zap, Award, Users, Mail, X, History, LineChart,
-  Share2, CreditCard, Copy, Check, ShieldCheck
+  Share2, CreditCard, Copy, Check, ShieldCheck, Sparkles
 } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
 import TradingDemo from '../TradingDemo';
 import AppErrorBoundary from '../../components/AppErrorBoundary';
+import ReferralDashboard from '../../components/referral/ReferralDashboard';
 
 const getMediaUrl = (url) => {
   if (!url) return '';
@@ -170,6 +171,7 @@ const ClientDashboard = () => {
       }
     };
     fetchData();
+    fetchReferralStats();
   }, []);
 
   // Mark video as viewed
@@ -306,6 +308,33 @@ const ClientDashboard = () => {
           {t('client.servicesDesc')}
         </p>
       </div>
+
+            {/* Bannière Parrainage Activé */}
+      {(referralStats?.is_referral_enabled || userProfile?.is_referral_enabled || user?.is_referral_enabled) && (
+        <div className="relative overflow-hidden rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-primary/10 p-5 md:p-6 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-black bg-emerald-500 text-white shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>{isEn ? 'REFERRAL PROGRAM ACTIVATED' : 'PROGRAMME DE PARRAINAGE ACTIVÉ'}</span>
+            </div>
+            <h3 className="text-xl font-extrabold text-foreground">
+              {isEn ? 'Earn commissions on every invited trader!' : "Gagnez de l'argent en parrainant vos proches !"}
+            </h3>
+            <p className="text-xs md:text-sm text-muted-foreground max-w-2xl">
+              {isEn
+                ? `Your referral link is enabled by the administrator. Earn ${referralStats?.percentage || 10}% commission for every trader who registers and activates a platform plan.`
+                : `Votre lien de parrainage a été activé par l'administrateur. Touchez ${referralStats?.percentage || 10}% de commission sur chaque inscription ayant activé un plan.`}
+            </p>
+          </div>
+          <Button
+            onClick={() => setActiveSection('referral')}
+            className="shrink-0 gap-2 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg"
+          >
+            <Share2 className="h-4 w-4" />
+            <span>{isEn ? 'Open Referral Dashboard →' : 'Accéder à Parrainer →'}</span>
+          </Button>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -1240,189 +1269,7 @@ const ClientDashboard = () => {
 
   // Section: Referral (Parrainage)
   const renderReferral = () => {
-    const isEnabled = referralStats?.is_referral_enabled;
-    const refCode = referralStats?.referral_code;
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://livefx-trading.com';
-    const refLink = refCode ? `${origin}/register?ref=${refCode}` : '';
-
-    return (
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Share2 className="h-6 w-6 text-primary" /> {isEn ? 'Referral Program' : 'Programme de Parrainage'}
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              {isEn
-                ? 'Invite traders to LiveFX and earn commissions on subscriptions.'
-                : 'Invitez des traders sur LiveFX et recevez vos commissions sur leurs souscriptions.'}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={fetchReferralStats} disabled={loadingReferral} className="gap-2">
-            <Clock className={`h-4 w-4 ${loadingReferral ? 'animate-spin' : ''}`} />
-            {isEn ? 'Refresh Stats' : 'Actualiser les stats'}
-          </Button>
-        </div>
-
-        {!isEnabled ? (
-          <Card className="border-dashed border-2 p-8 text-center max-w-2xl mx-auto space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Share2 className="h-8 w-8" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-bold">{isEn ? 'Referral Access Restricted' : 'Accès au Parrainage Restreint'}</h3>
-              <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                {isEn
-                  ? "Your account does not currently have the referral link enabled. The administrator selectively enables referral links for qualifying members. Contact admin or your trainer to activate your link."
-                  : "Votre compte n'a pas encore le lien de parrainage activé. L'administrateur active sélectivement les liens pour les membres éligibles. Contactez l'administrateur ou votre formateur pour demander l'activation."}
-              </p>
-            </div>
-            <div className="pt-2">
-              <Button onClick={() => setActiveSection('contact')} variant="outline" className="gap-2">
-                <MessageSquare className="h-4 w-4" /> {isEn ? 'Contact Support / Admin' : "Contacter l'administrateur"}
-              </Button>
-            </div>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            {/* Referral Link Banner */}
-            <Card className="overflow-hidden border-primary/30 bg-gradient-to-br from-primary/5 via-card to-purple-500/5">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary text-primary-foreground mb-2 shadow-sm">
-                      <Award className="h-3.5 w-3.5" />
-                      {referralStats?.percentage || 10}% {isEn ? 'Commission per active subscription' : 'de commission par abonnement activé'}
-                    </div>
-                    <h3 className="text-xl font-bold">{isEn ? 'Your Unique Referral Link' : 'Votre Lien de Parrainage Unique'}</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {isEn ? 'Share this link to automatically link new traders to your account' : 'Partagez ce lien pour associer automatiquement les nouveaux inscrits à votre profil'}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs text-muted-foreground block">{isEn ? 'Referral Code' : 'Code Parrain'}</span>
-                    <span className="text-2xl font-mono font-extrabold text-primary tracking-widest">{refCode}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Input
-                    readOnly
-                    value={refLink}
-                    className="font-mono text-xs sm:text-sm bg-background border-primary/20 select-all"
-                  />
-                  <Button
-                    onClick={() => handleCopyReferralLink(refCode)}
-                    className="shrink-0 gap-2 shadow-sm"
-                  >
-                    {copiedLink ? <Check className="h-4 w-4 text-green-300" /> : <Copy className="h-4 w-4" />}
-                    <span>{copiedLink ? (isEn ? 'Copied!' : 'Copié !') : (isEn ? 'Copy' : 'Copier')}</span>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Statistics Cards */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{isEn ? 'Total Referrals' : 'Inscrits Parrainés'}</CardTitle>
-                  <Users className="h-4 w-4 text-blue-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{referralStats?.total_referees || 0}</div>
-                  <p className="text-xs text-muted-foreground">{isEn ? 'Registered with your link' : 'Inscrits avec votre lien'}</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{isEn ? 'Active Subscriptions' : 'Plans Activés'}</CardTitle>
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-emerald-600">{referralStats?.active_subscribed_referees || 0}</div>
-                  <p className="text-xs text-muted-foreground">{isEn ? 'Referees who paid a plan' : 'Filleuls ayant payé un plan'}</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{isEn ? 'Pending Payout' : 'En attente de paiement'}</CardTitle>
-                  <Clock className="h-4 w-4 text-amber-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-amber-600">{(referralStats?.pending_earnings_xaf || 0).toLocaleString()} XAF</div>
-                  <p className="text-xs text-muted-foreground">{isEn ? 'To be paid by administrator' : "À verser par l'administrateur"}</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{isEn ? 'Total Paid Out' : 'Total Déjà Versé'}</CardTitle>
-                  <DollarSign className="h-4 w-4 text-primary" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-primary">{(referralStats?.paid_earnings_xaf || 0).toLocaleString()} XAF</div>
-                  <p className="text-xs text-muted-foreground">{isEn ? 'Commissions already received' : 'Commissions déjà reçues'}</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* List of Referees */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" /> {isEn ? 'Your Referees List' : 'Liste de vos filleuls'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {(!referralStats?.referees || referralStats.referees.length === 0) ? (
-                  <p className="text-center py-8 text-sm text-muted-foreground">
-                    {isEn ? 'No registered referee yet. Share your link to get started!' : "Aucun filleul inscrit pour le moment. Partagez votre lien pour commencer !"}
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-muted-foreground text-xs">
-                          <th className="text-left py-2 px-3">{isEn ? 'Name' : 'Nom'}</th>
-                          <th className="text-left py-2 px-3">{isEn ? 'Email' : 'Email'}</th>
-                          <th className="text-left py-2 px-3">{isEn ? 'Registration Date' : "Date d'inscription"}</th>
-                          <th className="text-left py-2 px-3">{isEn ? 'Active Plan' : 'Plan Actif'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {referralStats.referees.map((ref) => (
-                          <tr key={ref.id} className="border-b hover:bg-muted/30">
-                            <td className="py-2.5 px-3 font-medium">{ref.full_name}</td>
-                            <td className="py-2.5 px-3 text-muted-foreground">{ref.email}</td>
-                            <td className="py-2.5 px-3 text-muted-foreground">
-                              {new Date(ref.created_at).toLocaleDateString(isEn ? 'en-US' : 'fr-FR')}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {ref.has_active_plan ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                  <CheckCircle className="h-3 w-3" /> {isEn ? 'Active Plan' : 'Plan Actif'}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                                  {isEn ? 'No Plan' : 'Sans plan'}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </div>
-    );
+    return <ReferralDashboard onNavigateToContact={() => setActiveSection('contact')} />;
   };
 
   // Section: Subscription Plans & SEBPAY Mobile Money Payment
@@ -1696,7 +1543,7 @@ const ClientDashboard = () => {
     { id: 'backtesting', icon: BarChart3, label: t('features.backtesting', 'Backtesting') },
     { id: 'backtest-history', icon: History, label: t('features.backtestHistory', 'Historique de backtest') },
     { id: 'economics', icon: Calendar, label: t('features.economics', 'Annonces éco') },
-    { id: 'referral', icon: Share2, label: isEn ? 'Referral Program' : 'Parrainage & Gains' },
+    { id: 'referral', icon: Share2, label: isEn ? 'Referral Program' : 'Parrainer', badge: (referralStats?.is_referral_enabled || userProfile?.is_referral_enabled || user?.is_referral_enabled) ? (isEn ? 'ACTIVE' : 'ACTIVÉ') : null },
     { id: 'subscription', icon: CreditCard, label: isEn ? 'Subscriptions' : 'Abonnements & Plans' },
     { id: 'services', icon: Briefcase, label: t('sidebar.services') },
     { id: 'trading', icon: TrendingUp, label: t('sidebar.tradingInfo') },
@@ -1745,6 +1592,11 @@ const ClientDashboard = () => {
                         <Icon className="h-7 w-7 text-primary" />
                       </div>
                       <span className="relative font-medium text-sm">{item.label}</span>
+                      {item.badge && (
+                        <span className="absolute top-2 right-2 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full bg-emerald-500 text-white shadow-sm animate-pulse">
+                          {item.badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}

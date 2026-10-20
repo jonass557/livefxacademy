@@ -10,6 +10,7 @@ import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
 import TradingDemo from '../TradingDemo';
+import ReferralDashboard from '../../components/referral/ReferralDashboard';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -70,7 +71,7 @@ const TrainerDashboard = () => {
     { id: 'profile', icon: User, label: 'Mon Profil' },
     { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
     { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
-    { id: 'referral', icon: Share2, label: 'Parrainage & Gains' },
+    { id: 'referral', icon: Share2, label: 'Parrainer', badge: (referralStats?.is_referral_enabled || user?.is_referral_enabled) ? 'ACTIVÉ' : null },
     { id: 'trading-demo', icon: LineChart, label: 'Graphique (Démo)' },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
     { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
@@ -100,6 +101,31 @@ const TrainerDashboard = () => {
                 </div>
               </div>
 
+                            {/* Bannière Parrainage Activé pour le Formateur */}
+              {(referralStats?.is_referral_enabled || user?.is_referral_enabled) && (
+                <div className="relative overflow-hidden rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-primary/10 p-5 md:p-6 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-black bg-emerald-500 text-white shadow-sm">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>PROGRAMME DE PARRAINAGE ACTIVÉ</span>
+                    </div>
+                    <h3 className="text-xl font-extrabold text-foreground">
+                      Gagnez des commissions sur chaque inscription de vos élèves !
+                    </h3>
+                    <p className="text-xs md:text-sm text-muted-foreground max-w-2xl">
+                      Votre lien de parrainage est activé par l'administrateur. Touchez ${referralStats?.percentage || 10}% de commission sur chaque plan activé sur la plateforme.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => handleSectionChange('referral')}
+                    className="shrink-0 gap-2 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    <span>Accéder à Parrainer →</span>
+                  </Button>
+                </div>
+              )}
+
               {/* Feature button grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {navItems.map(item => {
@@ -115,6 +141,11 @@ const TrainerDashboard = () => {
                         <Icon className="h-7 w-7 text-primary" />
                       </div>
                       <span className="relative font-medium text-sm">{item.label}</span>
+                      {item.badge && (
+                        <span className="absolute top-2 right-2 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full bg-emerald-500 text-white shadow-sm animate-pulse">
+                          {item.badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -134,6 +165,7 @@ const TrainerDashboard = () => {
               {activeSection === 'trading-demo' && <TradingDemo key={`trading-demo-${refreshKey}`} />}
               {activeSection === 'backtesting' && <Backtesting key={`backtesting-${refreshKey}`} />}
               {activeSection === 'backtest-history' && <BacktestHistory key={`backtest-history-${refreshKey}`} />}
+              {activeSection === 'referral' && <ReferralDashboard onNavigateToContact={() => handleSectionChange('contact')} />}
             </div>
           )}
         </div>

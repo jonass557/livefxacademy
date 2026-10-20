@@ -8,7 +8,8 @@ import {
   Menu, X, Globe, TrendingUp, ChevronDown,
   LineChart, BarChart3, History, Calendar, Briefcase,
   GraduationCap, Link as LinkIcon, MessageSquare, ClipboardList, Palmtree,
-  ShieldCheck
+  ShieldCheck,
+  Share2
 } from 'lucide-react';
 
 const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
@@ -169,6 +170,20 @@ const Navbar = () => {
             </Link>
           )}
           
+                    {/* Lien Parrainage si activé */}
+          {user && user.is_referral_enabled && (
+            <Link
+              to="/dashboard?section=referral"
+              className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+            >
+              <Share2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{language === 'en' ? 'Refer & Earn' : 'Parrainer'}</span>
+              <span className="ml-1 px-1.5 py-0.2 text-[9px] uppercase font-black bg-emerald-600 text-white rounded">
+                {language === 'en' ? 'Active' : 'Actif'}
+              </span>
+            </Link>
+          )}
+
           {/* Language Toggle */}
           <button 
             onClick={toggleLanguage}
@@ -253,6 +268,22 @@ const Navbar = () => {
             </Link>
           )}
           
+                    {user && user.is_referral_enabled && (
+            <Link
+              to="/dashboard?section=referral"
+              onClick={toggleMenu}
+              className="flex items-center justify-between text-sm font-semibold text-emerald-600 bg-emerald-500/10 p-2.5 rounded-lg border border-emerald-500/20"
+            >
+              <div className="flex items-center gap-2">
+                <Share2 className="h-4 w-4 text-emerald-600" />
+                <span>{language === 'en' ? 'Refer & Earn' : 'Parrainer'}</span>
+              </div>
+              <span className="px-2 py-0.5 text-[10px] uppercase font-black bg-emerald-600 text-white rounded">
+                {language === 'en' ? 'Active' : 'Actif'}
+              </span>
+            </Link>
+          )}
+
           {/* Language Toggle Mobile */}
           <button 
             onClick={toggleLanguage}

@@ -45,7 +45,8 @@ exports.getMyReferralStats = async (req, res) => {
 
     // Utilisateurs parrainés
     const referredUsers = await User.find({ referred_by: userId })
-      .select('full_name email created_at subscription_expires_at')
+      .select('full_name email phone created_at subscription_expires_at subscription_plan_name is_free_trial_granted')
+      .sort({ created_at: -1 })
       .lean();
 
     const referredUserIds = referredUsers.map(u => u._id);
@@ -54,40 +55,97 @@ exports.getMyReferralStats = async (req, res) => {
     const completedPayments = await PaymentTransaction.find({
       user_id: { $in: referredUserIds },
       status: 'completed'
-    }).populate('plan_id', 'name price_xaf').lean();
+    }).populate('plan_id', 'name price_xaf duration_days').sort({ created_at: -1 }).lean();
 
-    // Nombre d'utilisateurs uniques ayant activé au moins un plan
-    const usersWithPlanSet = new Set(completedPayments.map(p => String(p.user_id)));
-    referredUsers.forEach(u => {
-      if (u.subscription_expires_at && new Date(u.subscription_expires_at) > new Date()) {
-        usersWithPlanSet.add(String(u._id));
+    // Indexer les paiements par filleul (user_id)
+    const paymentsByReferee = {};
+    completedPayments.forEach(p => {
+      const uid = String(p.user_id);
+      if (!paymentsByReferee[uid]) {
+        paymentsByReferee[uid] = [];
       }
+      paymentsByReferee[uid].push(p);
     });
-    const usersWithPlanCount = usersWithPlanSet.size;
 
-    // Total des commissions générées (somme de referral_commission_amount)
+    const now = new Date();
     let totalEarningsXaf = 0;
     let pendingEarningsXaf = 0;
     let paidEarningsXaf = 0;
+    let usersWithPlanCount = 0;
 
-    completedPayments.forEach(p => {
-      const comm = Number(p.referral_commission_amount || 0);
-      totalEarningsXaf += comm;
-      if (p.is_commission_paid) {
-        paidEarningsXaf += comm;
-      } else {
-        pendingEarningsXaf += comm;
+    const formattedReferees = referredUsers.map(u => {
+      const uid = String(u._id);
+      const userPayments = paymentsByReferee[uid] || [];
+
+      let refereeTotalPaid = 0;
+      let refereeCommissionEarned = 0;
+      let refereeCommissionPending = 0;
+      let refereeCommissionPaid = 0;
+      let latestPlanName = u.subscription_plan_name || null;
+      let latestPaymentDate = null;
+
+      userPayments.forEach(p => {
+        const amt = Number(p.amount || 0);
+        let comm = Number(p.referral_commission_amount || 0);
+        if (comm === 0 && amt > 0) {
+          comm = Math.round((amt * effectivePct) / 100);
+        }
+        refereeTotalPaid += amt;
+        refereeCommissionEarned += comm;
+        if (p.is_commission_paid) {
+          refereeCommissionPaid += comm;
+        } else {
+          refereeCommissionPending += comm;
+        }
+        if (!latestPlanName && p.plan_id?.name) {
+          latestPlanName = p.plan_id.name;
+        }
+        if (!latestPaymentDate && p.created_at) {
+          latestPaymentDate = p.created_at;
+        }
+      });
+
+      totalEarningsXaf += refereeCommissionEarned;
+      pendingEarningsXaf += refereeCommissionPending;
+      paidEarningsXaf += refereeCommissionPaid;
+
+      const hasActiveSub = Boolean(u.subscription_expires_at && new Date(u.subscription_expires_at) > now);
+      const hasPlan = hasActiveSub || userPayments.length > 0;
+
+      if (hasPlan) {
+        usersWithPlanCount++;
       }
-    });
 
-    const formattedReferees = referredUsers.map(u => ({
-      id: u._id,
-      _id: u._id,
-      full_name: u.full_name,
-      email: u.email,
-      created_at: u.created_at,
-      has_active_plan: usersWithPlanSet.has(String(u._id))
-    }));
+      return {
+        id: u._id,
+        _id: u._id,
+        full_name: u.full_name,
+        email: u.email,
+        phone: u.phone,
+        created_at: u.created_at,
+        has_active_plan: hasPlan,
+        is_subscription_active: hasActiveSub,
+        plan_name: latestPlanName || (hasPlan ? 'Plan Activé' : 'Aucun plan'),
+        subscription_expires_at: u.subscription_expires_at || null,
+        total_paid_xaf: refereeTotalPaid,
+        commission_earned_xaf: refereeCommissionEarned,
+        commission_pending_xaf: refereeCommissionPending,
+        commission_paid_xaf: refereeCommissionPaid,
+        commission_status: refereeCommissionEarned > 0
+          ? (refereeCommissionPending === 0 ? 'paid' : 'pending')
+          : (hasPlan ? 'free_trial' : 'none'),
+        payments_count: userPayments.length,
+        transactions: userPayments.map(p => ({
+          id: p._id,
+          amount: p.amount,
+          commission: p.referral_commission_amount || Math.round((Number(p.amount || 0) * effectivePct) / 100),
+          percentage: p.referral_percentage || effectivePct,
+          plan_name: p.plan_id?.name || p.sebpay_response?.plan_name || 'Abonnement',
+          date: p.created_at,
+          is_paid: !!p.is_commission_paid
+        }))
+      };
+    });
 
     res.json({
       enabled: true,
@@ -107,9 +165,10 @@ exports.getMyReferralStats = async (req, res) => {
       completed_transactions: completedPayments.map(p => ({
         id: p._id,
         amount: p.amount,
-        commission: p.referral_commission_amount,
-        percentage: p.referral_percentage,
-        plan_name: p.plan_id?.name || 'Plan Souscription',
+        commission: p.referral_commission_amount || Math.round((Number(p.amount || 0) * effectivePct) / 100),
+        percentage: p.referral_percentage || effectivePct,
+        plan_name: p.plan_id?.name || p.sebpay_response?.plan_name || 'Plan Souscription',
+        user_id: p.user_id,
         date: p.created_at,
         is_paid: !!p.is_commission_paid
       }))

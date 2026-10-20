@@ -342,6 +342,8 @@ exports.grantFreeMonth = async (req, res) => {
       external_reference: externalRef,
       transaction_id: externalRef,
       status: 'completed',
+      referrer_id: user.referred_by || null,
+      referral_commission_amount: 0,
       sebpay_response: {
         granted_by_admin: req.user?.id || null,
         plan_name: planName,
