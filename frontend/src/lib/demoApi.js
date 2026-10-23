@@ -34,7 +34,7 @@ export const DEFAULT_DEMO_INSTRUMENTS = [
   { symbol: 'CRASH1000', name: 'Crash 1000 Index', category: 'SYNTHETIC', digits: 3, pip_size: 0.01, contract_size: 1, leverage: 100, min_lot: 0.01, max_lot: 100, lot_step: 0.01 },
 ];
 
-export function generateClientFallbackCandles(symbol = 'EURUSD', timeframe = 'H1', count = 300) {
+export function generateClientFallbackCandles(symbol = 'EURUSD', timeframe = 'H1', count = 1000, endEpoch = null) {
   const clean = String(symbol || 'EURUSD').replace(/^frx/i, '').replace(/^cry/i, '').toUpperCase();
   const baseMap = {
     EURUSD: 1.085, GBPUSD: 1.272, USDJPY: 154.5, USDCHF: 0.884, AUDUSD: 0.658,
@@ -54,7 +54,8 @@ export function generateClientFallbackCandles(symbol = 'EURUSD', timeframe = 'H1
     D1: 86400, W1: 604800, MN: 2592000,
   };
   const stepSec = tfSecMap[timeframe] || 3600;
-  const nowBucket = Math.floor(Date.now() / 1000 / stepSec) * stepSec;
+  const targetEnd = (endEpoch && !isNaN(endEpoch)) ? Number(endEpoch) : Math.floor(Date.now() / 1000);
+  const nowBucket = Math.floor(targetEnd / stepSec) * stepSec;
   let seed = clean.split('').reduce((a, ch) => a + ch.charCodeAt(0) * 31, 1337);
   const rand = () => {
     seed = (seed * 1664525 + 1013904223) % 4294967296;
@@ -103,16 +104,16 @@ export const demoApi = {
         const filtered = category ? DEFAULT_DEMO_INSTRUMENTS.filter((i) => i.category === String(category).toUpperCase()) : DEFAULT_DEMO_INSTRUMENTS;
         return { instruments: filtered };
       }),
-  candles: (symbol, timeframe, count = 300) =>
-    api.get('/demo/candles', { params: { symbol, timeframe, count } })
+  candles: (symbol, timeframe, count = 1000, end = null) =>
+    api.get('/demo/candles', { params: { symbol, timeframe, count, ...(end ? { end } : {}) } })
       .then((r) => {
         if (Array.isArray(r.data?.candles) && r.data.candles.length > 0) return r.data;
-        return { symbol, timeframe, candles: generateClientFallbackCandles(symbol, timeframe, count) };
+        return { symbol, timeframe, candles: generateClientFallbackCandles(symbol, timeframe, count, end) };
       })
       .catch(() => ({
         symbol,
         timeframe,
-        candles: generateClientFallbackCandles(symbol, timeframe, count),
+        candles: generateClientFallbackCandles(symbol, timeframe, count, end),
       })),
   positions: () => api.get('/demo/positions').then((r) => r.data),
   orders: () => api.get('/demo/orders').then((r) => r.data),

@@ -118,10 +118,10 @@ exports.getInstruments = async (req, res) => {
   }
 };
 
-// GET /api/demo/candles?symbol=EURUSD&timeframe=H1&count=300 — historique graphique.
+// GET /api/demo/candles?symbol=EURUSD&timeframe=H1&count=1000&end=1729000000 — historique graphique multi-années.
 exports.getCandles = async (req, res) => {
   try {
-    const { symbol, timeframe = 'H1', count = 300 } = req.query;
+    const { symbol, timeframe = 'H1', count = 1000, end } = req.query;
     if (!symbol) return res.status(400).json({ message: 'symbol requis' });
 
     const rawSym = String(symbol || '').trim();
@@ -162,7 +162,7 @@ exports.getCandles = async (req, res) => {
       };
     }
 
-    const candles = await getCandles(instrument, timeframe, count);
+    const candles = await getCandles(instrument, timeframe, count, end);
     res.json({ symbol: instrument.symbol || cleanSym, symbol_name: instrument.name || rawSym, timeframe, candles: candles || [] });
   } catch (err) {
     console.error('demo getCandles error:', err.message);
@@ -544,16 +544,15 @@ exports.triggerAlert = async (req, res) => {
     }
 
     if (shouldSendEmail) {
-      alert.email_sent = true;
-      await alert.save();
       if (alertWatcher && typeof alertWatcher.sendAlertEmail === 'function') {
-        alertWatcher.sendAlertEmail(alert, currentPrice).catch((e) => {
+        const sent = await alertWatcher.sendAlertEmail(alert, currentPrice).catch((e) => {
           console.error('[triggerAlert] sendAlertEmail error:', e.message);
+          return false;
         });
+        if (sent) alert.email_sent = true;
       }
-    } else {
-      await alert.save();
     }
+    await alert.save();
 
     res.json(publicAlert(alert));
   } catch (err) {

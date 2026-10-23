@@ -65,7 +65,8 @@ const FOREX_METALS_DERIV_MAP = {
 
 // count bougies récentes d'un instrument (pour le graphique du terminal).
 // `instrument` = document Instrument. Renvoie [{ time, open, high, low, close, volume? }].
-async function getCandles(instrument, timeframeKey, count = 300) {
+// Supporte la pagination historique multi-années avec le paramètre `end` (epoch en secondes).
+async function getCandles(instrument, timeframeKey, count = 1000, end = null) {
   if (!instrument) return [];
   const cleanSym = String(instrument.symbol || '').replace(/[\/\s_-]/g, '').toUpperCase();
   const derivSym = FOREX_METALS_DERIV_MAP[instrument.symbol] || FOREX_METALS_DERIV_MAP[cleanSym];
@@ -74,22 +75,22 @@ async function getCandles(instrument, timeframeKey, count = 300) {
   if (!providerSymbol) return [];
 
   const provider = getProvider(providerName);
-  const now = Math.floor(Date.now() / 1000);
-  const n = Math.min(Math.max(Number(count) || 300, 1), 1000);
+  const targetEnd = (end && !isNaN(end) && Number(end) > 0) ? Math.floor(Number(end)) : Math.floor(Date.now() / 1000);
+  const n = Math.min(Math.max(Number(count) || 1000, 1), 5000);
 
   try {
     // Deriv ne fournit pas W1/MN → on télécharge du D1 puis on agrège.
     if (providerName === 'deriv' && (timeframeKey === 'W1' || timeframeKey === 'MN')) {
       const daysNeeded = timeframeKey === 'W1' ? n * 7 : n * 31;
-      const dailyStart = now - (daysNeeded * 86400 * 2);
-      const daily = await provider.fetchCandles({ symbol: providerSymbol, granularity: 86400, start: dailyStart, end: now, count: daysNeeded });
+      const dailyStart = targetEnd - (daysNeeded * 86400 * 2);
+      const daily = await provider.fetchCandles({ symbol: providerSymbol, granularity: 86400, start: dailyStart, end: targetEnd, count: daysNeeded });
       const agg = aggregate(daily, timeframeKey === 'W1' ? weekKey : monthKey);
       return agg.slice(-n);
     }
 
     const granularity = GRAN[timeframeKey] || 3600;
-    const start = now - (n * granularity * 2);
-    const candles = await provider.fetchCandles({ symbol: providerSymbol, granularity, start, end: now, count: n });
+    const start = targetEnd - (n * granularity * 2);
+    const candles = await provider.fetchCandles({ symbol: providerSymbol, granularity, start, end: targetEnd, count: n });
     if (candles && candles.length > 0) return candles.slice(-n);
   } catch (err) {
     console.warn(`[candleService] Erreur ${instrument.symbol} (${err.message}). Utilisation fallback.`);
@@ -101,7 +102,7 @@ async function getCandles(instrument, timeframeKey, count = 300) {
     return deriv.generateFallbackCandles({
       symbol: providerSymbol,
       granularity: GRAN[timeframeKey] || 3600,
-      endEpoch: now,
+      endEpoch: targetEnd,
       count: n,
     });
   } catch (_) {

@@ -1027,19 +1027,17 @@ export function ensureCustomOverlaysAndIndicators() {
   });
 
   // Price Alert Line (Alerte de Prix TradingView / MT5)
+  // Ligne ultra-fine et discrète (1px) sans texte sur le graphique pour ne pas gêner l'analyse des élèves.
   registerOverlay({
     name: 'priceAlertLine',
     totalStep: 2,
     needDefaultPointFigure: false,
-    createPointFigures: ({ coordinates, bounding, overlay, precision }) => {
+    createPointFigures: ({ coordinates, bounding, overlay }) => {
       if (!coordinates || coordinates.length < 1) return [];
       const y = coordinates[0].y;
-      const price = overlay.points[0]?.value || 0;
-      const dec = precision?.price ?? 4;
-      const note = overlay.extendData?.note || '';
       const triggered = overlay.extendData?.triggered || false;
-      const lineColor = triggered ? '#9ca3af' : '#f59e0b';
-      const labelText = `🔔 ${note ? `${note} : ` : ''}${Number(price).toFixed(dec)}`;
+      // Opacité et luminosité très douces et atténuées
+      const lineColor = triggered ? 'rgba(156, 163, 175, 0.4)' : 'rgba(245, 158, 11, 0.55)';
 
       return [
         {
@@ -1052,27 +1050,16 @@ export function ensureCustomOverlaysAndIndicators() {
           },
           styles: {
             color: lineColor,
-            size: 1.5,
+            size: 1, // Épaisseur réduite à 1px
             style: 'dashed',
-            dashedValue: [6, 4],
+            dashedValue: [5, 4],
           },
         },
-        {
-          type: 'rect',
-          attrs: { x: 8, y: y - 10, width: Math.max(labelText.length * 7 + 16, 75), height: 20 },
-          styles: { style: 'fill', color: triggered ? 'rgba(75, 85, 99, 0.85)' : 'rgba(217, 119, 6, 0.9)', borderRadius: 4 },
-          ignoreEvent: true,
-        },
-        {
-          type: 'text',
-          attrs: { x: 14, y, text: labelText, align: 'left', baseline: 'middle' },
-          styles: { color: '#ffffff', size: 11, weight: 'bold' },
-          ignoreEvent: true,
-        },
+        // Zone invisible élargie pour permettre la sélection/suppression aisée sans texte gênant
         {
           type: 'line',
           attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
-          styles: { size: 20, color: 'rgba(0,0,0,0)' },
+          styles: { size: 16, color: 'rgba(0,0,0,0)' },
         },
       ];
     },
@@ -1082,7 +1069,8 @@ export function ensureCustomOverlaysAndIndicators() {
       const price = overlay.points[0]?.value || 0;
       const dec = precision?.price ?? 4;
       const triggered = overlay.extendData?.triggered || false;
-      const bgColor = triggered ? '#6b7280' : '#f59e0b';
+      // Badge discret sur l'axe des ordonnées à droite (hors du graphique des chandeliers)
+      const bgColor = triggered ? 'rgba(107, 114, 128, 0.65)' : 'rgba(217, 119, 6, 0.75)';
       const isFromZero = yAxis?.isFromZero ? yAxis.isFromZero() : false;
       const width = bounding?.width || 65;
       const textX = isFromZero ? 4 : width - 4;
@@ -1091,8 +1079,8 @@ export function ensureCustomOverlaysAndIndicators() {
       return [
         {
           type: 'rect',
-          attrs: { x: 0, y: y - 9, width, height: 18 },
-          styles: { style: 'fill', color: bgColor },
+          attrs: { x: 0, y: y - 8, width, height: 16 },
+          styles: { style: 'fill', color: bgColor, borderRadius: 2 },
           ignoreEvent: true,
         },
         {
@@ -1104,7 +1092,7 @@ export function ensureCustomOverlaysAndIndicators() {
             align,
             baseline: 'middle',
           },
-          styles: { color: '#ffffff', size: 10, weight: 'bold' },
+          styles: { color: '#ffffff', size: 9, weight: 'normal' },
           ignoreEvent: true,
         },
       ];

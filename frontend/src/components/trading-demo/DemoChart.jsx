@@ -31,6 +31,17 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
   const digitsSetRef = useRef(false);
   const panesRef = useRef({});
   const loadRef = useRef(null);
+  const symbolRef = useRef(symbol);
+  const timeframeRef = useRef(timeframe);
+  const loadingMoreRef = useRef(false);
+  const hasMoreHistoryRef = useRef(true);
+
+  useEffect(() => {
+    symbolRef.current = symbol;
+    timeframeRef.current = timeframe;
+    hasMoreHistoryRef.current = true;
+    loadingMoreRef.current = false;
+  }, [symbol, timeframe]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -68,6 +79,62 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     chart.setBarSpace?.(9);
     const unbindMT4 = configureMT4Chart(chart);
     chartRef.current = chart;
+
+    // Chargement infini d'historique antérieur (multi-années / mois précédents) au défilement vers la gauche
+    chart.loadMore?.(async (earliestTimestamp) => {
+      if (!earliestTimestamp || loadingMoreRef.current || !hasMoreHistoryRef.current) return;
+      const currentSym = symbolRef.current;
+      const currentTf = timeframeRef.current;
+      if (!currentSym || !currentTf) return;
+
+      loadingMoreRef.current = true;
+      try {
+        const endEpoch = Math.floor(earliestTimestamp / 1000) - 1;
+        const res = await demoApi.candles(currentSym, currentTf, 1000, endEpoch);
+        const olderRaw = res.candles || [];
+        if (!olderRaw.length) {
+          hasMoreHistoryRef.current = false;
+          chart.applyMoreData([], false);
+          return;
+        }
+        const tfMs = getTimeframeMs(currentTf);
+        const byBucket = new Map();
+        for (const c of olderRaw) {
+          const rawMs = c.time * 1000;
+          const bucket = Math.floor(rawMs / tfMs) * tfMs;
+          if (bucket < earliestTimestamp) {
+            const open = Number(c.open);
+            const high = Number(c.high);
+            const low = Number(c.low);
+            const close = Number(c.close);
+            const volume = Number(c.volume || 0);
+            if (Number.isFinite(bucket) && Number.isFinite(open) && open > 0 && close > 0) {
+              const exist = byBucket.get(bucket);
+              if (!exist) {
+                byBucket.set(bucket, { timestamp: bucket, open, high, low, close, volume });
+              } else {
+                exist.high = Math.max(exist.high, high);
+                exist.low = Math.min(exist.low, low);
+                exist.close = close;
+                exist.volume += volume;
+              }
+            }
+          }
+        }
+        const olderKline = Array.from(byBucket.values()).sort((a, b) => a.timestamp - b.timestamp);
+        if (!olderKline.length) {
+          hasMoreHistoryRef.current = false;
+          chart.applyMoreData([], false);
+        } else {
+          chart.applyMoreData(olderKline, true);
+        }
+      } catch (err) {
+        console.warn('[DemoChart] Erreur chargement historique antérieur:', err.message);
+        chart.applyMoreData([], false);
+      } finally {
+        loadingMoreRef.current = false;
+      }
+    });
 
     // Redimensionnement automatique pour garantir 100% de largeur et hauteur occupées
     const triggerFullResize = () => {
@@ -142,7 +209,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     } catch (_) {}
     if (!preloaded || !preloaded.length) {
       const tfMs = getTimeframeMs(timeframe);
-      const fb = generateClientFallbackCandles(symbol, timeframe, 200);
+      const fb = generateClientFallbackCandles(symbol, timeframe, 1000);
       preloaded = fb.map((c) => ({
         timestamp: Math.floor((c.time * 1000) / tfMs) * tfMs,
         open: c.open,
@@ -166,7 +233,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     const load = async (isBackground = false, retryCount = 0) => {
       try {
         if (!isBackground && retryCount === 0) setLoading(true);
-        const data = await demoApi.candles(symbol, timeframe, 300);
+        const data = await demoApi.candles(symbol, timeframe, 1500);
         if (cancelled || !chartRef.current) return;
         const raw = data.candles || [];
         const tfMs = getTimeframeMs(timeframe);

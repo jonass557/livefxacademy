@@ -10,13 +10,17 @@ const { PriceAlert, User } = require('../../models');
 const { sendMail } = require('../mailer');
 
 async function sendAlertEmail(alert, currentPrice) {
-  if (!alert || !alert.notify_email) return false;
+  if (!alert || alert.notify_email === false) return false;
   try {
     let userObj = alert.user_id;
+    const userId = alert.user_id?._id || alert.user_id;
     if (!userObj || !userObj.email) {
-      userObj = await User.findById(alert.user_id).select('email full_name').lean();
+      userObj = await User.findById(userId).select('email full_name').lean();
     }
-    if (!userObj || !userObj.email) return false;
+    if (!userObj || !userObj.email) {
+      console.warn(`[alertWatcher] Email impossible : utilisateur introuvable pour l'alerte ${alert._id}`);
+      return false;
+    }
 
     const userEmail = userObj.email;
     const userName = userObj.full_name || 'Trader';
@@ -130,12 +134,10 @@ class AlertWatcher {
           isHit = currentPrice <= tp && (prevPrice >= tp || refPrice >= tp);
         } else {
           // 'crossing' (croisement dans un sens ou dans l'autre)
-          isHit =
-            (prevPrice <= tp && currentPrice >= tp) ||
-            (prevPrice >= tp && currentPrice <= tp) ||
-            (refPrice <= tp && currentPrice >= tp) ||
-            (refPrice >= tp && currentPrice <= tp) ||
-            Math.abs(currentPrice - tp) <= Math.abs(tp) * 0.00005;
+          const crossedUp = (prevPrice <= tp && currentPrice >= tp) || (refPrice <= tp && currentPrice >= tp);
+          const crossedDown = (prevPrice >= tp && currentPrice <= tp) || (refPrice >= tp && currentPrice <= tp);
+          const nearHit = Math.abs(currentPrice - tp) <= Math.abs(tp) * 0.0001;
+          isHit = crossedUp || crossedDown || nearHit;
         }
 
         if (isHit) {

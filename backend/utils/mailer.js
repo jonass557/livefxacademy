@@ -1,17 +1,25 @@
 const nodemailer = require('nodemailer');
 const { User } = require('../models');
 
-// Whether SMTP credentials are configured
-const isConfigured = () => !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+// Whether SMTP credentials or local MTA are available
+const isConfigured = () => !!(process.env.SMTP_USER && process.env.SMTP_PASS) || process.platform === 'linux';
 
 const createTransporter = () => {
-  const port = parseInt(process.env.SMTP_PORT, 10) || 587;
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    const port = parseInt(process.env.SMTP_PORT, 10) || 587;
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port,
+      secure: port === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      tls: { rejectUnauthorized: false }
+    });
+  }
+  // Fallback sendmail local sur serveur cPanel Linux
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port,
-    secure: port === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    tls: { rejectUnauthorized: false }
+    sendmail: true,
+    newline: 'unix',
+    path: '/usr/sbin/sendmail',
   });
 };
 
@@ -49,18 +57,37 @@ async function sendMail({ to, bcc, subject, title, html }) {
       console.warn(`[mailer] SMTP non configuré — email non envoyé: "${subject}"`);
       return false;
     }
-    const transporter = createTransporter();
+    const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'contact@livefx-trading.com';
     const mailOptions = {
-      from: `"LivefxTrading" <${process.env.SMTP_USER}>`,
+      from: `"LivefxTrading" <${fromEmail}>`,
       subject,
       html: wrap(title || subject, html)
     };
     if (recipients.length > 0) mailOptions.to = recipients.join(',');
-    else mailOptions.to = process.env.SMTP_USER; // fallback boîte d'envoi si uniquement bcc
+    else mailOptions.to = fromEmail;
     if (bccRecipients.length > 0) mailOptions.bcc = bccRecipients;
 
-    await transporter.sendMail(mailOptions);
-    return true;
+    try {
+      const transporter = createTransporter();
+      await transporter.sendMail(mailOptions);
+      return true;
+    } catch (smtpErr) {
+      console.warn(`[mailer] SMTP a échoué (${smtpErr.message}), tentative sendmail local...`);
+      if (process.platform === 'linux') {
+        try {
+          const fallbackTransporter = nodemailer.createTransport({
+            sendmail: true,
+            newline: 'unix',
+            path: '/usr/sbin/sendmail',
+          });
+          await fallbackTransporter.sendMail(mailOptions);
+          return true;
+        } catch (mtaErr) {
+          console.error(`[mailer] Fallback sendmail a échoué:`, mtaErr.message);
+        }
+      }
+      return false;
+    }
   } catch (err) {
     console.error(`[mailer] Erreur envoi email "${subject}":`, err.message);
     return false;
