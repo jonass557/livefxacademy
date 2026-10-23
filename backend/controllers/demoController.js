@@ -610,3 +610,22 @@ function publicAlert(a) {
   };
 }
 
+
+// GET /api/demo/quotes?symbols=EURUSD,GBPUSD,XAUUSD — polling rapide de secours en RAM
+exports.getQuotes = async (req, res) => {
+  try {
+    const rawSymbols = req.query.symbols ? String(req.query.symbols).split(',') : [];
+    const out = {};
+    for (const raw of rawSymbols) {
+      const sym = raw.trim().toUpperCase();
+      if (!sym) continue;
+      const q = liveFeed.getQuote(sym);
+      if (q && q.mid > 0) {
+        out[sym] = q;
+      }
+    }
+    res.json({ quotes: out });
+  } catch (err) {
+    res.json({ quotes: {} });
+  }
+};

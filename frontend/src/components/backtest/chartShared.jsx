@@ -2313,10 +2313,162 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
 }
 
 // Barre d'action flottante qui apparaît au clic sur un outil/dessin avec bouton Engrenage (paramètres) et Supprimer
+
+// Modal d'écriture de texte pour annoter les graphiques et outils
+export function TextAnnotationModal({ open, onClose, currentText = '', onApply, isEn = false }) {
+  const [text, setText] = useState(currentText);
+  const [selectedColor, setSelectedColor] = useState('#3b82f6');
+  const [fontSize, setFontSize] = useState(14);
+
+  useEffect(() => {
+    setText(currentText || '');
+  }, [currentText, open]);
+
+  if (!open) return null;
+
+  const quickPresets = [
+    'Support',
+    'Résistance',
+    'Order Block (OB)',
+    'Zone de Liquidité',
+    'Cassure / Breakout',
+    'Zone d\'Achat',
+    'Zone de Vente',
+    'Pullback / Retest',
+    'Objectif TP',
+    'Stop Loss (SL)',
+  ];
+
+  const colors = [
+    { label: 'Bleu', value: '#3b82f6' },
+    { label: 'Vert', value: '#22c55e' },
+    { label: 'Rouge', value: '#ef4444' },
+    { label: 'Orange', value: '#f97316' },
+    { label: 'Jaune', value: '#eab308' },
+    { label: 'Violet', value: '#a855f7' },
+    { label: 'Blanc', value: '#ffffff' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+      <div className="relative w-full max-w-md rounded-2xl border bg-card p-5 shadow-2xl text-card-foreground animate-in fade-in zoom-in-95 duration-150">
+        <div className="flex items-center justify-between pb-3 border-b mb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <Type className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm">
+                {isEn ? 'Chart Text & Annotation' : 'Écrire un texte sur le graphique'}
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                {isEn ? 'Add explanations for your analysis' : 'Expliquez votre analyse graphique aux étudiants'}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-md text-muted-foreground hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1">
+              {isEn ? 'Your Text / Explanation:' : 'Votre texte / Explication :'}
+            </label>
+            <textarea
+              rows={3}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={isEn ? "E.g. Daily Order Block, Retest, Strong Support..." : "Ex: Order Block Journalier, Retest, Support majeur H4..."}
+              className="w-full rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <span className="block text-[11px] font-medium text-muted-foreground mb-1.5">
+              {isEn ? 'Quick presets (1-click):' : 'Explications rapides (1-clic) :'}
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {quickPresets.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setText((prev) => (prev ? `${prev} - ${p}` : p))}
+                  className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted/60 hover:bg-primary/20 hover:text-primary border transition-colors"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                {isEn ? 'Color:' : 'Couleur :'}
+              </label>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {colors.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setSelectedColor(c.value)}
+                    className={`h-5 w-5 rounded-md border transition-transform ${selectedColor === c.value ? 'ring-2 ring-primary scale-110' : ''}`}
+                    style={{ backgroundColor: c.value }}
+                    title={c.label}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                {isEn ? 'Font size:' : 'Taille :'}
+              </label>
+              <div className="flex items-center gap-1">
+                {[12, 14, 16, 18].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setFontSize(s)}
+                    className={`px-2 py-1 rounded text-xs border font-medium ${fontSize === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 hover:bg-muted'}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t">
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-xs">
+              {isEn ? 'Cancel' : 'Annuler'}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                onApply({ text: text.trim() || 'Note', color: selectedColor, fontSize });
+                onClose();
+              }}
+              className="gap-1.5 text-xs font-bold bg-primary hover:bg-primary/90"
+            >
+              <Check className="h-3.5 w-3.5" />
+              <span>{isEn ? 'Apply Text' : 'Appliquer le texte'}</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, onUpdateStyle, className = '' }) {
   const { language } = useLanguageStore();
   const isEn = language === 'en';
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [textModalOpen, setTextModalOpen] = useState(false);
 
   // Style local pour l'édition et la synchronisation immédiate (lit ligne ou polygone/rect)
   const currentLineStyle = overlay?.styles?.line || {};
@@ -2412,6 +2564,40 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     }
   };
 
+
+  const handleApplyText = ({ text: newText, color: newColor, fontSize: newSize }) => {
+    const chart = chartRef?.current;
+    if (!chart || !overlay?.id) return;
+    try {
+      chart.overrideOverlay({
+        id: overlay.id,
+        extendData: {
+          ...(overlay.extendData || {}),
+          text: newText,
+          textColor: newColor,
+          fontSize: newSize,
+        },
+        styles: {
+          ...(overlay.styles || {}),
+          text: {
+            ...(overlay.styles?.text || {}),
+            color: '#ffffff',
+            borderColor: newColor,
+            size: newSize,
+          },
+        },
+      });
+      if (overlay.extendData) {
+        overlay.extendData.text = newText;
+        overlay.extendData.textColor = newColor;
+        overlay.extendData.fontSize = newSize;
+      }
+      chart.adjustPaneViewport?.(false, true, true, true, true);
+    } catch (e) {
+      console.warn('handleApplyText error:', e);
+    }
+  };
+
   const isDrawing = isOverlayDrawing(overlay);
 
   return (
@@ -2448,6 +2634,19 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           </Button>
         )}
 
+        
+        {/* Bouton Texte / Annotation pour écrire sur le graphique ou sur l'outil */}
+        <Button
+          size="sm"
+          variant={overlay.name === 'text' ? 'default' : 'ghost'}
+          className={`h-6 px-2 text-xs gap-1.5 cursor-pointer ${overlay.name === 'text' ? 'bg-primary text-primary-foreground font-bold shadow-sm' : 'hover:bg-muted text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setTextModalOpen(true)}
+          title={isEn ? "Add or edit text explanation on this tool" : "Écrire ou modifier le texte explicatif sur cet outil"}
+        >
+          <Type className="h-3.5 w-3.5" />
+          <span>{overlay.extendData?.text ? (isEn ? "Edit Text" : "Modifier texte") : (isEn ? "Write Text" : "Écrire texte")}</span>
+        </Button>
+
         {/* Bouton Engrenage : paramètres couleur, épaisseur, trait continu/discontinu */}
         <Button
           size="sm"
@@ -2481,6 +2680,16 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
+
+
+      {/* Modal d'édition de texte */}
+      <TextAnnotationModal
+        open={textModalOpen}
+        onClose={() => setTextModalOpen(false)}
+        currentText={typeof overlay.extendData === 'string' ? overlay.extendData : (overlay.extendData?.text || '')}
+        onApply={handleApplyText}
+        isEn={isEn}
+      />
 
       {/* Popover Paramètres de l'outil */}
       {settingsOpen && (

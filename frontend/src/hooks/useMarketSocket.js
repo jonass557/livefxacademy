@@ -1,13 +1,11 @@
-// Hook de cotations temps réel via WebSocket (/ws/market).
-// - WebSocket natif (aucune dépendance ajoutée), reconnexion à backoff exponentiel,
-//   détection de perte, ré-abonnement automatique, anti-abonnements multiples.
-// - `symbols` : liste des symboles à suivre ; les changements ajustent les abonnements.
-// - Optimisation haute fréquence type TradingView : diffusion directe instantanée (0 ms)
-//   vers les graphiques via `useRealtimeQuote` et mise en tampon cadencée (~200 ms) pour
-//   les composants React afin d'éviter la congestion du thread JS.
-import { useEffect, useRef, useState, useCallback } from 'react';
+// Hook de cotations temps réel haute résilience via WebSocket (/ws/market)
+// avec basculement automatique et transparent sur Polling HTTP haute vitesse (/api/demo/quotes).
+// - Si le WebSocket fonctionne : flux 0 ms.
+// - Si le WebSocket est coupé ou bloqué par le proxy cPanel / réseau mobile :
+//   le polling HTTP prend le relais immédiatement sans AUCUN message d'erreur ni blocage.
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { API_URL } from '../lib/api';
+import api, { API_URL } from '../lib/api';
 
 const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws/market';
 
@@ -54,91 +52,177 @@ export function useMarketSocket(symbols) {
   const [connected, setConnected] = useState(false);
 
   const wsRef = useRef(null);
+  const wsConnectedRef = useRef(false);
   const subsRef = useRef(new Set());
   const reconnectRef = useRef(null);
   const backoffRef = useRef(1000);
   const closedRef = useRef(false);
 
-  // Buffer de cadencement pour les re-renders React (évite le gel du thread)
+  // Buffer de cadencement pour les re-renders React
   const pendingQuotesRef = useRef({});
   const flushTimerRef = useRef(null);
+  const pollTimerRef = useRef(null);
 
   const symbolsKey = (symbols || []).filter(Boolean).slice().sort().join(',');
 
-  // Connexion (dépend uniquement du token).
+  // Dispatch helper
+  const dispatchQuote = (q) => {
+    if (!q || !q.symbol) return;
+    // 1. Dispatch direct aux graphiques (0 ms)
+    const listeners = quoteListeners.get(q.symbol);
+    if (listeners && listeners.size > 0) {
+      listeners.forEach((fn) => {
+        try { fn(q); } catch (_) {}
+      });
+    }
+
+    // 2. Mise en tampon des cotations pour l'état React global
+    pendingQuotesRef.current[q.symbol] = q;
+
+    if (!flushTimerRef.current) {
+      flushTimerRef.current = setTimeout(() => {
+        flushTimerRef.current = null;
+        const pending = pendingQuotesRef.current;
+        pendingQuotesRef.current = {};
+        setQuotes((prev) => ({ ...prev, ...pending }));
+      }, 150);
+    }
+  };
+
+  // Polling HTTP de secours (haute vitesse : 1.5s) quand le WebSocket n'est pas actif
+  const startHttpFallback = () => {
+    if (pollTimerRef.current) return;
+
+    const poll = async () => {
+      if (closedRef.current) return;
+      if (wsConnectedRef.current) {
+        // Le WebSocket est actif, pas besoin du polling
+        return;
+      }
+
+      const activeSymbols = Array.from(subsRef.current);
+      if (activeSymbols.length > 0) {
+        try {
+          const res = await api.get('/demo/quotes', {
+            params: { symbols: activeSymbols.join(',') },
+            timeout: 4000,
+          });
+          const received = res.data?.quotes || {};
+          let hasAny = false;
+          Object.values(received).forEach((q) => {
+            if (q && q.mid > 0) {
+              dispatchQuote(q);
+              hasAny = true;
+            }
+          });
+          if (hasAny) {
+            setConnected(true);
+          }
+        } catch (_) {
+          // Erreur réseau temporaire, on réessaie au prochain cycle
+        }
+      }
+
+      if (!closedRef.current && !wsConnectedRef.current) {
+        pollTimerRef.current = setTimeout(poll, 1600);
+      }
+    };
+
+    pollTimerRef.current = setTimeout(poll, 1000);
+  };
+
+  const stopHttpFallback = () => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
+
+  // Connexion WebSocket
   useEffect(() => {
-    if (!token) return;
     closedRef.current = false;
 
+    // Démarre le secours HTTP après un court délai au cas où le WebSocket met du temps ou échoue
+    const fallbackTimeout = setTimeout(() => {
+      if (!wsConnectedRef.current) {
+        startHttpFallback();
+      }
+    }, 2000);
+
     const connect = () => {
+      if (closedRef.current) return;
       let ws;
-      try { ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`); }
-      catch { scheduleReconnect(); return; }
+      try {
+        const authParam = token ? `?token=${encodeURIComponent(token)}` : '';
+        ws = new WebSocket(`${WS_URL}${authParam}`);
+      } catch {
+        wsConnectedRef.current = false;
+        startHttpFallback();
+        scheduleReconnect();
+        return;
+      }
       wsRef.current = ws;
 
       ws.onopen = () => {
+        wsConnectedRef.current = true;
         setConnected(true);
+        stopHttpFallback();
         backoffRef.current = 1000;
         const arr = Array.from(subsRef.current);
         if (arr.length) ws.send(JSON.stringify({ action: 'subscribe', symbols: arr }));
       };
 
       ws.onmessage = (e) => {
-        let m; try { m = JSON.parse(e.data); } catch { return; }
+        let m;
+        try { m = JSON.parse(e.data); } catch { return; }
         if (m.type === 'quote' && m.symbol) {
-          const q = { bid: m.bid, ask: m.ask, mid: m.mid, ts: m.ts, symbol: m.symbol };
-
-          // 1. Dispatch DIRECT et IMMÉDIAT (0 ms) aux graphiques abonnés
-          const listeners = quoteListeners.get(m.symbol);
-          if (listeners && listeners.size > 0) {
-            listeners.forEach((fn) => {
-              try { fn(q); } catch (_) {}
-            });
-          }
-
-          // 2. Mise en tampon des cotations pour l'état React global (Watchlist, P&L)
-          pendingQuotesRef.current[m.symbol] = q;
-
-          // 3. Cadencement des mises à jour React (max 5 fps / ~200ms) pour maintenir un canvas à 60 fps
-          if (!flushTimerRef.current) {
-            flushTimerRef.current = setTimeout(() => {
-              flushTimerRef.current = null;
-              const pending = pendingQuotesRef.current;
-              pendingQuotesRef.current = {};
-              setQuotes((prev) => ({ ...prev, ...pending }));
-            }, 200);
-          }
+          dispatchQuote({ bid: m.bid, ask: m.ask, mid: m.mid, ts: m.ts, symbol: m.symbol });
         }
       };
 
-      ws.onclose = () => { setConnected(false); if (!closedRef.current) scheduleReconnect(); };
-      ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
+      ws.onclose = () => {
+        wsConnectedRef.current = false;
+        // Basculer immédiatement sur HTTP de secours pour ne pas bloquer l'interface
+        startHttpFallback();
+        if (!closedRef.current) scheduleReconnect();
+      };
+
+      ws.onerror = () => {
+        wsConnectedRef.current = false;
+        startHttpFallback();
+        try { ws.close(); } catch { /* noop */ }
+      };
     };
 
     const scheduleReconnect = () => {
       clearTimeout(reconnectRef.current);
       reconnectRef.current = setTimeout(() => {
-        backoffRef.current = Math.min(backoffRef.current * 2, 15000);
+        backoffRef.current = Math.min(backoffRef.current * 1.5, 12000);
         connect();
       }, backoffRef.current);
     };
 
     connect();
+
     return () => {
       closedRef.current = true;
+      wsConnectedRef.current = false;
+      clearTimeout(fallbackTimeout);
       clearTimeout(reconnectRef.current);
       clearTimeout(flushTimerRef.current);
+      stopHttpFallback();
       try { wsRef.current?.close(); } catch { /* noop */ }
     };
   }, [token]);
 
-  // Ajuste les abonnements quand la liste de symboles change.
+  // Ajuste les abonnements quand la liste de symboles change
   useEffect(() => {
     const next = new Set((symbols || []).filter(Boolean));
     const prev = subsRef.current;
     const toAdd = [...next].filter((s) => !prev.has(s));
     const toRemove = [...prev].filter((s) => !next.has(s));
     subsRef.current = next;
+
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       if (toAdd.length) ws.send(JSON.stringify({ action: 'subscribe', symbols: toAdd }));

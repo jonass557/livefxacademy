@@ -10,6 +10,7 @@ import {
 import { toast } from 'sonner';
 import api from '../../lib/api';
 import { useLanguageStore } from '../../store/languageStore';
+import { useAuthStore } from '../../store/authStore';
 
 export default function ReferralDashboard({ onNavigateToContact }) {
   const { language } = useLanguageStore();
@@ -21,11 +22,27 @@ export default function ReferralDashboard({ onNavigateToContact }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const fetchStats = async () => {
+  const currentUser = useAuthStore((s) => s.user);
+
+  const fetchStats = async (isManualCheck = false) => {
     setLoading(true);
     try {
-      const res = await api.get('/referrals/my-stats');
-      setStats(res.data);
+      const [statsRes, meRes] = await Promise.all([
+        api.get(`/referrals/my-stats?_t=${Date.now()}`),
+        api.get('/auth/me').catch(() => null),
+      ]);
+      if (meRes?.data) {
+        useAuthStore.getState().updateUser(meRes.data);
+      }
+      setStats(statsRes.data);
+      if (isManualCheck) {
+        const isNowEnabled = Boolean(statsRes.data?.is_referral_enabled || meRes?.data?.is_referral_enabled);
+        if (isNowEnabled) {
+          toast.success(isEn ? 'Your referral link is active!' : 'Votre lien de parrainage est bien actif !');
+        } else {
+          toast.info(isEn ? 'Still waiting for administrator activation.' : 'Activation toujours en attente auprès de l\'administrateur.');
+        }
+      }
     } catch (err) {
       console.error('Erreur chargement stats parrainage:', err);
       setStats({ enabled: false, is_referral_enabled: false });
@@ -95,7 +112,7 @@ export default function ReferralDashboard({ onNavigateToContact }) {
     }
   };
 
-  const isEnabled = Boolean(stats?.is_referral_enabled);
+  const isEnabled = Boolean(stats?.is_referral_enabled || currentUser?.is_referral_enabled);
 
   if (loading) {
     return (
@@ -127,7 +144,7 @@ export default function ReferralDashboard({ onNavigateToContact }) {
         </div>
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Button
-            onClick={fetchStats}
+            onClick={() => fetchStats(true)}
             variant="outline"
             className="gap-2 w-full sm:w-auto"
           >

@@ -6,6 +6,7 @@ const demo = require('../controllers/demoController');
 // Marché (lecture publique / résiliente même si token absent ou en cours de rafraîchissement)
 router.get('/instruments', optionalAuth, demo.getInstruments);
 router.get('/candles', optionalAuth, demo.getCandles);
+router.get('/quotes', optionalAuth, demo.getQuotes);
 
 // Toutes les routes portefeuille / compte Trading Demo nécessitent une session authentifiée.
 router.use(authenticateToken);

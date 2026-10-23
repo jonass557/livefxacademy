@@ -17,7 +17,7 @@ import {
   ChartErrorBoundary, usePriceAlerts, ChartAlertsMenu,
   CreatePriceAlertDialog, ChartContextMenu, setChartLatestPrice,
 } from '../backtest/chartShared';
-import { demoApi, DEMO_TIMEFRAMES } from '../../lib/demoApi';
+import { demoApi, DEMO_TIMEFRAMES, generateClientFallbackCandles } from '../../lib/demoApi';
 import { useLanguageStore } from '../../store/languageStore';
 import { useRealtimeQuote } from '../../hooks/useMarketSocket';
 
@@ -68,6 +68,21 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     chart.setBarSpace?.(9);
     const unbindMT4 = configureMT4Chart(chart);
     chartRef.current = chart;
+
+    // Redimensionnement automatique pour garantir 100% de largeur et hauteur occupées
+    const triggerFullResize = () => {
+      if (chartRef.current) {
+        chartRef.current.resize();
+        chartRef.current.scrollToRealTime?.();
+      }
+    };
+    triggerFullResize();
+    requestAnimationFrame(triggerFullResize);
+    setTimeout(triggerFullResize, 50);
+    setTimeout(triggerFullResize, 150);
+    setTimeout(triggerFullResize, 350);
+    setTimeout(triggerFullResize, 700);
+
     return () => {
       unbindMT4?.();
       clearInterval(timerRef.current);
@@ -116,6 +131,37 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     if (!symbol || !timeframe) return;
     let cancelled = false;
     digitsSetRef.current = false;
+
+    // 0 ms: Affichage instantané immédiat (depuis le cache ou génération haute fidélité)
+    // pour que l'étudiant voie son graphique complet en plein écran sans aucune attente
+    const cacheKey = `lfx_candles_${symbol}_${timeframe}`;
+    let preloaded = null;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) preloaded = JSON.parse(cached);
+    } catch (_) {}
+    if (!preloaded || !preloaded.length) {
+      const tfMs = getTimeframeMs(timeframe);
+      const fb = generateClientFallbackCandles(symbol, timeframe, 200);
+      preloaded = fb.map((c) => ({
+        timestamp: Math.floor((c.time * 1000) / tfMs) * tfMs,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume || 100,
+      }));
+    }
+    if (preloaded && preloaded.length && chartRef.current) {
+      chartRef.current.applyNewData(preloaded);
+      chartRef.current.setBarSpace?.(9);
+      chartRef.current.scrollToRealTime?.();
+      requestAnimationFrame(() => {
+        chartRef.current?.resize();
+        chartRef.current?.scrollToRealTime?.();
+      });
+      setLoading(false);
+    }
 
     const load = async (isBackground = false, retryCount = 0) => {
       try {
@@ -168,6 +214,8 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             chartRef.current.setBarSpace?.(9);
             chartRef.current.scrollToRealTime?.();
             lastRef.current = kline[kline.length - 1] || null;
+            try { sessionStorage.setItem(cacheKey, JSON.stringify(kline)); } catch (_) {}
+            requestAnimationFrame(() => chartRef.current?.resize());
           } else {
             // Background sync silencieux : ne pas écraser la bougie active si le tick live est en avance
             const latest = kline[kline.length - 1];

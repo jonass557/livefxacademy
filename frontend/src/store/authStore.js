@@ -4,10 +4,11 @@ import { safeStorage } from '../lib/safeStorage';
 
 export const useAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       setAuth: (user, token) => set({ user, token }),
+      updateUser: (partialUser) => set({ user: { ...get().user, ...partialUser } }),
       logout: () => set({ user: null, token: null }),
     }),
     {

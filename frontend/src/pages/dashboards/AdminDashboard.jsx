@@ -35,6 +35,9 @@ const AdminDashboard = () => {
 
   // Referrals overview state
   const [referralsOverview, setReferralsOverview] = useState([]);
+  const [referralUserSearch, setReferralUserSearch] = useState('');
+  const [referralSearchResults, setReferralSearchResults] = useState([]);
+  const [searchingReferralUser, setSearchingReferralUser] = useState(false);
   const [loadingReferralsOverview, setLoadingReferralsOverview] = useState(false);
   const [editingUserReferral, setEditingUserReferral] = useState(null);
   const [customPercInput, setCustomPercInput] = useState('');
@@ -223,6 +226,24 @@ const AdminDashboard = () => {
       setReferralsOverview([]);
     } finally {
       setLoadingReferralsOverview(false);
+    }
+  };
+
+
+  const handleSearchUserForReferral = async (q) => {
+    setReferralUserSearch(q);
+    if (!q || q.trim().length < 2) {
+      setReferralSearchResults([]);
+      return;
+    }
+    setSearchingReferralUser(true);
+    try {
+      const res = await api.get(`/admin/users?search=${encodeURIComponent(q.trim())}&limit=10`);
+      setReferralSearchResults(res.data?.users || []);
+    } catch (err) {
+      console.error('Erreur recherche utilisateur:', err);
+    } finally {
+      setSearchingReferralUser(false);
     }
   };
 
@@ -4098,6 +4119,70 @@ const AdminDashboard = () => {
             </Button>
           </div>
         </div>
+
+        
+        {/* Module de recherche & activation rapide de parrainage pour l'admin */}
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 sm:p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="font-bold text-sm flex items-center gap-2">
+                  <UserPlus className="h-4 w-4 text-primary" /> Activer le parrainage pour un membre spécifique
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Recherchez un élève ou formateur par son nom, prénom ou email pour lui ouvrir immédiatement l'accès au parrainage.
+                </p>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Input
+                type="text"
+                placeholder="Tapez le nom, email ou téléphone du membre..."
+                value={referralUserSearch}
+                onChange={(e) => handleSearchUserForReferral(e.target.value)}
+                className="bg-background pr-10 text-sm"
+              />
+              {searchingReferralUser && (
+                <div className="absolute right-3 top-2.5">
+                  <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </div>
+
+            {referralSearchResults.length > 0 && (
+              <div className="border rounded-xl bg-card divide-y max-h-60 overflow-y-auto shadow-sm">
+                {referralSearchResults.map((u) => (
+                  <div key={u.id} className="p-2.5 sm:px-3 flex items-center justify-between gap-3 text-xs hover:bg-muted/40 transition-colors">
+                    <div>
+                      <span className="font-bold text-foreground">{u.full_name}</span>
+                      <span className={`ml-2 px-1.5 py-0.2 rounded text-[10px] font-semibold ${u.role === 'trainer' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {u.role === 'trainer' ? 'Formateur' : 'Élève'}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground">{u.email} {u.phone ? `• ${u.phone}` : ''}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant={u.is_referral_enabled ? "outline" : "default"}
+                        className={`h-7 text-xs gap-1.5 font-bold ${!u.is_referral_enabled ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                        onClick={async () => {
+                          const newStatus = !u.is_referral_enabled;
+                          await handleToggleUserReferral(u.id, newStatus, null);
+                          handleSearchUserForReferral(referralUserSearch);
+                        }}
+                      >
+                        <Share2 className="h-3 w-3" />
+                        <span>{u.is_referral_enabled ? 'Désactiver' : 'Activer maintenant'}</span>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Global Stats */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { init, dispose } from 'klinecharts';
 import api from '../../lib/api';
+import { generateClientFallbackCandles } from '../../lib/demoApi';
 import { Loader2, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import './chart-landscape.css';

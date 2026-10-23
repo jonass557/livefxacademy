@@ -14,6 +14,7 @@ import Navbar from './components/Navbar';
 import BackButton from './components/BackButton';
 import { Toaster } from './components/ui/toaster';
 import { useAuthStore } from './store/authStore';
+import api from './lib/api';
 
 // Layout wrapper that handles different layouts for admin
 function AppLayout({ children }) {
@@ -22,6 +23,20 @@ function AppLayout({ children }) {
 
   const isDashboard = location.pathname.startsWith('/dashboard');
   const isAdmin = user?.role === 'admin';
+  // Synchronisation en direct du profil utilisateur (is_referral_enabled, abonnements, etc.) dès l'ouverture ou rafraîchissement
+  useEffect(() => {
+    const token = useAuthStore.getState().token;
+    if (token) {
+      api.get('/auth/me')
+        .then((res) => {
+          if (res.data) {
+            useAuthStore.getState().updateUser(res.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
 
   // Sections graphiques : pas de navbar pour maximiser l'espace.
   const searchParams = new URLSearchParams(location.search);
