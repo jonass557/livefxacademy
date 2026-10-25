@@ -7,7 +7,7 @@ import {
   ShieldCheck, RefreshCw, Eye, Sparkles,
   Maximize2, X, MessageSquare, Compass, ArrowRight, Video, Image as ImageIcon,
   Palmtree, Link as LinkIcon, Phone, Send, Facebook, CheckCircle, ExternalLink,
-  MapPin, Users, GraduationCap, Mail, Award
+  MapPin, Users, GraduationCap, Mail, Award, CreditCard
 } from 'lucide-react';
 import api, { API_URL } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
@@ -47,6 +47,7 @@ const Home = () => {
 
   const [posts, setPosts] = useState([]);
   const [vacationPrograms, setVacationPrograms] = useState([]);
+  const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
 
@@ -69,12 +70,14 @@ const Home = () => {
   const fetchFeedAndData = async () => {
     setLoading(true);
     try {
-      const [announcementsRes, vacationRes] = await Promise.all([
+      const [announcementsRes, vacationRes, plansRes] = await Promise.all([
         api.get('/announcements').catch(() => ({ data: [] })),
         api.get('/vacation-programs').catch(() => ({ data: [] })),
+        api.get('/subscriptions/plans').catch(() => ({ data: [] })),
       ]);
       setPosts(announcementsRes.data || []);
       setVacationPrograms(vacationRes.data || []);
+      setPlans(plansRes.data || []);
     } catch (err) {
       console.error('Erreur lors du chargement des données', err);
     } finally {
@@ -413,6 +416,81 @@ const Home = () => {
           </div>
         )}
       </div>
+
+      {/* ==================== PLANS D'ABONNEMENT ==================== */}
+      {plans.length > 0 && (
+        <div className="space-y-4 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <CreditCard className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">{isEn ? 'Subscription Plans & Formulas' : "Nos Formules & Plans d'Abonnement"}</h2>
+                <p className="text-xs text-muted-foreground">{isEn ? 'Choose the plan adapted to your trading objectives' : 'Choisissez le forfait adapté à vos objectifs de formation'}</p>
+              </div>
+            </div>
+            <Link to="/dashboard?section=subscription">
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                <span>{isEn ? 'View all' : 'Gérer mon abonnement'}</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {plans.map((p) => {
+              const feats = Array.isArray(p.features) ? p.features : [];
+              return (
+                <Card key={p.id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-md bg-card">
+                  <CardHeader className="space-y-2 p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary">
+                        {p.duration_days} {isEn ? 'Days' : 'Jours'}
+                      </span>
+                      {p.trial_days > 0 && (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                          🎁 {p.trial_days} {isEn ? 'days trial' : "j d'essai gratuit"}
+                        </span>
+                      )}
+                    </div>
+                    <CardTitle className="text-lg font-bold">{p.name}</CardTitle>
+                    <p className="text-xs text-muted-foreground min-h-[30px]">{p.description}</p>
+                    <div className="pt-2">
+                      <span className="text-2xl font-extrabold">{Number(p.price_xaf).toLocaleString()}</span>
+                      <span className="text-xs font-semibold text-muted-foreground ml-1">XAF</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-5 pt-0 space-y-4 flex-1 flex flex-col justify-between">
+                    <div className="space-y-2 border-t pt-3">
+                      {feats.length > 0 ? (
+                        feats.slice(0, 4).map((f, i) => (
+                          <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                            <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                            <span>{f}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                          <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                          <span>{isEn ? 'Full academy services access' : "Accès complet aux services de l'académie"}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <Link to="/dashboard?section=subscription">
+                      <Button className="w-full gap-2 font-bold text-xs h-9">
+                        <span>{p.trial_days > 0 ? (isEn ? 'Start with Free Trial' : 'Démarrer avec essai gratuit') : (isEn ? 'Subscribe to this plan' : 'Souscrire à ce plan')}</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ==================== 4. LIEN BROKERS ==================== */}
       <div className="space-y-4 pt-4 border-t">

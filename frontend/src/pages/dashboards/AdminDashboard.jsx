@@ -3,7 +3,7 @@ import AnnouncementInteractions from '../../components/AnnouncementInteractions'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Users, Video, TrendingUp, Image as ImageIcon, Trash2, MessageSquare, CheckCircle, XCircle, Clock, RefreshCw, BarChart3, Mail, GraduationCap, Eye, UserCheck, UserX, Lightbulb, ExternalLink, User, Phone, Calendar, Award, Briefcase, X, FileCheck, Send, AlertCircle, Target, ChevronDown, ChevronUp, Upload, Play, Pause, Edit2, Search, Globe, ArrowRight, Share2, CreditCard, Gift } from 'lucide-react';
+import { Users, UserPlus, Video, TrendingUp, Image as ImageIcon, Trash2, MessageSquare, CheckCircle, XCircle, Clock, RefreshCw, BarChart3, Mail, GraduationCap, Eye, UserCheck, UserX, Lightbulb, ExternalLink, User, Phone, Calendar, Award, Briefcase, X, FileCheck, Send, AlertCircle, Target, ChevronDown, ChevronUp, Upload, Play, Pause, Edit2, Search, Globe, ArrowRight, Share2, CreditCard, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { API_URL } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
@@ -45,7 +45,7 @@ const AdminDashboard = () => {
   // Plans management state
   const [adminPlans, setAdminPlans] = useState([]);
   const [loadingAdminPlans, setLoadingAdminPlans] = useState(false);
-  const [planForm, setPlanForm] = useState({ name: '', description: '', price_xaf: '', duration_days: 30, features: '', is_active: true });
+  const [planForm, setPlanForm] = useState({ name: '', description: '', price_xaf: '', duration_days: 30, trial_days: 0, features: '', is_active: true });
   const [editingPlan, setEditingPlan] = useState(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [savingPlan, setSavingPlan] = useState(false);
@@ -4412,6 +4412,16 @@ const AdminDashboard = () => {
                       placeholder="30"
                       value={planForm.duration_days}
                       onChange={(e) => setPlanForm({ ...planForm, duration_days: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold block mb-1">Essai (Jours) 🎁</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 7"
+                      value={planForm.trial_days}
+                      onChange={(e) => setPlanForm({ ...planForm, trial_days: e.target.value })}
                     />
                   </div>
                 </div>

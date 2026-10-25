@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { 
   CheckCircle, TrendingUp, Users, Video, ArrowRight, Shield, 
-  GraduationCap, Target, BookOpen, BarChart3, Zap, Award,
+  GraduationCap, Target, BookOpen, BarChart3, Zap, Award, CreditCard, Sparkles,
   Globe, Clock, HeadphonesIcon, Facebook
 } from 'lucide-react';
 import api, { API_URL } from '../lib/api';
@@ -23,8 +23,10 @@ const LandingPage = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [heroImages, setHeroImages] = useState(DEFAULT_HERO_IMAGES);
   const [dynamicServices, setDynamicServices] = useState([]);
+  const [plans, setPlans] = useState([]);
 
   useEffect(() => {
+    api.get('/subscriptions/plans').then(res => setPlans(res.data || [])).catch(() => {});
     const fetchServices = async () => {
       try {
         const res = await api.get('/services');
@@ -290,6 +292,80 @@ const LandingPage = () => {
           </div>
         </div>
       </section>
+
+      {/* SUBSCRIPTION PLANS SECTION */}
+      {plans.length > 0 && (
+        <section className="py-20 bg-background border-t">
+          <div className="container px-4 md:px-6">
+            <div className="text-center space-y-4 mb-12">
+              <div className="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold bg-primary/10 text-primary">
+                <CreditCard className="h-4 w-4 mr-2" />
+                {language === 'fr' ? 'Nos Formules & Tarifs' : 'Subscription Plans & Pricing'}
+              </div>
+              <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">
+                {language === 'fr' ? 'Rejoignez LiveFX Academy dès aujourd’hui' : 'Join LiveFX Academy Today'}
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto text-sm sm:text-base">
+                {language === 'fr'
+                  ? 'Choisissez le forfait adapté à vos objectifs et profitez de nos cours, signaux en direct, webinaires et analyses quotidiennes.'
+                  : 'Choose the best plan for your trading goals and get immediate access to our courses, signals, and webinars.'}
+              </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
+              {plans.map((p) => {
+                const feats = Array.isArray(p.features) ? p.features : [];
+                return (
+                  <Card key={p.id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/60 transition-all shadow-md hover:shadow-xl bg-card">
+                    <div className="p-6 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/15 text-primary">
+                          {p.duration_days} {language === 'fr' ? 'Jours' : 'Days'}
+                        </span>
+                        {p.trial_days > 0 && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                            🎁 {p.trial_days} {language === 'fr' ? "j d'essai gratuit" : 'days free trial'}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-xl font-bold">{p.name}</h3>
+                      <p className="text-xs text-muted-foreground min-h-[32px]">{p.description}</p>
+                      <div className="pt-2">
+                        <span className="text-3xl font-extrabold">{Number(p.price_xaf).toLocaleString()}</span>
+                        <span className="text-sm font-semibold text-muted-foreground ml-1">XAF</span>
+                      </div>
+                    </div>
+                    <div className="p-6 pt-0 space-y-6 flex-1 flex flex-col justify-between">
+                      <div className="space-y-2.5 border-t pt-4">
+                        {feats.length > 0 ? (
+                          feats.map((f, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                              <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                              <span>{f}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                            <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                            <span>{language === 'fr' ? 'Accès complet aux analyses, signaux et outils' : 'Full access to analysis, signals & tools'}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <Link to={`/register?plan_id=${p.id}`}>
+                        <Button className="w-full gap-2 font-bold shadow-md">
+                          <span>{p.trial_days > 0 ? (language === 'fr' ? 'Démarrer avec essai gratuit' : 'Start with Free Trial') : (language === 'fr' ? 'Choisir ce plan' : 'Choose this plan')}</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* WHY CHOOSE US */}
       <section className="py-24 bg-gradient-to-r from-primary/10 to-purple-500/10">

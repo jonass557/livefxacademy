@@ -36,6 +36,12 @@ const Dashboard = () => {
 
   if (!user) return <div>Loading...</div>;
 
+  // Verrouillage Paywall : Uniquement pour les nouveaux utilisateurs inscrits exigeant un abonnement et n'ayant pas encore souscrit
+  const isSubscriptionRequired = user.role !== 'admin' && user.is_subscription_required && !user.has_active_subscription;
+  if (isSubscriptionRequired) {
+    return <ClientDashboard lockToSubscription={true} />;
+  }
+
   // Si une section fonctionnelle (Graphique, Backtesting, Services, Lien Brokers, Contact, etc.) est demandée,
   // afficher directement ClientDashboard qui gère l'ensemble de ces sections sur tous les appareils (dont iOS iPhone).
   if (section && SHARED_CLIENT_SECTIONS.has(section)) {

@@ -16,6 +16,7 @@ router.post('/admin/revoke/:userId', authenticateToken, requireRole(['admin']), 
 
 // Paiements Mobile Money (SEBPAY)
 router.post('/pay/mobile', authenticateToken, subscriptionController.initiateMobilePayment);
+router.post('/start-trial', authenticateToken, subscriptionController.startTrial);
 router.get('/status/:reference', authenticateToken, subscriptionController.checkPaymentStatus);
 router.get('/my-history', authenticateToken, subscriptionController.getMySubscriptions);
 

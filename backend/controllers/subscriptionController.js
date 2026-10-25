@@ -7,7 +7,7 @@ const SEBPAY_API_URL = 'https://newapi.sebpay.bj/api/v1';
 // Liste des plans actifs pour les utilisateurs
 exports.getActivePlans = async (req, res) => {
   try {
-    const plans = await SubscriptionPlan.find({ is_active: true }).sort({ price_xaf: 1 });
+    const plans = await SubscriptionPlan.find({ is_active: true, is_deleted: { $ne: true } }).sort({ price_xaf: 1 });
     res.json(plans);
   } catch (err) {
     console.error('getActivePlans error:', err);
@@ -18,7 +18,7 @@ exports.getActivePlans = async (req, res) => {
 // Admin : Liste de tous les plans
 exports.getAdminPlans = async (req, res) => {
   try {
-    const plans = await SubscriptionPlan.find().sort({ createdAt: -1 });
+    const plans = await SubscriptionPlan.find({ is_deleted: { $ne: true } }).sort({ createdAt: -1 });
     res.json(plans);
   } catch (err) {
     console.error('getAdminPlans error:', err);
@@ -29,7 +29,7 @@ exports.getAdminPlans = async (req, res) => {
 // Admin : Créer un plan
 exports.createPlan = async (req, res) => {
   try {
-    const { name, description, price_xaf, duration_days, features, is_active } = req.body;
+    const { name, description, price_xaf, duration_days, trial_days, features, is_active } = req.body;
     if (!name || price_xaf == null) {
       return res.status(400).json({ message: 'Le nom et le prix en XAF sont obligatoires' });
     }
@@ -39,6 +39,7 @@ exports.createPlan = async (req, res) => {
       description: description || '',
       price_xaf: Number(price_xaf),
       duration_days: Number(duration_days) || 30,
+      trial_days: Math.max(0, Number(trial_days) || 0),
       features: Array.isArray(features) ? features : [],
       is_active: is_active !== undefined ? is_active : true,
       created_by: req.user.id
@@ -68,11 +69,84 @@ exports.updatePlan = async (req, res) => {
 exports.deletePlan = async (req, res) => {
   try {
     const { id } = req.params;
-    await SubscriptionPlan.findByIdAndDelete(id);
-    res.json({ message: 'Plan supprimé avec succès' });
+    const plan = await SubscriptionPlan.findById(id);
+    if (!plan) return res.status(404).json({ message: 'Plan non trouvé' });
+    plan.is_active = false;
+    plan.is_deleted = true;
+    await plan.save();
+    res.json({ message: 'Plan supprimé avec succès. Les abonnés actifs continuent à en bénéficier jusqu\'à expiration.' });
   } catch (err) {
     console.error('deletePlan error:', err);
     res.status(500).json({ message: 'Erreur lors de la suppression' });
+  }
+};
+
+// Démarrer la période d'essai gratuit sur un plan
+exports.startTrial = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { plan_id } = req.body;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+
+    if (user.is_free_trial_granted) {
+      return res.status(400).json({ message: 'Vous avez déjà bénéficié d\'une période d\'essai gratuit.' });
+    }
+
+    const plan = await SubscriptionPlan.findById(plan_id);
+    if (!plan || !plan.is_active || plan.is_deleted) {
+      return res.status(404).json({ message: 'Plan indisponible' });
+    }
+
+    const trialDays = Number(plan.trial_days) || 0;
+    if (trialDays <= 0) {
+      return res.status(400).json({ message: 'Ce plan ne propose pas de période d\'essai gratuit.' });
+    }
+
+    const now = new Date();
+    const currentExpiry = user.subscription_expires_at ? new Date(user.subscription_expires_at) : null;
+    const baseDate = (currentExpiry && currentExpiry > now) ? currentExpiry : now;
+    const expiresAt = new Date(baseDate.getTime() + trialDays * 24 * 60 * 60 * 1000);
+
+    user.subscription_plan_name = `${plan.name} (Essai ${trialDays}j)`;
+    user.subscription_expires_at = expiresAt;
+    user.is_free_trial_granted = true;
+    await user.save();
+
+    const externalRef = `TRIAL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    await PaymentTransaction.create({
+      user_id: user._id,
+      plan_id: plan._id,
+      amount: 0,
+      currency: 'XOF',
+      phone: user.phone || 'TRIAL-FREE',
+      operator: 'free_trial',
+      country: 'BJ',
+      external_reference: externalRef,
+      transaction_id: externalRef,
+      status: 'completed',
+      sebpay_response: {
+        trial_started: true,
+        plan_name: plan.name,
+        duration_days: trialDays,
+        expires_at: expiresAt.toISOString(),
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Votre période d'essai gratuit de ${trialDays} jours a été activée !`,
+      user: {
+        id: user._id,
+        subscription_plan_name: user.subscription_plan_name,
+        subscription_expires_at: user.subscription_expires_at,
+        has_active_subscription: true,
+        is_free_trial_granted: true,
+      }
+    });
+  } catch (err) {
+    console.error('startTrial error:', err);
+    res.status(500).json({ message: 'Erreur lors de l\'activation de la période d\'essai' });
   }
 };
 

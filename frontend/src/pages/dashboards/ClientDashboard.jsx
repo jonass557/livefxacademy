@@ -50,7 +50,7 @@ const isDirectVideoUrl = (url = '') => {
   );
 };
 
-const ClientDashboard = () => {
+const ClientDashboard = ({ lockToSubscription = false }) => {
   const { user } = useAuthStore();
   const { t, language } = useLanguageStore();
   const isEn = language === 'en';
@@ -62,7 +62,7 @@ const ClientDashboard = () => {
   // l'espace membre (ce qui renvoyait vers /login et donnait l'impression
   // d'être déconnecté).
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeSection = searchParams.get('section') || 'dashboard';
+  const activeSection = lockToSubscription ? 'subscription' : (searchParams.get('section') || 'dashboard');
   const setActiveSection = (id) =>
     setSearchParams(id && id !== 'dashboard' ? { section: id } : {});
 
@@ -124,6 +124,34 @@ const ClientDashboard = () => {
   const [payForm, setPayForm] = useState({ phone: '', operator: 'mtn', country: 'BJ', otp_code: '' });
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [paymentResult, setPaymentResult] = useState(null);
+  const [startingTrialId, setStartingTrialId] = useState(null);
+
+  const handleStartTrial = async (planId) => {
+    setStartingTrialId(planId);
+    try {
+      const res = await api.post('/subscriptions/start-trial', { plan_id: planId });
+      toast.success(res.data.message || 'Essai gratuit activé avec succès !');
+      setUserProfile((prev) => ({
+        ...prev,
+        has_active_subscription: true,
+        subscription_expires_at: res.data.subscription_expires_at,
+        subscription_plan_name: res.data.subscription_plan_name,
+      }));
+      useAuthStore.getState().updateUser({
+        has_active_subscription: true,
+        subscription_expires_at: res.data.subscription_expires_at,
+        subscription_plan_name: res.data.subscription_plan_name,
+      });
+      // Refresh user in authStore
+      api.get('/auth/me').then(meRes => {
+        if (meRes.data) useAuthStore.getState().updateUser(meRes.data);
+      }).catch(() => {});
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Impossible d'activer l'essai gratuit");
+    } finally {
+      setStartingTrialId(null);
+    }
+  };
 
   // Toujours débloquer le scroll et remonter en haut lors d'un changement de section (indispensable sur iOS iPhone)
   useEffect(() => {
@@ -1280,6 +1308,21 @@ const ClientDashboard = () => {
 
     return (
       <div className="space-y-6">
+        {lockToSubscription && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center gap-3">
+            <Sparkles className="h-6 w-6 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">
+                {isEn ? 'Subscription Required for New Members' : 'Souscription Requise pour les Nouveaux Membres'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {isEn
+                  ? 'Please activate a free trial or subscribe to a plan below to unlock full access to your academy dashboard.'
+                  : 'Veuillez activer votre période d’essai gratuit ou souscrire à une formule ci-dessous pour débloquer immédiatement l’accès complet à votre espace.'}
+              </p>
+            </div>
+          </div>
+        )}
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <CreditCard className="h-6 w-6 text-primary" /> {isEn ? 'Subscription Plans' : 'Plans de Souscription'}
@@ -1338,10 +1381,15 @@ const ClientDashboard = () => {
               return (
                 <Card key={p.id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider">
                         {p.duration_days} {isEn ? 'Days' : 'Jours'}
                       </span>
+                      {p.trial_days > 0 && (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                          🎁 {p.trial_days} {isEn ? 'days trial' : "j d'essai gratuit"}
+                        </span>
+                      )}
                     </div>
                     <CardTitle className="text-xl mt-2">{p.name}</CardTitle>
                     <p className="text-xs text-muted-foreground mt-1">{p.description}</p>
@@ -1368,17 +1416,32 @@ const ClientDashboard = () => {
                       )}
                     </div>
 
-                    <Button
-                      onClick={() => {
-                        setSelectedPlan(p);
-                        setPaymentResult(null);
-                        setPaymentModalOpen(true);
-                      }}
-                      className="w-full gap-2 mt-4"
-                    >
-                      <CreditCard className="h-4 w-4" />
-                      {isEn ? 'Pay with Mobile Money' : 'Payer par Mobile Money'}
-                    </Button>
+                    <div className="space-y-2 mt-4">
+                      {p.trial_days > 0 && !hasActiveSub && (
+                        <Button
+                          variant="outline"
+                          onClick={() => handleStartTrial(p.id)}
+                          disabled={startingTrialId === p.id}
+                          className="w-full gap-2 border-amber-500/50 text-amber-500 hover:bg-amber-500/10 font-bold"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                          {startingTrialId === p.id
+                            ? (isEn ? 'Activating trial...' : 'Activation en cours...')
+                            : (isEn ? `Start ${p.trial_days}-Day Free Trial` : `Démarrer l'essai gratuit (${p.trial_days} jours)`)}
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => {
+                          setSelectedPlan(p);
+                          setPaymentResult(null);
+                          setPaymentModalOpen(true);
+                        }}
+                        className="w-full gap-2"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        {isEn ? 'Pay with Mobile Money' : 'Payer par Mobile Money'}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               );

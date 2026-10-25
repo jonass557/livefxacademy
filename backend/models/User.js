@@ -59,6 +59,12 @@ const userSchema = new mongoose.Schema({
   is_free_trial_granted: {
     type: Boolean,
     default: false
+  },
+  // Obligation de souscription (uniquement pour les NOUVEAUX utilisateurs inscrits)
+  // Les anciens utilisateurs conservent false (Grandfathering garanti) et ont un accès libre direct.
+  is_subscription_required: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }

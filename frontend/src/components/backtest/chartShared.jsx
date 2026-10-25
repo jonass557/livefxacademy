@@ -14,6 +14,7 @@ import { registerOverlay, registerIndicator, IndicatorSeries } from 'klinecharts
 const assetUrl = (url) => url ? (url.startsWith('http') ? url : `${API_URL}${url}`) : '';
 import { Button } from '../ui/button';
 import {
+  AlignLeft, AlignCenter, AlignRight, Bold,
   Slash, PenLine, MoveUpRight, Minus, SeparatorVertical, Tag,
   Equal, AlignJustify, Square, Type, Eraser, ChevronDown, Pencil, FunctionSquare,
   ArrowRight, ArrowUpRight, MapPin, ArrowUp, ArrowDown, TrendingUp, TrendingDown,
@@ -385,6 +386,37 @@ export function ensureCustomOverlaysAndIndicators() {
         },
       ];
 
+      if (overlay.extendData?.text) {
+        const ext = overlay.extendData;
+        const txt = typeof ext === 'string' ? ext : ext.text;
+        const align = ext.align || 'center';
+        const fontSize = ext.fontSize || 12;
+        const isBold = ext.bold !== false;
+        const textColor = ext.textColor || '#ffffff';
+        let tx = (p1.x + p2.x) / 2;
+        let ty = (p1.y + p2.y) / 2 - 8;
+        if (align === 'left') { tx = p1.x; ty = p1.y - 8; }
+        if (align === 'right') { tx = p2.x; ty = p2.y - 8; }
+        figures.push({
+          type: 'text',
+          attrs: { x: tx, y: ty, text: txt, align, baseline: 'bottom' },
+          styles: {
+            color: textColor,
+            size: fontSize,
+            weight: isBold ? 'bold' : 'normal',
+            family: 'sans-serif',
+            paddingLeft: 6,
+            paddingRight: 6,
+            paddingTop: 2,
+            paddingBottom: 2,
+            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            borderColor: lineColor,
+            borderSize: 1,
+            borderRadius: 4,
+          }
+        });
+      }
+
       // Couloir tactile invisible élargi (28px de large) pour attraper/sélectionner très facilement la ligne au doigt
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
@@ -532,6 +564,37 @@ export function ensureCustomOverlaysAndIndicators() {
         },
       ];
 
+      if (overlay.extendData?.text) {
+        const ext = overlay.extendData;
+        const txt = typeof ext === 'string' ? ext : ext.text;
+        const align = ext.align || 'center';
+        const fontSize = ext.fontSize || 12;
+        const isBold = ext.bold !== false;
+        const textColor = ext.textColor || '#ffffff';
+        let tx = (a.x + b.x) / 2;
+        if (align === 'left') tx = Math.min(a.x, b.x) + 8;
+        if (align === 'right') tx = Math.max(a.x, b.x) - 8;
+        const ty = Math.min(a.y, b.y) + 8;
+        figures.push({
+          type: 'text',
+          attrs: { x: tx, y: ty, text: txt, align, baseline: 'top' },
+          styles: {
+            color: textColor,
+            size: fontSize,
+            weight: isBold ? 'bold' : 'normal',
+            family: 'sans-serif',
+            paddingLeft: 6,
+            paddingRight: 6,
+            paddingTop: 2,
+            paddingBottom: 2,
+            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            borderColor: strokeColor,
+            borderSize: 1,
+            borderRadius: 4,
+          }
+        });
+      }
+
       // Cibles tactiles invisibles sur les coins pour étirer le rectangle au doigt sur mobile
       figures.push(
         { type: 'circle', attrs: { x: a.x, y: a.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
@@ -551,24 +614,29 @@ export function ensureCustomOverlaysAndIndicators() {
     needDefaultPointFigure: true,
     createPointFigures: ({ coordinates, overlay }) => {
       if (!coordinates || coordinates.length < 1) return [];
-      const text = typeof overlay.extendData === 'string' ? overlay.extendData : (overlay.extendData?.text || 'Note');
-      const borderColor = overlay?.styles?.text?.borderColor || overlay?.styles?.line?.color || '#3b82f6';
+      const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
+      const text = ext.text || 'Note';
+      const align = ext.align || 'left';
+      const fontSize = ext.fontSize || 13;
+      const isBold = ext.bold !== false;
+      const textColor = ext.textColor || '#ffffff';
+      const borderColor = ext.color || overlay?.styles?.text?.borderColor || overlay?.styles?.line?.color || '#3b82f6';
       return [{
         type: 'text',
-        attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text, align: 'left', baseline: 'bottom' },
+        attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text, align, baseline: 'bottom' },
         styles: {
-          color: '#ffffff',
-          size: 13,
+          color: textColor,
+          size: fontSize,
           family: 'sans-serif',
-          weight: 'bold',
-          paddingLeft: 6,
-          paddingRight: 6,
-          paddingTop: 3,
-          paddingBottom: 3,
-          backgroundColor: 'rgba(31, 41, 55, 0.85)',
+          weight: isBold ? 'bold' : 'normal',
+          paddingLeft: 8,
+          paddingRight: 8,
+          paddingTop: 4,
+          paddingBottom: 4,
+          backgroundColor: 'rgba(15, 23, 42, 0.88)',
           borderColor: borderColor,
           borderSize: 1,
-          borderRadius: 4,
+          borderRadius: 6,
         },
       }];
     },
@@ -2029,12 +2097,45 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   const [selectedOverlay, setSelectedOverlay] = useState(null);
   const drawingOverlayIdRef = useRef(null);
   const touchDragInfoRef = useRef(null);
+  const activeOverlayIdsRef = useRef(new Set());
+
+  const targetSymbol = options?.symbol || 'GLOBAL';
+  const getStorageKey = useCallback(() => {
+    const sym = String(targetSymbol || 'GLOBAL').toUpperCase().replace(/[\/\s_-]/g, '');
+    let uid = 'guest';
+    try { uid = useAuthStore.getState().user?.id || 'guest'; } catch (_) {}
+    return `lfx_chart_drawings_${uid}_${sym}`;
+  }, [targetSymbol]);
+
+  const saveDrawings = useCallback(() => {
+    const chart = chartRef?.current;
+    if (!chart) return;
+    const drawings = [];
+    activeOverlayIdsRef.current.forEach((id) => {
+      try {
+        const ov = chart.getOverlayById?.(id);
+        if (ov && ov.groupId === 'draw' && Array.isArray(ov.points) && ov.points.length > 0) {
+          drawings.push({
+            id: ov.id,
+            name: ov.name,
+            points: ov.points,
+            styles: ov.styles,
+            extendData: ov.extendData,
+          });
+        }
+      } catch (_) {}
+    });
+    try {
+      localStorage.setItem(getStorageKey(), JSON.stringify(drawings));
+    } catch (_) {}
+  }, [chartRef, getStorageKey]);
 
   const deleteOverlay = useCallback((target) => {
     const chart = chartRef?.current;
     if (!chart) return;
     const id = typeof target === 'string' ? target : target?.id;
     if (id) {
+      activeOverlayIdsRef.current.delete(id);
       try {
         chart.removeOverlay({ id });
       } catch (_) {
@@ -2042,9 +2143,10 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
           chart.removeOverlay(id);
         } catch (_) {}
       }
+      setTimeout(() => saveDrawings(), 50);
     }
     setSelectedOverlay((curr) => (curr?.id === id ? null : curr));
-  }, [chartRef]);
+  }, [chartRef, saveDrawings]);
 
   const deleteSelected = useCallback(() => {
     if (selectedOverlay) {
@@ -2056,11 +2158,62 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   const deleteAllDrawings = useCallback(() => {
     const chart = chartRef?.current;
     if (!chart) return;
+    activeOverlayIdsRef.current.clear();
     try {
       chart.removeOverlay({ groupId: 'draw' });
     } catch (_) {}
+    try {
+      localStorage.removeItem(getStorageKey());
+    } catch (_) {}
     setSelectedOverlay(null);
-  }, [chartRef]);
+  }, [chartRef, getStorageKey]);
+
+  // Restauration automatique des dessins enregistrés pour ce symbole et cet utilisateur
+  const restoreDrawings = useCallback(() => {
+    const chart = chartRef?.current;
+    if (!chart) return;
+    try {
+      const raw = localStorage.getItem(getStorageKey());
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        list.forEach((item) => {
+          if (!item.name || !Array.isArray(item.points) || !item.points.length) return;
+          if (activeOverlayIdsRef.current.has(item.id)) return;
+          const id = chart.createOverlay({
+            id: item.id,
+            name: item.name,
+            groupId: 'draw',
+            points: item.points,
+            styles: item.styles,
+            extendData: item.extendData,
+            onSelected: ({ overlay }) => { setSelectedOverlay(overlay); return true; },
+            onDeselected: () => { setSelectedOverlay(null); return true; },
+            onClick: ({ overlay }) => { setSelectedOverlay(overlay); return true; },
+            onDoubleClick: ({ overlay }) => { deleteOverlay(overlay); return true; },
+            onRightClick: ({ overlay }) => { deleteOverlay(overlay); return true; },
+          });
+          if (id) {
+            activeOverlayIdsRef.current.add(id);
+          }
+        });
+      }
+    } catch (_) {}
+  }, [chartRef, getStorageKey, deleteOverlay]);
+
+  // Restauration au montage et lors du changement de symbole
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      restoreDrawings();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [restoreDrawings, targetSymbol]);
+
+  // Sauvegarde préventive à la fermeture ou déconnexion
+  useEffect(() => {
+    window.addEventListener('beforeunload', saveDrawings);
+    return () => window.removeEventListener('beforeunload', saveDrawings);
+  }, [saveDrawings]);
 
   // Désactive le scroll du graphique lorsqu'un outil est sélectionné pour permettre
   // à l'utilisateur de déplacer ou étirer facilement l'outil au doigt sans conflit de pan
@@ -2158,6 +2311,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
 
     const id = chart.createOverlay(overlayConfig);
     if (id) {
+      activeOverlayIdsRef.current.add(id);
       drawingOverlayIdRef.current = id;
       try {
         chart.setScrollEnabled?.(false);
@@ -2244,6 +2398,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
           }
         } catch (_) {}
         drawingOverlayIdRef.current = null;
+        setTimeout(() => saveDrawings(), 100);
       }
       touchDragInfoRef.current = null;
     };
@@ -2297,20 +2452,38 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
     deleteSelected,
     deleteAllDrawings,
     createDrawing,
+    saveDrawings,
+    restoreDrawings,
   };
 }
 
 // Barre d'action flottante qui apparaît au clic sur un outil/dessin avec bouton Engrenage (paramètres) et Supprimer
 
 // Modal d'écriture de texte pour annoter les graphiques et outils
-export function TextAnnotationModal({ open, onClose, currentText = '', onApply, isEn = false }) {
+export function TextAnnotationModal({
+  open,
+  onClose,
+  currentText = '',
+  currentAlign = 'left',
+  currentBold = true,
+  currentFontSize = 14,
+  currentColor = '#3b82f6',
+  onApply,
+  isEn = false
+}) {
   const [text, setText] = useState(currentText);
-  const [selectedColor, setSelectedColor] = useState('#3b82f6');
-  const [fontSize, setFontSize] = useState(14);
+  const [align, setAlign] = useState(currentAlign || 'left');
+  const [bold, setBold] = useState(currentBold !== false);
+  const [selectedColor, setSelectedColor] = useState(currentColor || '#3b82f6');
+  const [fontSize, setFontSize] = useState(currentFontSize || 14);
 
   useEffect(() => {
     setText(currentText || '');
-  }, [currentText, open]);
+    setAlign(currentAlign || 'left');
+    setBold(currentBold !== false);
+    setSelectedColor(currentColor || '#3b82f6');
+    setFontSize(currentFontSize || 14);
+  }, [currentText, currentAlign, currentBold, currentColor, currentFontSize, open]);
 
   if (!open) return null;
 
@@ -2392,6 +2565,55 @@ export function TextAnnotationModal({ open, onClose, currentText = '', onApply, 
             </div>
           </div>
 
+          {/* Alignement & Style Gras */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                {isEn ? 'Alignment:' : 'Alignement :'}
+              </label>
+              <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-lg border">
+                <button
+                  type="button"
+                  onClick={() => setAlign('left')}
+                  className={`flex-1 py-1 flex items-center justify-center rounded text-xs transition-colors ${align === 'left' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                  title={isEn ? "Left" : "À Gauche"}
+                >
+                  <AlignLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlign('center')}
+                  className={`flex-1 py-1 flex items-center justify-center rounded text-xs transition-colors ${align === 'center' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                  title={isEn ? "Center" : "Au Centre"}
+                >
+                  <AlignCenter className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlign('right')}
+                  className={`flex-1 py-1 flex items-center justify-center rounded text-xs transition-colors ${align === 'right' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                  title={isEn ? "Right" : "À Droite"}
+                >
+                  <AlignRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                {isEn ? 'Style:' : 'Style :'}
+              </label>
+              <button
+                type="button"
+                onClick={() => setBold(!bold)}
+                className={`w-full py-1.5 px-3 flex items-center justify-center gap-1.5 rounded-lg border text-xs transition-colors ${bold ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/40 text-muted-foreground hover:text-foreground'}`}
+              >
+                <Bold className="h-3.5 w-3.5" />
+                <span>{bold ? (isEn ? 'Bold (On)' : 'Gras (Activé)') : (isEn ? 'Normal' : 'Normal')}</span>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 pt-1">
             <div>
               <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
@@ -2416,7 +2638,7 @@ export function TextAnnotationModal({ open, onClose, currentText = '', onApply, 
                 {isEn ? 'Font size:' : 'Taille :'}
               </label>
               <div className="flex items-center gap-1">
-                {[12, 14, 16, 18].map((s) => (
+                {[12, 14, 16, 18, 22].map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -2437,7 +2659,7 @@ export function TextAnnotationModal({ open, onClose, currentText = '', onApply, 
             <Button
               size="sm"
               onClick={() => {
-                onApply({ text: text.trim() || 'Note', color: selectedColor, fontSize });
+                onApply({ text: text.trim() || 'Note', color: selectedColor, fontSize, align, bold });
                 onClose();
               }}
               className="gap-1.5 text-xs font-bold bg-primary hover:bg-primary/90"
@@ -2476,6 +2698,11 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     const st = sPoly.borderStyle || sLine.style;
     if (st) setDashStyle(st);
     setSettingsOpen(false);
+
+    // Auto-ouvrir la modal de saisie pour un outil texte nouvellement posé
+    if (overlay.name === 'text' && (!overlay.extendData?.text || overlay.extendData?.isNew)) {
+      setTextModalOpen(true);
+    }
   }, [overlay?.id]);
 
   if (!overlay) return null;
@@ -2553,18 +2780,22 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
   };
 
 
-  const handleApplyText = ({ text: newText, color: newColor, fontSize: newSize }) => {
+  const handleApplyText = ({ text: newText, color: newColor, fontSize: newSize, align: newAlign, bold: newBold }) => {
     const chart = chartRef?.current;
     if (!chart || !overlay?.id) return;
     try {
+      const ext = {
+        ...(typeof overlay.extendData === 'object' ? overlay.extendData : {}),
+        text: newText,
+        textColor: newColor,
+        fontSize: newSize,
+        align: newAlign || 'left',
+        bold: newBold !== false,
+        isNew: false,
+      };
       chart.overrideOverlay({
         id: overlay.id,
-        extendData: {
-          ...(overlay.extendData || {}),
-          text: newText,
-          textColor: newColor,
-          fontSize: newSize,
-        },
+        extendData: ext,
         styles: {
           ...(overlay.styles || {}),
           text: {
@@ -2575,11 +2806,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           },
         },
       });
-      if (overlay.extendData) {
-        overlay.extendData.text = newText;
-        overlay.extendData.textColor = newColor;
-        overlay.extendData.fontSize = newSize;
-      }
+      overlay.extendData = ext;
       chart.adjustPaneViewport?.(false, true, true, true, true);
     } catch (e) {
       console.warn('handleApplyText error:', e);
@@ -2675,6 +2902,10 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
         open={textModalOpen}
         onClose={() => setTextModalOpen(false)}
         currentText={typeof overlay.extendData === 'string' ? overlay.extendData : (overlay.extendData?.text || '')}
+        currentAlign={overlay.extendData?.align || 'left'}
+        currentBold={overlay.extendData?.bold !== false}
+        currentFontSize={overlay.extendData?.fontSize || 14}
+        currentColor={overlay.extendData?.textColor || color}
         onApply={handleApplyText}
         isEn={isEn}
       />
@@ -2796,9 +3027,7 @@ export function DrawToolsMenu({ chartRef, overlayManager }) {
     if (!chart) return;
     const extra = {};
     if (name === 'text') {
-      const txt = window.prompt("Texte de l'annotation :", "Note d'analyse");
-      if (!txt) return;
-      extra.extendData = txt;
+      extra.extendData = { isNew: true, text: '' };
     }
     if (overlayManager?.createDrawing) {
       overlayManager.createDrawing(name, extra);

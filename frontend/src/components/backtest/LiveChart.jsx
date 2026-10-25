@@ -49,7 +49,7 @@ export default function LiveChart({
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
 
-  const overlayManager = useChartOverlayManager(chartRef, containerRef);
+  const overlayManager = useChartOverlayManager(chartRef, containerRef, { symbol });
 
   // ---- Initialisation du graphique (une seule fois) ----
   useEffect(() => {

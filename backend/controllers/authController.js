@@ -50,13 +50,17 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
+    const activePlansCount = await SubscriptionPlan.countDocuments({ is_active: true, is_deleted: { $ne: true } });
+    const is_subscription_required = (role !== 'admin' && activePlansCount > 0);
+
     const newUser = await User.create({
       email,
       password_hash,
       full_name,
       role: role || 'client',
       phone,
-      referred_by: referredByUser ? referredByUser._id : null
+      referred_by: referredByUser ? referredByUser._id : null,
+      is_subscription_required
     });
 
     // If trainer, create trainer profile
@@ -131,6 +135,7 @@ exports.login = async (req, res) => {
         subscription_plan_name: user.subscription_plan_name || null,
         subscription_expires_at: user.subscription_expires_at || null,
         is_free_trial_granted: !!user.is_free_trial_granted,
+        is_subscription_required: Boolean(user.is_subscription_required),
         has_active_subscription: Boolean(user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
       }
     });
@@ -189,6 +194,7 @@ exports.getMe = async (req, res) => {
       subscription_plan_name: user.subscription_plan_name || null,
       subscription_expires_at: user.subscription_expires_at || null,
       is_free_trial_granted: !!user.is_free_trial_granted,
+      is_subscription_required: Boolean(user.is_subscription_required),
       has_active_subscription: Boolean(user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
     });
   } catch (err) {

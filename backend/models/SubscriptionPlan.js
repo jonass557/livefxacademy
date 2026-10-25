@@ -22,9 +22,18 @@ const subscriptionPlanSchema = new mongoose.Schema({
   features: [{
     type: String
   }],
+  trial_days: {
+    type: Number,
+    default: 0, // Période d'essai gratuit en jours (ex: 7, 14, 30 jours, ou 0 si aucun essai)
+    min: 0
+  },
   is_active: {
     type: Boolean,
     default: true
+  },
+  is_deleted: {
+    type: Boolean,
+    default: false // Suppression douce pour préserver les souscriptions actives existantes
   },
   created_by: {
     type: mongoose.Schema.Types.ObjectId,
