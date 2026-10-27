@@ -607,7 +607,7 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
-  // 3. Texte / Annotation
+  // 3. Texte / Annotation (écriture directe sur la zone cliquée du graphique)
   registerOverlay({
     name: 'text',
     totalStep: 2,
@@ -615,15 +615,35 @@ export function ensureCustomOverlaysAndIndicators() {
     createPointFigures: ({ coordinates, overlay }) => {
       if (!coordinates || coordinates.length < 1) return [];
       const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
-      const text = ext.text || 'Note';
+      const rawText = ext.text != null ? String(ext.text) : '';
       const align = ext.align || 'left';
-      const fontSize = ext.fontSize || 13;
+      const fontSize = ext.fontSize || 14;
       const isBold = ext.bold !== false;
       const textColor = ext.textColor || '#ffffff';
       const borderColor = ext.color || overlay?.styles?.text?.borderColor || overlay?.styles?.line?.color || '#3b82f6';
+      if (!rawText.trim()) {
+        return [{
+          type: 'text',
+          attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text: '✎ |', align, baseline: 'bottom' },
+          styles: {
+            color: '#94a3b8',
+            size: fontSize,
+            family: 'sans-serif',
+            weight: 'normal',
+            paddingLeft: 8,
+            paddingRight: 8,
+            paddingTop: 4,
+            paddingBottom: 4,
+            backgroundColor: 'rgba(15, 23, 42, 0.78)',
+            borderColor: borderColor,
+            borderSize: 1,
+            borderRadius: 6,
+          },
+        }];
+      }
       return [{
         type: 'text',
-        attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text, align, baseline: 'bottom' },
+        attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text: rawText, align, baseline: 'bottom' },
         styles: {
           color: textColor,
           size: fontSize,
@@ -2093,8 +2113,20 @@ export const isOverlayDrawing = (ov) => {
 // - Manipulation fluide des poignées agrandies
 // - Blocage du scroll lors de la manipulation pour éviter le conflit tactile sur mobile
 // - Étirement immédiat au premier point (tactile et souris)
+const SINGLE_POINT_OVERLAY_TOOLS = new Set([
+  'text',
+  'horizontalStraightLine',
+  'verticalStraightLine',
+  'priceLine',
+  'priceAlertLine',
+  'arrowMarker',
+  'arrowUp',
+  'arrowDown',
+]);
+
 export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   const [selectedOverlay, setSelectedOverlay] = useState(null);
+  const [, setEditTick] = useState(0);
   const drawingOverlayIdRef = useRef(null);
   const touchDragInfoRef = useRef(null);
   const activeOverlayIdsRef = useRef(new Set());
@@ -2115,10 +2147,20 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       try {
         const ov = chart.getOverlayById?.(id);
         if (ov && ov.groupId === 'draw' && Array.isArray(ov.points) && ov.points.length > 0) {
+          // Ne pas enregistrer un outil texte vide jamais validé
+          if (ov.name === 'text') {
+            const txt = typeof ov.extendData === 'string' ? ov.extendData : (ov.extendData?.text || '');
+            if (!String(txt).trim() && ov.extendData?.isNew) return;
+          }
+          const cleanPoints = ov.points.map((pt) => ({
+            ...(pt.timestamp != null ? { timestamp: pt.timestamp } : {}),
+            ...(pt.dataIndex != null && pt.timestamp == null ? { dataIndex: pt.dataIndex } : {}),
+            value: pt.value,
+          }));
           drawings.push({
             id: ov.id,
             name: ov.name,
-            points: ov.points,
+            points: cleanPoints,
             styles: ov.styles,
             extendData: ov.extendData,
           });
@@ -2129,6 +2171,12 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       localStorage.setItem(getStorageKey(), JSON.stringify(drawings));
     } catch (_) {}
   }, [chartRef, getStorageKey]);
+
+  useEffect(() => {
+    if (chartRef?.current) {
+      chartRef.current._lfxSaveDrawings = saveDrawings;
+    }
+  }, [chartRef, saveDrawings]);
 
   const deleteOverlay = useCallback((target) => {
     const chart = chartRef?.current;
@@ -2172,6 +2220,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   const restoreDrawings = useCallback(() => {
     const chart = chartRef?.current;
     if (!chart) return;
+    chart._lfxSaveDrawings = saveDrawings;
     try {
       const raw = localStorage.getItem(getStorageKey());
       if (!raw) return;
@@ -2179,18 +2228,41 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       if (Array.isArray(list)) {
         list.forEach((item) => {
           if (!item.name || !Array.isArray(item.points) || !item.points.length) return;
-          if (activeOverlayIdsRef.current.has(item.id)) return;
+          if (activeOverlayIdsRef.current.has(item.id) && chart.getOverlayById?.(item.id)) return;
+          const cleanPoints = item.points.map((pt) => ({
+            ...(pt.timestamp != null ? { timestamp: pt.timestamp } : {}),
+            ...(pt.dataIndex != null && pt.timestamp == null ? { dataIndex: pt.dataIndex } : {}),
+            value: pt.value,
+          }));
           const id = chart.createOverlay({
             id: item.id,
             name: item.name,
             groupId: 'draw',
-            points: item.points,
+            points: cleanPoints,
             styles: item.styles,
             extendData: item.extendData,
             onSelected: ({ overlay }) => { setSelectedOverlay(overlay); return true; },
             onDeselected: () => { setSelectedOverlay(null); return true; },
-            onClick: ({ overlay }) => { setSelectedOverlay(overlay); return true; },
-            onDoubleClick: ({ overlay }) => { deleteOverlay(overlay); return true; },
+            onClick: ({ overlay, x, y }) => {
+              if (x != null && y != null) overlay._clickPixel = { x, y };
+              setSelectedOverlay(overlay);
+              return true;
+            },
+            onPressedMoveEnd: () => {
+              setTimeout(() => saveDrawings(), 60);
+              return true;
+            },
+            onDoubleClick: ({ overlay, x, y }) => {
+              if (overlay.name === 'text') {
+                if (x != null && y != null) overlay._clickPixel = { x, y };
+                overlay._editTrigger = Date.now();
+                setSelectedOverlay(overlay);
+                setEditTick((t) => t + 1);
+                return true;
+              }
+              deleteOverlay(overlay);
+              return true;
+            },
             onRightClick: ({ overlay }) => { deleteOverlay(overlay); return true; },
           });
           if (id) {
@@ -2199,15 +2271,25 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
         });
       }
     } catch (_) {}
-  }, [chartRef, getStorageKey, deleteOverlay]);
+  }, [chartRef, getStorageKey, deleteOverlay, saveDrawings]);
 
-  // Restauration au montage et lors du changement de symbole
+  // Restauration au montage et lors du changement de symbole (avec plusieurs passes après chargement des bougies)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      restoreDrawings();
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [restoreDrawings, targetSymbol]);
+    const chart = chartRef?.current;
+    if (chart) {
+      activeOverlayIdsRef.current.clear();
+      try { chart.removeOverlay({ groupId: 'draw' }); } catch (_) {}
+      setSelectedOverlay(null);
+    }
+    const t1 = setTimeout(() => restoreDrawings(), 120);
+    const t2 = setTimeout(() => restoreDrawings(), 550);
+    const t3 = setTimeout(() => restoreDrawings(), 1400);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [restoreDrawings, targetSymbol, chartRef]);
 
   // Sauvegarde préventive à la fermeture ou déconnexion
   useEffect(() => {
@@ -2261,11 +2343,12 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   const createDrawing = useCallback((name, extra = {}) => {
     const chart = chartRef?.current;
     if (!chart) return null;
+    chart._lfxSaveDrawings = saveDrawings;
 
-    const targetSymbol = options?.symbol || extra.extendData?.symbol;
-    const initialPrice = extra.extendData?.currentPrice ?? getChartLatestPrice(targetSymbol);
+    const targetSym = options?.symbol || extra.extendData?.symbol;
+    const initialPrice = extra.extendData?.currentPrice ?? getChartLatestPrice(targetSym);
     const extendData = {
-      ...(targetSymbol ? { symbol: targetSymbol } : {}),
+      ...(targetSym ? { symbol: targetSym } : {}),
       ...(initialPrice != null ? { currentPrice: initialPrice } : {}),
       ...(extra.extendData || {}),
     };
@@ -2275,6 +2358,26 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       groupId: 'draw',
       ...extra,
       extendData,
+      onDrawEnd: ({ overlay, x, y }) => {
+        drawingOverlayIdRef.current = null;
+        if (x != null && y != null) {
+          overlay._clickPixel = { x, y };
+        }
+        if (overlay.name === 'text') {
+          overlay._editTrigger = Date.now();
+        }
+        // Léger délai de 25ms pour laisser l'événement mouseup/touchend se terminer proprement
+        setTimeout(() => {
+          setSelectedOverlay(overlay);
+          setEditTick((t) => t + 1);
+          saveDrawings();
+        }, 25);
+        return true;
+      },
+      onPressedMoveEnd: () => {
+        setTimeout(() => saveDrawings(), 60);
+        return true;
+      },
       onSelected: ({ overlay }) => {
         setSelectedOverlay(overlay);
         return true;
@@ -2283,15 +2386,23 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
         setSelectedOverlay(null);
         return true;
       },
-      onClick: ({ overlay }) => {
+      onClick: ({ overlay, x, y }) => {
+        if (x != null && y != null) overlay._clickPixel = { x, y };
         setSelectedOverlay(overlay);
         return true;
       },
-      onDoubleClick: ({ overlay }) => {
+      onDoubleClick: ({ overlay, x, y }) => {
         if (isOverlayDrawing(overlay)) {
           if (typeof overlay?.forceComplete === 'function') {
             try { overlay.forceComplete(); } catch (_) {}
           }
+          return true;
+        }
+        if (overlay.name === 'text') {
+          if (x != null && y != null) overlay._clickPixel = { x, y };
+          overlay._editTrigger = Date.now();
+          setSelectedOverlay(overlay);
+          setEditTick((t) => t + 1);
           return true;
         }
         deleteOverlay(overlay);
@@ -2316,21 +2427,21 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       try {
         chart.setScrollEnabled?.(false);
       } catch (_) {}
-      // L'outil vient d'être armé : on ne le sélectionne PAS prématurément tant que l'utilisateur
-      // n'a pas posé le premier point sur le graphique, évitant ainsi tout crash de rendu.
     }
     return id;
-  }, [chartRef, deleteOverlay]);
+  }, [chartRef, deleteOverlay, options?.symbol, saveDrawings]);
 
-  // Gestion du positionnement et étirement immédiat au doigt (mobile) ou à la souris :
-  // Dès le premier contact, l'utilisateur étire directement l'outil sans devoir faire 2 clics séparés.
+  // Gestion du positionnement immédiat au clic/tap (pour Texte et outils à 1 point) et étirement au glisser
   useEffect(() => {
     const container = containerRef?.current;
     if (!container) return;
 
-    const handleStart = (clientX, clientY) => {
+    const handleStart = (clientX, clientY, targetEl) => {
       const chart = chartRef?.current;
       if (!chart || !drawingOverlayIdRef.current) return;
+      if (targetEl && (targetEl.closest?.('button') || targetEl.closest?.('[data-chart-toolbar]') || targetEl.closest?.('[data-text-editor-box]'))) {
+        return;
+      }
       const rect = container.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
@@ -2352,6 +2463,9 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       const chart = chartRef?.current;
       const info = touchDragInfoRef.current;
       if (!chart || !info) return;
+
+      const ov = chart.getOverlayById?.(info.overlayId);
+      if (ov && SINGLE_POINT_OVERLAY_TOOLS.has(ov.name)) return;
 
       const dist = Math.hypot(clientX - info.startX, clientY - info.startY);
       if (dist > 6) {
@@ -2378,34 +2492,55 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       const info = touchDragInfoRef.current;
       if (!chart || !info) return;
 
-      if (info.hasDragged) {
-        const rect = container.getBoundingClientRect();
-        const endX = clientX != null ? clientX - rect.left : info.x;
-        const endY = clientY != null ? clientY - rect.top : info.y;
-        const pt2 = chart.convertFromPixel?.({ x: endX, y: endY }) || info.pt1;
-        try {
-          const overlay = chart.getOverlayById?.(info.overlayId);
-          if (overlay) {
-            chart.overrideOverlay?.({
-              id: info.overlayId,
-              points: [info.pt1, pt2],
-            });
-            if (typeof overlay?.forceComplete === 'function') {
-              try { overlay.forceComplete(); } catch (_) {}
-            }
-            try { chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.(); } catch (_) {}
-            setSelectedOverlay(overlay);
+      try {
+        const overlay = chart.getOverlayById?.(info.overlayId);
+        if (overlay && SINGLE_POINT_OVERLAY_TOOLS.has(overlay.name)) {
+          // Outil à 1 seul point (comme Texte / Annotation) : dès le simple clic sur la zone du graphique,
+          // on fixe le point et on ouvre immédiatement la zone d'écriture directe à cet endroit précis !
+          chart.overrideOverlay?.({
+            id: info.overlayId,
+            points: [info.pt1],
+          });
+          if (typeof overlay?.forceComplete === 'function') {
+            try { overlay.forceComplete(); } catch (_) {}
           }
-        } catch (_) {}
-        drawingOverlayIdRef.current = null;
-        setTimeout(() => saveDrawings(), 100);
-      }
+          try { chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.(); } catch (_) {}
+          overlay._clickPixel = { x: info.x, y: info.y };
+          overlay._clientPixel = { x: clientX ?? info.startX, y: clientY ?? info.startY };
+          if (overlay.name === 'text') {
+            overlay._editTrigger = Date.now();
+          }
+          drawingOverlayIdRef.current = null;
+          setTimeout(() => {
+            setSelectedOverlay(overlay);
+            setEditTick((t) => t + 1);
+            saveDrawings();
+          }, 20);
+        } else if (info.hasDragged && overlay) {
+          const rect = container.getBoundingClientRect();
+          const endX = clientX != null ? clientX - rect.left : info.x;
+          const endY = clientY != null ? clientY - rect.top : info.y;
+          const pt2 = chart.convertFromPixel?.({ x: endX, y: endY }) || info.pt1;
+          chart.overrideOverlay?.({
+            id: info.overlayId,
+            points: [info.pt1, pt2],
+          });
+          if (typeof overlay?.forceComplete === 'function') {
+            try { overlay.forceComplete(); } catch (_) {}
+          }
+          try { chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.(); } catch (_) {}
+          setSelectedOverlay(overlay);
+          drawingOverlayIdRef.current = null;
+          setTimeout(() => saveDrawings(), 100);
+        }
+      } catch (_) {}
+
       touchDragInfoRef.current = null;
     };
 
     // Listeners tactiles (téléphone / tablette)
     const onTouchStart = (e) => {
-      if (e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY);
+      if (e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
     };
     const onTouchMove = (e) => {
       if (e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY, () => e.preventDefault());
@@ -2417,7 +2552,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
 
     // Listeners souris (PC / trackpad)
     const onMouseDown = (e) => {
-      if (e.button === 0) handleStart(e.clientX, e.clientY);
+      if (e.button === 0) handleStart(e.clientX, e.clientY, e.target);
     };
     const onMouseMove = (e) => {
       handleMove(e.clientX, e.clientY);
@@ -2443,7 +2578,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [containerRef, chartRef]);
+  }, [containerRef, chartRef, saveDrawings]);
 
   return {
     selectedOverlay,
@@ -2457,18 +2592,19 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   };
 }
 
-// Barre d'action flottante qui apparaît au clic sur un outil/dessin avec bouton Engrenage (paramètres) et Supprimer
-
-// Modal d'écriture de texte pour annoter les graphiques et outils
+// Zone d'écriture de texte directe sur la zone cliquée du graphique (sans sélection de texte prédéfini)
 export function TextAnnotationModal({
   open,
   onClose,
+  onCancelEmpty,
   currentText = '',
   currentAlign = 'left',
   currentBold = true,
   currentFontSize = 14,
   currentColor = '#3b82f6',
+  anchorClientPos = null,
   onApply,
+  onLiveChange,
   isEn = false
 }) {
   const [text, setText] = useState(currentText);
@@ -2476,29 +2612,35 @@ export function TextAnnotationModal({
   const [bold, setBold] = useState(currentBold !== false);
   const [selectedColor, setSelectedColor] = useState(currentColor || '#3b82f6');
   const [fontSize, setFontSize] = useState(currentFontSize || 14);
+  const textareaRef = useRef(null);
+  const openedAtRef = useRef(0);
 
   useEffect(() => {
-    setText(currentText || '');
-    setAlign(currentAlign || 'left');
-    setBold(currentBold !== false);
-    setSelectedColor(currentColor || '#3b82f6');
-    setFontSize(currentFontSize || 14);
-  }, [currentText, currentAlign, currentBold, currentColor, currentFontSize, open]);
+    if (open) {
+      openedAtRef.current = Date.now();
+      setText(currentText || '');
+      setAlign(currentAlign || 'left');
+      setBold(currentBold !== false);
+      setSelectedColor(currentColor || '#3b82f6');
+      setFontSize(currentFontSize || 14);
+      const focusInput = () => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const len = textareaRef.current.value?.length || 0;
+          try { textareaRef.current.setSelectionRange(len, len); } catch (_) {}
+        }
+      };
+      focusInput();
+      const t1 = setTimeout(focusInput, 40);
+      const t2 = setTimeout(focusInput, 150);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [open]);
 
   if (!open) return null;
-
-  const quickPresets = [
-    'Support',
-    'Résistance',
-    'Order Block (OB)',
-    'Zone de Liquidité',
-    'Cassure / Breakout',
-    'Zone d\'Achat',
-    'Zone de Vente',
-    'Pullback / Retest',
-    'Objectif TP',
-    'Stop Loss (SL)',
-  ];
 
   const colors = [
     { label: 'Bleu', value: '#3b82f6' },
@@ -2510,163 +2652,214 @@ export function TextAnnotationModal({
     { label: 'Blanc', value: '#ffffff' },
   ];
 
+  const emitLive = (nextText, nextColor, nextSize, nextAlign, nextBold) => {
+    onLiveChange?.({
+      text: nextText,
+      color: nextColor,
+      fontSize: nextSize,
+      align: nextAlign,
+      bold: nextBold,
+    });
+  };
+
+  const handleConfirm = () => {
+    const clean = text.trim();
+    if (!clean) {
+      onCancelEmpty?.();
+      onClose();
+      return;
+    }
+    onApply({ text: clean, color: selectedColor, fontSize, align, bold });
+    onClose();
+  };
+
+  const handleCancel = () => {
+    if (!text.trim()) {
+      onCancelEmpty?.();
+    }
+    onClose();
+  };
+
+  // Calcul de la position flottante directement sur la zone cliquée du graphique
+  let boxStyle = {};
+  if (anchorClientPos && typeof window !== 'undefined' && anchorClientPos.x != null && anchorClientPos.y != null) {
+    const vw = window.innerWidth || 360;
+    const vh = window.innerHeight || 640;
+    const boxWidth = Math.min(310, vw - 16);
+    const boxHeight = 195;
+    const left = Math.min(Math.max(8, anchorClientPos.x - 20), vw - boxWidth - 8);
+    const top = Math.min(Math.max(52, anchorClientPos.y + 10), vh - boxHeight - 12);
+    boxStyle = {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${boxWidth}px`,
+    };
+  }
+
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-      <div className="relative w-full max-w-md rounded-2xl border bg-card p-5 shadow-2xl text-card-foreground animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between pb-3 border-b mb-3">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary">
-              <Type className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm">
-                {isEn ? 'Chart Text & Annotation' : 'Écrire un texte sur le graphique'}
-              </h3>
-              <p className="text-[11px] text-muted-foreground">
-                {isEn ? 'Add explanations for your analysis' : 'Expliquez votre analyse graphique aux étudiants'}
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-md text-muted-foreground hover:bg-muted">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <div
+      data-text-editor-box
+      className={anchorClientPos ? 'fixed inset-0 z-[120]' : 'fixed inset-0 z-[120] flex items-center justify-center p-3'}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) {
+          if (Date.now() - openedAtRef.current < 350) return;
+          handleConfirm();
+        }
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) {
+          if (Date.now() - openedAtRef.current < 350) return;
+          handleConfirm();
+        }
+      }}
+    >
+      <div
+        style={boxStyle}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        className="w-[310px] max-w-[calc(100vw-16px)] rounded-xl border-2 border-primary/70 bg-slate-950/95 p-2.5 shadow-2xl text-white backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+      >
+        {/* Zone de saisie directe du texte sur le graphique */}
+        <textarea
+          ref={textareaRef}
+          rows={2}
+          value={text}
+          onChange={(e) => {
+            const val = e.target.value;
+            setText(val);
+            emitLive(val, selectedColor, fontSize, align, bold);
+          }}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleConfirm();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              handleCancel();
+            }
+          }}
+          placeholder={isEn ? 'Write your text here...' : 'Écrivez votre texte directement ici...'}
+          style={{
+            textAlign: align,
+            fontWeight: bold ? 'bold' : 'normal',
+          }}
+          className="w-full rounded-lg border border-white/20 bg-slate-900/90 px-2.5 py-1.5 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+          autoFocus
+        />
 
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold mb-1">
-              {isEn ? 'Your Text / Explanation:' : 'Votre texte / Explication :'}
-            </label>
-            <textarea
-              rows={3}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={isEn ? "E.g. Daily Order Block, Retest, Strong Support..." : "Ex: Order Block Journalier, Retest, Support majeur H4..."}
-              className="w-full rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              autoFocus
-            />
-          </div>
+        {/* Barre compacte : Alignement (Gauche / Centre / Droite), Gras, Taille, Couleurs, Valider */}
+        <div className="mt-2 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-1.5">
+            {/* Alignement */}
+            <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-md border border-white/15">
+              <button
+                type="button"
+                onClick={() => {
+                  setAlign('left');
+                  emitLive(text, selectedColor, fontSize, 'left', bold);
+                }}
+                className={`p-1 rounded text-xs transition-colors ${align === 'left' ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
+                title={isEn ? 'Align Left' : 'Aligner à gauche'}
+              >
+                <AlignLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAlign('center');
+                  emitLive(text, selectedColor, fontSize, 'center', bold);
+                }}
+                className={`p-1 rounded text-xs transition-colors ${align === 'center' ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
+                title={isEn ? 'Align Center' : 'Aligner au centre'}
+              >
+                <AlignCenter className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAlign('right');
+                  emitLive(text, selectedColor, fontSize, 'right', bold);
+                }}
+                className={`p-1 rounded text-xs transition-colors ${align === 'right' ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
+                title={isEn ? 'Align Right' : 'Aligner à droite'}
+              >
+                <AlignRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
 
-          <div>
-            <span className="block text-[11px] font-medium text-muted-foreground mb-1.5">
-              {isEn ? 'Quick presets (1-click):' : 'Explications rapides (1-clic) :'}
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {quickPresets.map((p) => (
+            {/* Gras */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !bold;
+                setBold(next);
+                emitLive(text, selectedColor, fontSize, align, next);
+              }}
+              className={`px-2 py-1 rounded-md border text-xs flex items-center gap-1 transition-colors ${bold ? 'bg-primary/25 border-primary text-primary font-bold' : 'bg-slate-900 border-white/15 text-slate-400 hover:text-white'}`}
+              title={isEn ? 'Bold' : 'Gras'}
+            >
+              <Bold className="h-3.5 w-3.5" />
+            </button>
+
+            {/* Tailles */}
+            <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-md border border-white/15">
+              {[12, 14, 16, 18, 22].map((s) => (
                 <button
-                  key={p}
+                  key={s}
                   type="button"
-                  onClick={() => setText((prev) => (prev ? `${prev} - ${p}` : p))}
-                  className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted/60 hover:bg-primary/20 hover:text-primary border transition-colors"
+                  onClick={() => {
+                    setFontSize(s);
+                    emitLive(text, selectedColor, s, align, bold);
+                  }}
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${fontSize === s ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
                 >
-                  {p}
+                  {s}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Alignement & Style Gras */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                {isEn ? 'Alignment:' : 'Alignement :'}
-              </label>
-              <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-lg border">
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+            {/* Couleurs */}
+            <div className="flex items-center gap-1">
+              {colors.map((c) => (
                 <button
+                  key={c.value}
                   type="button"
-                  onClick={() => setAlign('left')}
-                  className={`flex-1 py-1 flex items-center justify-center rounded text-xs transition-colors ${align === 'left' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
-                  title={isEn ? "Left" : "À Gauche"}
-                >
-                  <AlignLeft className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAlign('center')}
-                  className={`flex-1 py-1 flex items-center justify-center rounded text-xs transition-colors ${align === 'center' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
-                  title={isEn ? "Center" : "Au Centre"}
-                >
-                  <AlignCenter className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAlign('right')}
-                  className={`flex-1 py-1 flex items-center justify-center rounded text-xs transition-colors ${align === 'right' ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
-                  title={isEn ? "Right" : "À Droite"}
-                >
-                  <AlignRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
+                  onClick={() => {
+                    setSelectedColor(c.value);
+                    emitLive(text, c.value, fontSize, align, bold);
+                  }}
+                  className={`h-4 w-4 rounded-full border transition-transform ${selectedColor === c.value ? 'ring-2 ring-primary scale-110 border-white' : 'border-white/30'}`}
+                  style={{ backgroundColor: c.value }}
+                  title={c.label}
+                />
+              ))}
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                {isEn ? 'Style:' : 'Style :'}
-              </label>
+            {/* Actions */}
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setBold(!bold)}
-                className={`w-full py-1.5 px-3 flex items-center justify-center gap-1.5 rounded-lg border text-xs transition-colors ${bold ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/40 text-muted-foreground hover:text-foreground'}`}
+                onClick={handleCancel}
+                className="px-2 py-1 rounded-md text-[11px] text-slate-300 hover:bg-slate-800"
               >
-                <Bold className="h-3.5 w-3.5" />
-                <span>{bold ? (isEn ? 'Bold (On)' : 'Gras (Activé)') : (isEn ? 'Normal' : 'Normal')}</span>
+                {isEn ? 'Cancel' : 'Annuler'}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-primary text-white hover:bg-primary/90 flex items-center gap-1"
+              >
+                <Check className="h-3 w-3" />
+                <span>OK</span>
               </button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                {isEn ? 'Color:' : 'Couleur :'}
-              </label>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {colors.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    onClick={() => setSelectedColor(c.value)}
-                    className={`h-5 w-5 rounded-md border transition-transform ${selectedColor === c.value ? 'ring-2 ring-primary scale-110' : ''}`}
-                    style={{ backgroundColor: c.value }}
-                    title={c.label}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                {isEn ? 'Font size:' : 'Taille :'}
-              </label>
-              <div className="flex items-center gap-1">
-                {[12, 14, 16, 18, 22].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setFontSize(s)}
-                    className={`px-2 py-1 rounded text-xs border font-medium ${fontSize === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/40 hover:bg-muted'}`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t">
-            <Button variant="ghost" size="sm" onClick={onClose} className="text-xs">
-              {isEn ? 'Cancel' : 'Annuler'}
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => {
-                onApply({ text: text.trim() || 'Note', color: selectedColor, fontSize, align, bold });
-                onClose();
-              }}
-              className="gap-1.5 text-xs font-bold bg-primary hover:bg-primary/90"
-            >
-              <Check className="h-3.5 w-3.5" />
-              <span>{isEn ? 'Apply Text' : 'Appliquer le texte'}</span>
-            </Button>
           </div>
         </div>
       </div>
@@ -2678,7 +2871,9 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
   const { language } = useLanguageStore();
   const isEn = language === 'en';
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [textModalOpen, setTextModalOpen] = useState(false);
+  const [textModalOpen, setTextModalOpen] = useState(() =>
+    Boolean(overlay?.name === 'text' && (!overlay?.extendData?.text || overlay?.extendData?.isNew || overlay?._editTrigger))
+  );
 
   // Style local pour l'édition et la synchronisation immédiate (lit ligne ou polygone/rect)
   const currentLineStyle = overlay?.styles?.line || {};
@@ -2699,11 +2894,11 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     if (st) setDashStyle(st);
     setSettingsOpen(false);
 
-    // Auto-ouvrir la modal de saisie pour un outil texte nouvellement posé
-    if (overlay.name === 'text' && (!overlay.extendData?.text || overlay.extendData?.isNew)) {
+    // Ouvrir immédiatement la zone d'écriture directe dès que l'utilisateur clique sur l'écran avec l'outil texte
+    if (overlay.name === 'text' && (!overlay.extendData?.text || overlay.extendData?.isNew || overlay._editTrigger)) {
       setTextModalOpen(true);
     }
-  }, [overlay?.id]);
+  }, [overlay?.id, overlay?._editTrigger]);
 
   if (!overlay) return null;
   const label = getToolLabel(overlay.name);
@@ -2758,13 +2953,13 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           },
         },
       });
-      // Synchronisation directe des styles de l'overlay en mémoire
       if (overlay.styles) {
         overlay.styles.line = { ...(overlay.styles.line || {}), color: newColor, size: newSize, style: newDashStyle, dashedValue };
         overlay.styles.polygon = { ...(overlay.styles.polygon || {}), color: fillColor, borderColor: newColor, borderSize: newSize, borderStyle: newDashStyle, borderDashedValue: dashedValue };
         overlay.styles.rect = { ...(overlay.styles.rect || {}), color: fillColor, borderColor: newColor, borderSize: newSize, borderStyle: newDashStyle, borderDashedValue: dashedValue };
       }
       chart.adjustPaneViewport?.(false, true, true, true, true);
+      chart._lfxSaveDrawings?.();
       onUpdateStyle?.({ color: newColor, size: newSize, style: newDashStyle });
     } catch (e) {
       console.warn('overrideOverlay error:', e);
@@ -2779,19 +2974,19 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     }
   };
 
-
-  const handleApplyText = ({ text: newText, color: newColor, fontSize: newSize, align: newAlign, bold: newBold }) => {
+  const updateOverlayTextData = ({ text: newText, color: newColor, fontSize: newSize, align: newAlign, bold: newBold }, finalize = false) => {
     const chart = chartRef?.current;
     if (!chart || !overlay?.id) return;
     try {
       const ext = {
         ...(typeof overlay.extendData === 'object' ? overlay.extendData : {}),
         text: newText,
-        textColor: newColor,
+        color: newColor,
+        textColor: '#ffffff',
         fontSize: newSize,
         align: newAlign || 'left',
         bold: newBold !== false,
-        isNew: false,
+        isNew: !finalize,
       };
       chart.overrideOverlay({
         id: overlay.id,
@@ -2807,11 +3002,18 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
         },
       });
       overlay.extendData = ext;
+      if (finalize) {
+        overlay._editTrigger = null;
+        chart._lfxSaveDrawings?.();
+      }
       chart.adjustPaneViewport?.(false, true, true, true, true);
     } catch (e) {
       console.warn('handleApplyText error:', e);
     }
   };
+
+  const handleApplyText = (payload) => updateOverlayTextData(payload, true);
+  const handleLiveTextChange = (payload) => updateOverlayTextData(payload, false);
 
   const isDrawing = isOverlayDrawing(overlay);
 
@@ -2849,7 +3051,6 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           </Button>
         )}
 
-        
         {/* Bouton Texte / Annotation pour écrire sur le graphique ou sur l'outil */}
         <Button
           size="sm"
@@ -2896,17 +3097,23 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
         </button>
       </div>
 
-
-      {/* Modal d'édition de texte */}
+      {/* Zone de saisie directe du texte sur la zone cliquée du graphique */}
       <TextAnnotationModal
         open={textModalOpen}
         onClose={() => setTextModalOpen(false)}
+        onCancelEmpty={() => {
+          if (overlay.name === 'text') {
+            onDelete?.(overlay);
+          }
+        }}
         currentText={typeof overlay.extendData === 'string' ? overlay.extendData : (overlay.extendData?.text || '')}
         currentAlign={overlay.extendData?.align || 'left'}
         currentBold={overlay.extendData?.bold !== false}
         currentFontSize={overlay.extendData?.fontSize || 14}
-        currentColor={overlay.extendData?.textColor || color}
+        currentColor={overlay.extendData?.color || overlay.styles?.text?.borderColor || color}
+        anchorClientPos={overlay._clientPixel || null}
         onApply={handleApplyText}
+        onLiveChange={handleLiveTextChange}
         isEn={isEn}
       />
 

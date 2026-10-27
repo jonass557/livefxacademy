@@ -1,4 +1,4 @@
-const { User, Trainer } = require('../models');
+const { User, Trainer, SubscriptionPlan } = require('../models');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');

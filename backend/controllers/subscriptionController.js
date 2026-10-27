@@ -56,7 +56,17 @@ exports.createPlan = async (req, res) => {
 exports.updatePlan = async (req, res) => {
   try {
     const { id } = req.params;
-    const plan = await SubscriptionPlan.findByIdAndUpdate(id, req.body, { new: true });
+    const updateData = { ...req.body };
+    if (updateData.trial_days !== undefined) {
+      updateData.trial_days = Math.max(0, Number(updateData.trial_days) || 0);
+    }
+    if (updateData.price_xaf !== undefined) {
+      updateData.price_xaf = Number(updateData.price_xaf);
+    }
+    if (updateData.duration_days !== undefined) {
+      updateData.duration_days = Number(updateData.duration_days) || 30;
+    }
+    const plan = await SubscriptionPlan.findByIdAndUpdate(id, updateData, { new: true });
     if (!plan) return res.status(404).json({ message: 'Plan non trouvé' });
     res.json(plan);
   } catch (err) {
@@ -136,6 +146,10 @@ exports.startTrial = async (req, res) => {
     res.json({
       success: true,
       message: `Votre période d'essai gratuit de ${trialDays} jours a été activée !`,
+      subscription_plan_name: user.subscription_plan_name,
+      subscription_expires_at: user.subscription_expires_at,
+      has_active_subscription: true,
+      is_free_trial_granted: true,
       user: {
         id: user._id,
         subscription_plan_name: user.subscription_plan_name,

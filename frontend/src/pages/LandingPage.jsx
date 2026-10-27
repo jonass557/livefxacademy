@@ -258,42 +258,7 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* SERVICES SECTION */}
-      <section className="py-24 bg-muted/30">
-        <div className="container px-4 md:px-6">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold bg-primary/10 text-primary mb-4">
-              <Zap className="h-4 w-4 mr-2" />
-              {language === 'fr' ? 'Nos Services' : 'Our Services'}
-            </div>
-            <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
-              {language === 'fr' ? 'Services de l\'Académie' : 'Academy Services'}
-            </h2>
-            <p className="mt-4 text-muted-foreground text-lg max-w-2xl mx-auto">
-              {language === 'fr' 
-                ? 'Découvrez tous les services que nous offrons pour vous accompagner dans votre parcours de trader.'
-                : 'Discover all the services we offer to support you on your trading journey.'
-              }
-            </p>
-          </div>
-          
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {services.map((service, index) => (
-              <Card key={index} className="border-none shadow-lg bg-card/50 hover:bg-card transition-all hover:-translate-y-1 duration-300">
-                <CardContent className="pt-6 text-center space-y-4">
-                  <div className="inline-flex p-3 rounded-xl bg-muted">
-                    {service.icon}
-                  </div>
-                  <h3 className="text-xl font-bold">{service.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{service.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* SUBSCRIPTION PLANS SECTION */}
+{/* SUBSCRIPTION PLANS SECTION */}
       {plans.length > 0 && (
         <section className="py-20 bg-background border-t">
           <div className="container px-4 md:px-6">
@@ -366,6 +331,41 @@ const LandingPage = () => {
           </div>
         </section>
       )}
+
+      {/* SERVICES SECTION */}
+      <section className="py-24 bg-muted/30">
+        <div className="container px-4 md:px-6">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold bg-primary/10 text-primary mb-4">
+              <Zap className="h-4 w-4 mr-2" />
+              {language === 'fr' ? 'Nos Services' : 'Our Services'}
+            </div>
+            <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
+              {language === 'fr' ? 'Services de l\'Académie' : 'Academy Services'}
+            </h2>
+            <p className="mt-4 text-muted-foreground text-lg max-w-2xl mx-auto">
+              {language === 'fr' 
+                ? 'Découvrez tous les services que nous offrons pour vous accompagner dans votre parcours de trader.'
+                : 'Discover all the services we offer to support you on your trading journey.'
+              }
+            </p>
+          </div>
+          
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {services.map((service, index) => (
+              <Card key={index} className="border-none shadow-lg bg-card/50 hover:bg-card transition-all hover:-translate-y-1 duration-300">
+                <CardContent className="pt-6 text-center space-y-4">
+                  <div className="inline-flex p-3 rounded-xl bg-muted">
+                    {service.icon}
+                  </div>
+                  <h3 className="text-xl font-bold">{service.title}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{service.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* WHY CHOOSE US */}
       <section className="py-24 bg-gradient-to-r from-primary/10 to-purple-500/10">
