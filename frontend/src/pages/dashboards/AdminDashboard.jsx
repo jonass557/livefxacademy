@@ -1561,6 +1561,54 @@ const AdminDashboard = () => {
             <p className="text-sm text-muted-foreground">
               Intégrez votre compte marchand <strong>SEBPAY</strong> (documentation officielle : <a href="https://new.sebpay.bj/fr/docs/auth" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">new.sebpay.bj</a>) pour encaisser les souscriptions mensuelles par Mobile Money.
             </p>
+            <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2 max-w-xl">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                    ⚠️ Adresse IP du serveur à autoriser dans SEBPAY (Clés API &gt; Adresses IP autorisées) :
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Ajoutez obligatoirement cette IP dans votre compte SEBPAY (ou laissez le champ IP vide dans SEBPAY pour autoriser toutes les IPs) :
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="px-2.5 py-1 rounded bg-background border font-mono text-xs font-bold text-primary select-all">
+                    57.129.148.42
+                  </code>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText('57.129.148.42');
+                      alert('Adresse IP du serveur copiée : 57.129.148.42');
+                    }}
+                  >
+                    Copier l'IP
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs"
+                    onClick={async () => {
+                      try {
+                        const res = await api.post('/subscriptions/admin/test-sebpay', {
+                          sebpay_public_key: sebpayPublicKeyInput,
+                          sebpay_secret_key: sebpaySecretKeyInput,
+                        });
+                        alert(res.data?.message || 'Test effectué.');
+                      } catch (err) {
+                        alert(err.response?.data?.message || 'Erreur lors du test SEBPAY');
+                      }
+                    }}
+                  >
+                    Tester SEBPAY
+                  </Button>
+                </div>
+              </div>
+            </div>
             <div className="space-y-3 max-w-xl">
               <div>
                 <label className="text-xs font-semibold block mb-1">Clé Publique SEBPAY (X-Public-Key) :</label>

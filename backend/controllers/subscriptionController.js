@@ -272,6 +272,70 @@ exports.startTrial = async (req, res) => {
 
 // ----------------- PAIEMENT SEBPAY MOBILE MONEY (https://new.sebpay.bj/fr/docs) -----------------
 
+let cachedServerIp = '57.129.148.42';
+async function detectServerPublicIp() {
+  try {
+    const r = await fetch('https://api4.ipify.org?format=json').catch(() => null);
+    if (r && r.ok) {
+      const j = await r.json().catch(() => null);
+      if (j && j.ip) {
+        cachedServerIp = String(j.ip).trim();
+      }
+    }
+  } catch (_) {}
+  return cachedServerIp;
+}
+
+// Diagnostic Admin de la connexion SEBPAY et détection de l'IP sortante du serveur
+exports.testSebpayConnection = async (req, res) => {
+  try {
+    const serverIp = await detectServerPublicIp();
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const sebpayPublicKey = (req.body?.sebpay_public_key || branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const rawSecret = req.body?.sebpay_secret_key;
+    const sebpaySecretKey = ((rawSecret && !String(rawSecret).includes('••')) ? rawSecret : (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '')).trim();
+
+    if (!sebpayPublicKey || !sebpaySecretKey) {
+      return res.status(400).json({
+        ok: false,
+        server_ip: serverIp,
+        message: 'Veuillez renseigner et enregistrer la Clé Publique et la Clé Secrète SEBPAY.'
+      });
+    }
+
+    const sebRes = await fetch(`${SEBPAY_API_URL}/operators`, {
+      method: 'GET',
+      headers: {
+        'X-Public-Key': sebpayPublicKey,
+        'X-Secret-Key': sebpaySecretKey,
+        'Accept': 'application/json',
+      },
+    });
+    const json = await sebRes.json().catch(() => ({}));
+    if (sebRes.ok && json.success !== false) {
+      return res.json({
+        ok: true,
+        server_ip: serverIp,
+        message: `Connexion SEBPAY réussie ! L'adresse IP du serveur (${serverIp}) et vos clés API sont bien autorisées.`
+      });
+    }
+
+    const rawMsg = json?.message || `Erreur HTTP ${sebRes.status}`;
+    const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawMsg);
+    return res.status(200).json({
+      ok: false,
+      is_ip_blocked: isIpBlocked,
+      server_ip: serverIp,
+      message: isIpBlocked
+        ? `SEBPAY bloque l'adresse IP du serveur (${serverIp}). Allez dans votre compte SEBPAY (new.sebpay.bj > Clés API) et ajoutez l'adresse IP ${serverIp} dans les adresses IP autorisées (ou laissez la liste d'IP vide).`
+        : rawMsg
+    });
+  } catch (err) {
+    console.error('testSebpayConnection error:', err);
+    res.status(500).json({ ok: false, server_ip: cachedServerIp, message: err.message });
+  }
+};
+
 // Récupérer la liste des opérateurs Mobile Money supportés par SEBPAY (GET /api/v1/operators)
 exports.getSebpayOperators = async (req, res) => {
   try {
@@ -438,18 +502,29 @@ exports.initiateMobilePayment = async (req, res) => {
 
       if (!sebResponse.ok || resData.success === false) {
         const errCode = resData?.code || resData?.error_code || dataPayload?.code || '';
+        const rawSebMessage = resData?.message || dataPayload?.message || '';
         const isOtpRequired = sebResponse.status === 422 || String(errCode).toUpperCase().includes('OTP_REQUIRED');
+        const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawSebMessage);
         transaction.status = 'failed';
         transaction.sebpay_response = resData;
         await transaction.save();
 
+        let finalMessage = rawSebMessage;
+        if (isIpBlocked) {
+          const srvIp = await detectServerPublicIp();
+          finalMessage = `Cette adresse IP (${srvIp}) n'est pas encore autorisée sur votre clé API SEBPAY. Dans votre tableau de bord SEBPAY (new.sebpay.bj > Clés API), ajoutez l'adresse IP du serveur : ${srvIp} dans les « Adresses IP autorisées » (ou laissez le champ IP vide pour autoriser toutes les adresses IP).`;
+        } else if (!finalMessage) {
+          finalMessage = isOtpRequired
+            ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
+            : `Le paiement a été refusé par l'opérateur (HTTP ${sebResponse.status}). Vérifiez votre numéro et l'opérateur choisi.`;
+        }
+
         return res.status(isOtpRequired ? 422 : 400).json({
           success: false,
           otp_required: isOtpRequired,
+          server_ip: cachedServerIp,
           code: errCode,
-          message: resData?.message || dataPayload?.message || (isOtpRequired
-            ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
-            : `Le paiement a été refusé par l'opérateur (HTTP ${sebResponse.status}). Vérifiez votre numéro et l'opérateur choisi.`)
+          message: finalMessage
         });
       }
 
