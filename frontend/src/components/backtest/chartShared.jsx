@@ -355,12 +355,217 @@ export const INDICATOR_LABELS = {
   KDJ: 'Oscillateur KDJ',
 };
 
+// Mesure précise de la largeur en pixels d'un texte sur le canvas 2D pour découper proprement la ligne (façon TradingView)
+let _lfxTextMeasureCtx = null;
+function measureOverlayTextWidth(text, fontSize = 14, weightStr = 'normal', family = 'sans-serif') {
+  try {
+    if (typeof document !== 'undefined') {
+      if (!_lfxTextMeasureCtx) {
+        const c = document.createElement('canvas');
+        _lfxTextMeasureCtx = c.getContext('2d');
+      }
+      if (_lfxTextMeasureCtx) {
+        _lfxTextMeasureCtx.font = `${weightStr} ${fontSize}px ${family}`;
+        const lines = String(text || '').split('\n');
+        let maxW = 0;
+        for (const l of lines) {
+          const w = _lfxTextMeasureCtx.measureText(l).width;
+          if (w > maxW) maxW = w;
+        }
+        return Math.ceil(maxW);
+      }
+    }
+  } catch (_) {}
+  const maxLen = Math.max(...String(text || '').split('\n').map((s) => s.length), 1);
+  return Math.ceil(maxLen * fontSize * 0.58);
+}
+
+// Générateur de figures TradingView pour une ligne [p1, p2] avec texte positionné :
+// - Vertical (vAlign) : 'top' (au-dessus), 'middle' (au milieu avec coupure nette de la ligne autour du texte), 'bottom' (en-dessous)
+// - Horizontal (align) : 'left' (gauche), 'center' (centre), 'right' (droite)
+function buildLineWithTextFigures({
+  p1,
+  p2,
+  lineColor = '#3b82f6',
+  lineSize = 2,
+  lineStyle = 'solid',
+  dashedValue,
+  extendData,
+  includeTouchHitbox = true,
+  endpointCircles = [p1, p2],
+}) {
+  const figures = [];
+  if (!p1 || !p2) return figures;
+
+  const ext = typeof extendData === 'string' ? { text: extendData } : (extendData || {});
+  const rawText = ext.text != null ? String(ext.text) : '';
+  const hasText = rawText.trim().length > 0;
+
+  const vAlign = String(ext.vAlign || ext.verticalAlign || 'middle').toLowerCase(); // 'top' | 'middle' | 'bottom'
+  const hAlign = String(ext.align || ext.hAlign || 'center').toLowerCase(); // 'left' | 'center' | 'right'
+  const fontSize = Number(ext.fontSize) || 16;
+  const isBold = ext.bold !== false;
+  const isItalic = Boolean(ext.italic);
+  const weightStr = isItalic && isBold ? 'italic bold' : isItalic ? 'italic' : isBold ? 'bold' : 'normal';
+  const textColor = ext.textColor || ext.color || lineColor || '#ffffff';
+
+  // Ordonner de gauche à droite pour que Left = côté gauche et Right = côté droit
+  const [pL, pR] = (p1.x < p2.x || (p1.x === p2.x && p1.y <= p2.y)) ? [p1, p2] : [p2, p1];
+  const dx = pR.x - pL.x;
+  const dy = pR.y - pL.y;
+  const segLen = Math.hypot(dx, dy);
+
+  const lineStyles = {
+    color: lineColor,
+    size: lineSize,
+    style: lineStyle,
+    dashedValue: dashedValue || (lineStyle === 'dashed' ? [6, 4] : undefined),
+  };
+
+  if (!hasText || segLen < 4) {
+    figures.push({
+      type: 'line',
+      attrs: { coordinates: [p1, p2] },
+      styles: lineStyles,
+    });
+  } else {
+    const ux = dx / segLen;
+    const uy = dy / segLen;
+    const textW = measureOverlayTextWidth(rawText, fontSize, weightStr);
+    const gapPad = 8;
+    const halfGap = textW / 2 + gapPad;
+
+    // Calcul de la position le long du segment [pL, pR]
+    let dCenter = segLen / 2;
+    const edgeMargin = Math.min(28, segLen * 0.16);
+    if (hAlign === 'left') {
+      dCenter = Math.min(segLen / 2, edgeMargin + halfGap);
+    } else if (hAlign === 'right') {
+      dCenter = Math.max(segLen / 2, segLen - edgeMargin - halfGap);
+    }
+
+    const cx = pL.x + ux * dCenter;
+    const cy = pL.y + uy * dCenter;
+
+    if (vAlign === 'middle') {
+      // Comme sur TradingView : couper la ligne de part et d'autre du texte pour qu'elle ne barre pas le texte
+      const d1 = Math.max(0, dCenter - halfGap);
+      const d2 = Math.min(segLen, dCenter + halfGap);
+
+      if (d1 > 2) {
+        figures.push({
+          type: 'line',
+          attrs: {
+            coordinates: [
+              pL,
+              { x: pL.x + ux * d1, y: pL.y + uy * d1 },
+            ],
+          },
+          styles: lineStyles,
+        });
+      }
+      if (segLen - d2 > 2) {
+        figures.push({
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: pL.x + ux * d2, y: pL.y + uy * d2 },
+              pR,
+            ],
+          },
+          styles: lineStyles,
+        });
+      }
+
+      figures.push({
+        type: 'text',
+        attrs: { x: cx, y: cy, text: rawText, align: 'center', baseline: 'middle' },
+        styles: {
+          color: textColor,
+          size: fontSize,
+          weight: weightStr,
+          family: 'sans-serif',
+          paddingLeft: 2,
+          paddingRight: 2,
+          paddingTop: 0,
+          paddingBottom: 0,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          borderSize: 0,
+        },
+      });
+    } else {
+      // Top ou Bottom : ligne continue + texte au-dessus ou en-dessous de la ligne
+      figures.push({
+        type: 'line',
+        attrs: { coordinates: [p1, p2] },
+        styles: lineStyles,
+      });
+
+      const verticalOffset = lineSize / 2 + 6;
+      const ty = vAlign === 'top' ? cy - verticalOffset : cy + verticalOffset;
+      const baseline = vAlign === 'top' ? 'bottom' : 'top';
+
+      figures.push({
+        type: 'text',
+        attrs: { x: cx, y: ty, text: rawText, align: 'center', baseline },
+        styles: {
+          color: textColor,
+          size: fontSize,
+          weight: weightStr,
+          family: 'sans-serif',
+          paddingLeft: 2,
+          paddingRight: 2,
+          paddingTop: 0,
+          paddingBottom: 0,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          borderSize: 0,
+        },
+      });
+    }
+  }
+
+  // Couloir tactile invisible élargi (28px de large) sur toute la longueur pour attraper/déplacer facilement la ligne
+  if (includeTouchHitbox && segLen > 0) {
+    const nx = (-dy / segLen) * 14;
+    const ny = (dx / segLen) * 14;
+    figures.push({
+      type: 'polygon',
+      attrs: {
+        coordinates: [
+          { x: pL.x + nx, y: pL.y + ny },
+          { x: pR.x + nx, y: pR.y + ny },
+          { x: pR.x - nx, y: pR.y - ny },
+          { x: pL.x - nx, y: pL.y - ny },
+        ],
+      },
+      styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+    });
+  }
+
+  // Cibles tactiles invisibles sur les points d'ancrage
+  if (Array.isArray(endpointCircles)) {
+    endpointCircles.forEach((pt) => {
+      if (pt && pt.x != null && pt.y != null) {
+        figures.push({
+          type: 'circle',
+          attrs: { x: pt.x, y: pt.y, r: 18 },
+          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+        });
+      }
+    });
+  }
+
+  return figures;
+}
+
 // Enregistrement unique de tous les overlays personnalisés et de l'indicateur ICT Kill Zones
 let customOverlaysRegistered = false;
 export function ensureCustomOverlaysAndIndicators() {
   if (customOverlaysRegistered) return;
   try {
-  // 0. Segment / Ligne de tendance personnalisée avec large zone de capture tactile pour mobile
+  // 0. Segment / Ligne de tendance personnalisée façon TradingView (avec texte Top/Middle/Bottom & Left/Center/Right)
   registerOverlay({
     name: 'segment',
     totalStep: 3,
@@ -371,80 +576,134 @@ export function ensureCustomOverlaysAndIndicators() {
       const lineColor = overlay?.styles?.line?.color || '#3b82f6';
       const lineSize = overlay?.styles?.line?.size || 2;
       const lineStyle = overlay?.styles?.line?.style || 'solid';
-      const dashedValue = overlay?.styles?.line?.dashedValue || (lineStyle === 'dashed' ? [6, 4] : undefined);
+      const dashedValue = overlay?.styles?.line?.dashedValue;
+      return buildLineWithTextFigures({
+        p1,
+        p2,
+        lineColor,
+        lineSize,
+        lineStyle,
+        dashedValue,
+        extendData: overlay.extendData,
+        includeTouchHitbox: true,
+        endpointCircles: [p1, p2],
+      });
+    },
+  });
 
-      const figures = [
-        {
-          type: 'line',
-          attrs: { coordinates: [p1, p2] },
-          styles: {
-            color: lineColor,
-            size: lineSize,
-            style: lineStyle,
-            dashedValue,
-          },
-        },
-      ];
-
-      if (overlay.extendData?.text) {
-        const ext = overlay.extendData;
-        const txt = typeof ext === 'string' ? ext : ext.text;
-        const align = ext.align || 'center';
-        const fontSize = ext.fontSize || 12;
-        const isBold = ext.bold !== false;
-        const textColor = ext.textColor || '#ffffff';
-        let tx = (p1.x + p2.x) / 2;
-        let ty = (p1.y + p2.y) / 2 - 8;
-        if (align === 'left') { tx = p1.x; ty = p1.y - 8; }
-        if (align === 'right') { tx = p2.x; ty = p2.y - 8; }
-        figures.push({
-          type: 'text',
-          attrs: { x: tx, y: ty, text: txt, align, baseline: 'bottom' },
-          styles: {
-            color: textColor,
-            size: fontSize,
-            weight: isBold ? 'bold' : 'normal',
-            family: 'sans-serif',
-            paddingLeft: 6,
-            paddingRight: 6,
-            paddingTop: 2,
-            paddingBottom: 2,
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            borderColor: lineColor,
-            borderSize: 1,
-            borderRadius: 4,
-          }
-        });
+  // 0b. Demi-droite horizontale (horizontalRayLine) avec support texte TradingView
+  registerOverlay({
+    name: 'horizontalRayLine',
+    totalStep: 3,
+    needDefaultPointFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }) => {
+      if (!coordinates || coordinates.length < 1) return [];
+      const p1 = coordinates[0];
+      const p2Raw = coordinates[1];
+      const goLeft = p2Raw && p2Raw.x < p1.x;
+      const endX = goLeft ? 0 : (bounding?.width || 1200);
+      const pEnd = { x: endX, y: p1.y };
+      // Si p2 est défini et visible, utiliser p2 pour centrer le texte entre p1 et le bord ou entre p1 et p2
+      const lineColor = overlay?.styles?.line?.color || '#3b82f6';
+      const lineSize = overlay?.styles?.line?.size || 2;
+      const lineStyle = overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.line?.dashedValue;
+      return buildLineWithTextFigures({
+        p1,
+        p2: pEnd,
+        lineColor,
+        lineSize,
+        lineStyle,
+        dashedValue,
+        extendData: overlay.extendData,
+        includeTouchHitbox: true,
+        endpointCircles: p2Raw ? [p1, { x: p2Raw.x, y: p1.y }] : [p1],
+      });
+    },
+    performEventPressedMove: ({ points, performPoint }) => {
+      if (points[0] && performPoint) {
+        points[0].value = performPoint.value;
+        if (points[1]) points[1].value = performPoint.value;
       }
+    },
+    performEventMoveForDrawing: ({ currentStep, points, performPoint }) => {
+      if (currentStep === 2 && points[0] && performPoint) {
+        performPoint.value = points[0].value;
+      }
+    },
+  });
 
-      // Couloir tactile invisible élargi (28px de large) pour attraper/sélectionner très facilement la ligne au doigt
+  // 0c. Ligne horizontale (horizontalStraightLine) avec support texte TradingView
+  registerOverlay({
+    name: 'horizontalStraightLine',
+    totalStep: 2,
+    needDefaultPointFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }) => {
+      if (!coordinates || coordinates.length < 1) return [];
+      const p1 = coordinates[0];
+      const w = bounding?.width || 1200;
+      const lineColor = overlay?.styles?.line?.color || '#3b82f6';
+      const lineSize = overlay?.styles?.line?.size || 2;
+      const lineStyle = overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.line?.dashedValue;
+      return buildLineWithTextFigures({
+        p1: { x: 0, y: p1.y },
+        p2: { x: w, y: p1.y },
+        lineColor,
+        lineSize,
+        lineStyle,
+        dashedValue,
+        extendData: overlay.extendData,
+        includeTouchHitbox: true,
+        endpointCircles: [p1],
+      });
+    },
+  });
+
+  // 0d. Demi-droite orientée (rayLine) avec support texte TradingView
+  registerOverlay({
+    name: 'rayLine',
+    totalStep: 3,
+    needDefaultPointFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }) => {
+      if (!coordinates || coordinates.length < 2) return [];
+      const [p1, p2] = coordinates;
+      const w = bounding?.width || 1200;
+      const h = bounding?.height || 800;
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
-      const len = Math.hypot(dx, dy);
-      if (len > 0) {
-        const ux = (-dy / len) * 14;
-        const uy = (dx / len) * 14;
-        figures.push({
-          type: 'polygon',
-          attrs: {
-            coordinates: [
-              { x: p1.x + ux, y: p1.y + uy },
-              { x: p2.x + ux, y: p2.y + uy },
-              { x: p2.x - ux, y: p2.y - uy },
-              { x: p1.x - ux, y: p1.y - uy },
-            ],
-          },
-          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
-        });
+      let pFar = p2;
+      if (Math.hypot(dx, dy) > 1) {
+        const scale = Math.max(w, h) * 2 / Math.hypot(dx, dy);
+        pFar = { x: p1.x + dx * scale, y: p1.y + dy * scale };
       }
-
-      // Cibles tactiles invisibles élargies sur les deux extrémités
-      figures.push(
-        { type: 'circle', attrs: { x: p1.x, y: p1.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: p2.x, y: p2.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
-      );
-
-      return figures;
+      const lineColor = overlay?.styles?.line?.color || '#3b82f6';
+      const lineSize = overlay?.styles?.line?.size || 2;
+      const lineStyle = overlay?.styles?.line?.style || 'solid';
+      const dashedValue = overlay?.styles?.line?.dashedValue;
+      // On place le texte sur le segment principal [p1, p2] et on prolonge la demi-droite jusqu'à pFar
+      const figs = buildLineWithTextFigures({
+        p1,
+        p2,
+        lineColor,
+        lineSize,
+        lineStyle,
+        dashedValue,
+        extendData: overlay.extendData,
+        includeTouchHitbox: true,
+        endpointCircles: [p1, p2],
+      });
+      figs.unshift({
+        type: 'line',
+        attrs: { coordinates: [p2, pFar] },
+        styles: {
+          color: lineColor,
+          size: lineSize,
+          style: lineStyle,
+          dashedValue: dashedValue || (lineStyle === 'dashed' ? [6, 4] : undefined),
+        },
+      });
+      return figs;
     },
   });
 
@@ -473,7 +732,6 @@ export function ensureCustomOverlaysAndIndicators() {
         },
       ];
 
-      // Couloirs tactiles invisibles élargis pour manipuler chaque segment au doigt
       for (let i = 1; i < coordinates.length; i++) {
         const pA = coordinates[i - 1];
         const pB = coordinates[i];
@@ -498,7 +756,6 @@ export function ensureCustomOverlaysAndIndicators() {
         }
       }
 
-      // Cibles tactiles invisibles sur chaque sommet
       coordinates.forEach((pt) => {
         figures.push({
           type: 'circle',
@@ -507,7 +764,6 @@ export function ensureCustomOverlaysAndIndicators() {
         });
       });
 
-      // Flèche terminale orientée
       if (coordinates.length >= 2) {
         const p1 = coordinates[coordinates.length - 2];
         const p2 = coordinates[coordinates.length - 1];
@@ -535,7 +791,7 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
-  // 2. Rectangle / Zone avec couleur dynamique en direct & saisie tactile facilitée
+  // 2. Rectangle / Zone avec alignement complet TradingView (Top/Middle/Bottom & Left/Center/Right)
   registerOverlay({
     name: 'rect',
     totalStep: 3,
@@ -565,37 +821,56 @@ export function ensureCustomOverlaysAndIndicators() {
       ];
 
       if (overlay.extendData?.text) {
-        const ext = overlay.extendData;
-        const txt = typeof ext === 'string' ? ext : ext.text;
-        const align = ext.align || 'center';
-        const fontSize = ext.fontSize || 12;
-        const isBold = ext.bold !== false;
-        const textColor = ext.textColor || '#ffffff';
-        let tx = (a.x + b.x) / 2;
-        if (align === 'left') tx = Math.min(a.x, b.x) + 8;
-        if (align === 'right') tx = Math.max(a.x, b.x) - 8;
-        const ty = Math.min(a.y, b.y) + 8;
-        figures.push({
-          type: 'text',
-          attrs: { x: tx, y: ty, text: txt, align, baseline: 'top' },
-          styles: {
-            color: textColor,
-            size: fontSize,
-            weight: isBold ? 'bold' : 'normal',
-            family: 'sans-serif',
-            paddingLeft: 6,
-            paddingRight: 6,
-            paddingTop: 2,
-            paddingBottom: 2,
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            borderColor: strokeColor,
-            borderSize: 1,
-            borderRadius: 4,
+        const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : overlay.extendData;
+        const txt = String(ext.text || '');
+        if (txt.trim()) {
+          const hAlign = String(ext.align || 'center').toLowerCase();
+          const vAlign = String(ext.vAlign || ext.verticalAlign || 'middle').toLowerCase();
+          const fontSize = Number(ext.fontSize) || 14;
+          const isBold = ext.bold !== false;
+          const isItalic = Boolean(ext.italic);
+          const weightStr = isItalic && isBold ? 'italic bold' : isItalic ? 'italic' : isBold ? 'bold' : 'normal';
+          const textColor = ext.textColor || ext.color || strokeColor || '#ffffff';
+
+          const minX = Math.min(a.x, b.x);
+          const maxX = Math.max(a.x, b.x);
+          const minY = Math.min(a.y, b.y);
+          const maxY = Math.max(a.y, b.y);
+
+          let tx = (minX + maxX) / 2;
+          if (hAlign === 'left') tx = minX + 10;
+          else if (hAlign === 'right') tx = maxX - 10;
+
+          let ty = (minY + maxY) / 2;
+          let baseline = 'middle';
+          if (vAlign === 'top') {
+            ty = minY + 8;
+            baseline = 'top';
+          } else if (vAlign === 'bottom') {
+            ty = maxY - 8;
+            baseline = 'bottom';
           }
-        });
+
+          figures.push({
+            type: 'text',
+            attrs: { x: tx, y: ty, text: txt, align: hAlign, baseline },
+            styles: {
+              color: textColor,
+              size: fontSize,
+              weight: weightStr,
+              family: 'sans-serif',
+              paddingLeft: 4,
+              paddingRight: 4,
+              paddingTop: 2,
+              paddingBottom: 2,
+              backgroundColor: 'transparent',
+              borderColor: 'transparent',
+              borderSize: 0,
+            }
+          });
+        }
       }
 
-      // Cibles tactiles invisibles sur les coins pour étirer le rectangle au doigt sur mobile
       figures.push(
         { type: 'circle', attrs: { x: a.x, y: a.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
         { type: 'circle', attrs: { x: b.x, y: a.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
@@ -617,52 +892,55 @@ export function ensureCustomOverlaysAndIndicators() {
       const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
       const rawText = ext.text != null ? String(ext.text) : '';
       const align = ext.align || 'left';
-      const fontSize = ext.fontSize || 14;
+      const vAlign = String(ext.vAlign || 'middle').toLowerCase();
+      const fontSize = Number(ext.fontSize) || 16;
       const isBold = ext.bold !== false;
-      const textColor = ext.textColor || '#ffffff';
-      const borderColor = ext.color || overlay?.styles?.text?.borderColor || overlay?.styles?.line?.color || '#3b82f6';
+      const isItalic = Boolean(ext.italic);
+      const weightStr = isItalic && isBold ? 'italic bold' : isItalic ? 'italic' : isBold ? 'bold' : 'normal';
+      const textColor = ext.textColor || ext.color || overlay?.styles?.text?.borderColor || '#3b82f6';
+      const baseline = vAlign === 'top' ? 'bottom' : vAlign === 'bottom' ? 'top' : 'middle';
+
       if (!rawText.trim()) {
         return [{
           type: 'text',
-          attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text: '✎ |', align, baseline: 'bottom' },
+          attrs: { x: coordinates[0].x, y: coordinates[0].y, text: '✎ |', align, baseline },
           styles: {
             color: '#94a3b8',
             size: fontSize,
             family: 'sans-serif',
             weight: 'normal',
-            paddingLeft: 8,
-            paddingRight: 8,
-            paddingTop: 4,
-            paddingBottom: 4,
-            backgroundColor: 'rgba(15, 23, 42, 0.78)',
-            borderColor: borderColor,
+            paddingLeft: 6,
+            paddingRight: 6,
+            paddingTop: 3,
+            paddingBottom: 3,
+            backgroundColor: 'rgba(15, 23, 42, 0.72)',
+            borderColor: textColor,
             borderSize: 1,
-            borderRadius: 6,
+            borderRadius: 5,
           },
         }];
       }
       return [{
         type: 'text',
-        attrs: { x: coordinates[0].x, y: coordinates[0].y - 8, text: rawText, align, baseline: 'bottom' },
+        attrs: { x: coordinates[0].x, y: coordinates[0].y, text: rawText, align, baseline },
         styles: {
           color: textColor,
           size: fontSize,
           family: 'sans-serif',
-          weight: isBold ? 'bold' : 'normal',
-          paddingLeft: 8,
-          paddingRight: 8,
-          paddingTop: 4,
-          paddingBottom: 4,
-          backgroundColor: 'rgba(15, 23, 42, 0.88)',
-          borderColor: borderColor,
-          borderSize: 1,
-          borderRadius: 6,
+          weight: weightStr,
+          paddingLeft: 4,
+          paddingRight: 4,
+          paddingTop: 2,
+          paddingBottom: 2,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          borderSize: 0,
         },
       }];
     },
   });
 
-  // 4. Arrow (Flèche orientée)
+  // 4. Arrow (Flèche orientée avec support texte TradingView)
   registerOverlay({
     name: 'arrow',
     totalStep: 3,
@@ -673,17 +951,24 @@ export function ensureCustomOverlaysAndIndicators() {
       const color = overlay?.styles?.line?.color || '#3b82f6';
       const size = overlay?.styles?.line?.size || 2;
       const lineStyle = overlay?.styles?.line?.style || 'solid';
-      const dashedValue = overlay?.styles?.line?.dashedValue || (lineStyle === 'dashed' ? [6, 4] : undefined);
+      const dashedValue = overlay?.styles?.line?.dashedValue;
       const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
       const headLen = Math.max(14, size * 5);
       const w1 = { x: p2.x - headLen * Math.cos(angle - Math.PI / 6), y: p2.y - headLen * Math.sin(angle - Math.PI / 6) };
       const w2 = { x: p2.x - headLen * Math.cos(angle + Math.PI / 6), y: p2.y - headLen * Math.sin(angle + Math.PI / 6) };
-      return [
-        { type: 'line', attrs: { coordinates: [p1, p2] }, styles: { size, color, style: lineStyle, dashedValue } },
-        { type: 'polygon', attrs: { coordinates: [p2, w1, w2] }, styles: { style: 'fill', color } },
-        { type: 'circle', attrs: { x: p1.x, y: p1.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: p2.x, y: p2.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-      ];
+      const figs = buildLineWithTextFigures({
+        p1,
+        p2,
+        lineColor: color,
+        lineSize: size,
+        lineStyle,
+        dashedValue,
+        extendData: overlay.extendData,
+        includeTouchHitbox: true,
+        endpointCircles: [p1, p2],
+      });
+      figs.push({ type: 'polygon', attrs: { coordinates: [p2, w1, w2] }, styles: { style: 'fill', color } });
+      return figs;
     },
   });
 
@@ -2253,14 +2538,10 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
               return true;
             },
             onDoubleClick: ({ overlay, x, y }) => {
-              if (overlay.name === 'text') {
-                if (x != null && y != null) overlay._clickPixel = { x, y };
-                overlay._editTrigger = Date.now();
-                setSelectedOverlay(overlay);
-                setEditTick((t) => t + 1);
-                return true;
-              }
-              deleteOverlay(overlay);
+              if (x != null && y != null) overlay._clickPixel = { x, y };
+              overlay._editTrigger = Date.now();
+              setSelectedOverlay(overlay);
+              setEditTick((t) => t + 1);
               return true;
             },
             onRightClick: ({ overlay }) => { deleteOverlay(overlay); return true; },
@@ -2398,14 +2679,10 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
           }
           return true;
         }
-        if (overlay.name === 'text') {
-          if (x != null && y != null) overlay._clickPixel = { x, y };
-          overlay._editTrigger = Date.now();
-          setSelectedOverlay(overlay);
-          setEditTick((t) => t + 1);
-          return true;
-        }
-        deleteOverlay(overlay);
+        if (x != null && y != null) overlay._clickPixel = { x, y };
+        overlay._editTrigger = Date.now();
+        setSelectedOverlay(overlay);
+        setEditTick((t) => t + 1);
         return true;
       },
       onRightClick: ({ overlay }) => {
@@ -2592,15 +2869,17 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   };
 }
 
-// Zone d'écriture de texte directe sur la zone cliquée du graphique (sans sélection de texte prédéfini)
+// Zone d'écriture de texte directe sur la zone cliquée du graphique (pour l'outil Texte / Annotation)
 export function TextAnnotationModal({
   open,
   onClose,
   onCancelEmpty,
   currentText = '',
   currentAlign = 'left',
+  currentVAlign = 'middle',
   currentBold = true,
-  currentFontSize = 14,
+  currentItalic = false,
+  currentFontSize = 18,
   currentColor = '#3b82f6',
   anchorClientPos = null,
   onApply,
@@ -2609,9 +2888,11 @@ export function TextAnnotationModal({
 }) {
   const [text, setText] = useState(currentText);
   const [align, setAlign] = useState(currentAlign || 'left');
+  const [vAlign, setVAlign] = useState(currentVAlign || 'middle');
   const [bold, setBold] = useState(currentBold !== false);
+  const [italic, setItalic] = useState(Boolean(currentItalic));
   const [selectedColor, setSelectedColor] = useState(currentColor || '#3b82f6');
-  const [fontSize, setFontSize] = useState(currentFontSize || 14);
+  const [fontSize, setFontSize] = useState(currentFontSize || 18);
   const textareaRef = useRef(null);
   const openedAtRef = useRef(0);
 
@@ -2620,9 +2901,11 @@ export function TextAnnotationModal({
       openedAtRef.current = Date.now();
       setText(currentText || '');
       setAlign(currentAlign || 'left');
+      setVAlign(currentVAlign || 'middle');
       setBold(currentBold !== false);
+      setItalic(Boolean(currentItalic));
       setSelectedColor(currentColor || '#3b82f6');
-      setFontSize(currentFontSize || 14);
+      setFontSize(currentFontSize || 18);
       const focusInput = () => {
         if (textareaRef.current) {
           textareaRef.current.focus();
@@ -2643,22 +2926,26 @@ export function TextAnnotationModal({
   if (!open) return null;
 
   const colors = [
+    { label: 'Noir', value: '#000000' },
+    { label: 'Blanc', value: '#ffffff' },
     { label: 'Bleu', value: '#3b82f6' },
     { label: 'Vert', value: '#22c55e' },
     { label: 'Rouge', value: '#ef4444' },
     { label: 'Orange', value: '#f97316' },
     { label: 'Jaune', value: '#eab308' },
     { label: 'Violet', value: '#a855f7' },
-    { label: 'Blanc', value: '#ffffff' },
   ];
 
-  const emitLive = (nextText, nextColor, nextSize, nextAlign, nextBold) => {
+  const emitLive = (nextText, nextColor, nextSize, nextAlign, nextVAlign, nextBold, nextItalic) => {
     onLiveChange?.({
       text: nextText,
       color: nextColor,
+      textColor: nextColor,
       fontSize: nextSize,
       align: nextAlign,
+      vAlign: nextVAlign,
       bold: nextBold,
+      italic: nextItalic,
     });
   };
 
@@ -2669,7 +2956,16 @@ export function TextAnnotationModal({
       onClose();
       return;
     }
-    onApply({ text: clean, color: selectedColor, fontSize, align, bold });
+    onApply({
+      text: clean,
+      color: selectedColor,
+      textColor: selectedColor,
+      fontSize,
+      align,
+      vAlign,
+      bold,
+      italic,
+    });
     onClose();
   };
 
@@ -2680,13 +2976,12 @@ export function TextAnnotationModal({
     onClose();
   };
 
-  // Calcul de la position flottante directement sur la zone cliquée du graphique
   let boxStyle = {};
   if (anchorClientPos && typeof window !== 'undefined' && anchorClientPos.x != null && anchorClientPos.y != null) {
     const vw = window.innerWidth || 360;
     const vh = window.innerHeight || 640;
-    const boxWidth = Math.min(310, vw - 16);
-    const boxHeight = 195;
+    const boxWidth = Math.min(320, vw - 16);
+    const boxHeight = 205;
     const left = Math.min(Math.max(8, anchorClientPos.x - 20), vw - boxWidth - 8);
     const top = Math.min(Math.max(52, anchorClientPos.y + 10), vh - boxHeight - 12);
     boxStyle = {
@@ -2721,9 +3016,8 @@ export function TextAnnotationModal({
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        className="w-[310px] max-w-[calc(100vw-16px)] rounded-xl border-2 border-primary/70 bg-slate-950/95 p-2.5 shadow-2xl text-white backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+        className="w-[320px] max-w-[calc(100vw-16px)] rounded-xl border-2 border-primary/70 bg-slate-950/95 p-2.5 shadow-2xl text-white backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
       >
-        {/* Zone de saisie directe du texte sur le graphique */}
         <textarea
           ref={textareaRef}
           rows={2}
@@ -2731,7 +3025,7 @@ export function TextAnnotationModal({
           onChange={(e) => {
             const val = e.target.value;
             setText(val);
-            emitLive(val, selectedColor, fontSize, align, bold);
+            emitLive(val, selectedColor, fontSize, align, vAlign, bold, italic);
           }}
           onKeyDown={(e) => {
             e.stopPropagation();
@@ -2747,24 +3041,82 @@ export function TextAnnotationModal({
           style={{
             textAlign: align,
             fontWeight: bold ? 'bold' : 'normal',
+            fontStyle: italic ? 'italic' : 'normal',
           }}
           className="w-full rounded-lg border border-white/20 bg-slate-900/90 px-2.5 py-1.5 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
           autoFocus
         />
 
-        {/* Barre compacte : Alignement (Gauche / Centre / Droite), Gras, Taille, Couleurs, Valider */}
         <div className="mt-2 flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-1.5">
-            {/* Alignement */}
+            {/* Couleur + Taille + B + I façon TradingView */}
+            <div className="flex items-center gap-1">
+              <label
+                className="h-7 w-7 rounded-md border border-white/30 flex items-center justify-center cursor-pointer relative overflow-hidden shrink-0"
+                style={{ backgroundColor: selectedColor }}
+                title={isEn ? 'Text Color' : 'Couleur du texte'}
+              >
+                <input
+                  type="color"
+                  value={selectedColor.startsWith('#') && selectedColor.length === 7 ? selectedColor : '#3b82f6'}
+                  onChange={(e) => {
+                    setSelectedColor(e.target.value);
+                    emitLive(text, e.target.value, fontSize, align, vAlign, bold, italic);
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+              </label>
+
+              <select
+                value={fontSize}
+                onChange={(e) => {
+                  const s = Number(e.target.value);
+                  setFontSize(s);
+                  emitLive(text, selectedColor, s, align, vAlign, bold, italic);
+                }}
+                className="h-7 rounded-md border border-white/20 bg-slate-900 px-1.5 text-xs text-white focus:outline-none"
+              >
+                {[10, 12, 14, 16, 18, 20, 24, 28, 32].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !bold;
+                  setBold(next);
+                  emitLive(text, selectedColor, fontSize, align, vAlign, next, italic);
+                }}
+                className={`h-7 w-7 rounded-md border text-xs font-bold flex items-center justify-center transition-colors ${bold ? 'bg-primary border-primary text-white' : 'bg-slate-900 border-white/20 text-slate-300 hover:text-white'}`}
+                title="Bold (B)"
+              >
+                B
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !italic;
+                  setItalic(next);
+                  emitLive(text, selectedColor, fontSize, align, vAlign, bold, next);
+                }}
+                className={`h-7 w-7 rounded-md border text-xs italic font-serif flex items-center justify-center transition-colors ${italic ? 'bg-primary border-primary text-white' : 'bg-slate-900 border-white/20 text-slate-300 hover:text-white'}`}
+                title="Italic (I)"
+              >
+                I
+              </button>
+            </div>
+
+            {/* Alignement Gauche / Centre / Droite */}
             <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-md border border-white/15">
               <button
                 type="button"
                 onClick={() => {
                   setAlign('left');
-                  emitLive(text, selectedColor, fontSize, 'left', bold);
+                  emitLive(text, selectedColor, fontSize, 'left', vAlign, bold, italic);
                 }}
                 className={`p-1 rounded text-xs transition-colors ${align === 'left' ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
-                title={isEn ? 'Align Left' : 'Aligner à gauche'}
               >
                 <AlignLeft className="h-3.5 w-3.5" />
               </button>
@@ -2772,10 +3124,9 @@ export function TextAnnotationModal({
                 type="button"
                 onClick={() => {
                   setAlign('center');
-                  emitLive(text, selectedColor, fontSize, 'center', bold);
+                  emitLive(text, selectedColor, fontSize, 'center', vAlign, bold, italic);
                 }}
                 className={`p-1 rounded text-xs transition-colors ${align === 'center' ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
-                title={isEn ? 'Align Center' : 'Aligner au centre'}
               >
                 <AlignCenter className="h-3.5 w-3.5" />
               </button>
@@ -2783,49 +3134,16 @@ export function TextAnnotationModal({
                 type="button"
                 onClick={() => {
                   setAlign('right');
-                  emitLive(text, selectedColor, fontSize, 'right', bold);
+                  emitLive(text, selectedColor, fontSize, 'right', vAlign, bold, italic);
                 }}
                 className={`p-1 rounded text-xs transition-colors ${align === 'right' ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
-                title={isEn ? 'Align Right' : 'Aligner à droite'}
               >
                 <AlignRight className="h-3.5 w-3.5" />
               </button>
             </div>
-
-            {/* Gras */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !bold;
-                setBold(next);
-                emitLive(text, selectedColor, fontSize, align, next);
-              }}
-              className={`px-2 py-1 rounded-md border text-xs flex items-center gap-1 transition-colors ${bold ? 'bg-primary/25 border-primary text-primary font-bold' : 'bg-slate-900 border-white/15 text-slate-400 hover:text-white'}`}
-              title={isEn ? 'Bold' : 'Gras'}
-            >
-              <Bold className="h-3.5 w-3.5" />
-            </button>
-
-            {/* Tailles */}
-            <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-md border border-white/15">
-              {[12, 14, 16, 18, 22].map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => {
-                    setFontSize(s);
-                    emitLive(text, selectedColor, s, align, bold);
-                  }}
-                  className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${fontSize === s ? 'bg-primary text-white font-bold' : 'text-slate-400 hover:text-white'}`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
-            {/* Couleurs */}
             <div className="flex items-center gap-1">
               {colors.map((c) => (
                 <button
@@ -2833,7 +3151,7 @@ export function TextAnnotationModal({
                   type="button"
                   onClick={() => {
                     setSelectedColor(c.value);
-                    emitLive(text, c.value, fontSize, align, bold);
+                    emitLive(text, c.value, fontSize, align, vAlign, bold, italic);
                   }}
                   className={`h-4 w-4 rounded-full border transition-transform ${selectedColor === c.value ? 'ring-2 ring-primary scale-110 border-white' : 'border-white/30'}`}
                   style={{ backgroundColor: c.value }}
@@ -2842,7 +3160,6 @@ export function TextAnnotationModal({
               ))}
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -2856,10 +3173,637 @@ export function TextAnnotationModal({
                 onClick={handleConfirm}
                 className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-primary text-white hover:bg-primary/90 flex items-center gap-1"
               >
-                <Check className="h-3 w-3" />
-                <span>OK</span>
+                <span>Ok</span>
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Fenêtre de paramètres d'outil façon TradingView (Style | Text | Coordinates | Visibility)
+export function TradingViewToolSettingsModal({
+  open,
+  initialTab = 'text',
+  overlay,
+  toolLabel,
+  lineColor,
+  lineSize,
+  lineStyle,
+  onUpdateStyle,
+  onUpdateText,
+  onUpdatePoints,
+  onClose,
+  isEn = false,
+}) {
+  const [activeTab, setActiveTab] = useState(initialTab || 'text');
+  const ext = typeof overlay?.extendData === 'string' ? { text: overlay.extendData } : (overlay?.extendData || {});
+
+  const [text, setText] = useState(ext.text || '');
+  const [textColor, setTextColor] = useState(ext.textColor || ext.color || lineColor || '#000000');
+  const [fontSize, setFontSize] = useState(Number(ext.fontSize) || 18);
+  const [bold, setBold] = useState(ext.bold !== false);
+  const [italic, setItalic] = useState(Boolean(ext.italic));
+  const [vAlign, setVAlign] = useState(ext.vAlign || ext.verticalAlign || 'middle');
+  const [hAlign, setHAlign] = useState(ext.align || ext.hAlign || 'center');
+  const [showColorPalette, setShowColorPalette] = useState(false);
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+
+  // Coordonnées de prix
+  const [coordPrices, setCoordPrices] = useState(() =>
+    Array.isArray(overlay?.points) ? overlay.points.map((pt) => pt?.value ?? '') : []
+  );
+
+  // Visibilité par unités de temps
+  const [visibility, setVisibility] = useState({
+    minutes: true,
+    hours: true,
+    days: true,
+    weeks: true,
+    months: true,
+  });
+
+  // Sauvegarde de l'état initial pour le bouton Cancel (Annuler)
+  const snapshotRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (open && overlay) {
+      setActiveTab(initialTab || 'text');
+      const curExt = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
+      const initText = curExt.text || '';
+      const initTextColor = curExt.textColor || curExt.color || lineColor || '#3b82f6';
+      const initSize = Number(curExt.fontSize) || 18;
+      const initBold = curExt.bold !== false;
+      const initItalic = Boolean(curExt.italic);
+      const initVAlign = curExt.vAlign || curExt.verticalAlign || 'middle';
+      const initHAlign = curExt.align || curExt.hAlign || 'center';
+
+      setText(initText);
+      setTextColor(initTextColor);
+      setFontSize(initSize);
+      setBold(initBold);
+      setItalic(initItalic);
+      setVAlign(initVAlign);
+      setHAlign(initHAlign);
+      setCoordPrices(Array.isArray(overlay.points) ? overlay.points.map((pt) => pt?.value ?? '') : []);
+
+      snapshotRef.current = {
+        text: initText,
+        textColor: initTextColor,
+        fontSize: initSize,
+        bold: initBold,
+        italic: initItalic,
+        vAlign: initVAlign,
+        align: initHAlign,
+        lineColor,
+        lineSize,
+        lineStyle,
+      };
+
+      if ((initialTab || 'text') === 'text') {
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 50);
+      }
+    }
+  }, [open, overlay?.id, initialTab]);
+
+  if (!open || !overlay) return null;
+
+  const pushLiveText = (next) => {
+    onUpdateText?.({
+      text: next.text ?? text,
+      color: next.textColor ?? textColor,
+      textColor: next.textColor ?? textColor,
+      fontSize: next.fontSize ?? fontSize,
+      bold: next.bold ?? bold,
+      italic: next.italic ?? italic,
+      vAlign: next.vAlign ?? vAlign,
+      align: next.hAlign ?? hAlign,
+    }, false);
+  };
+
+  const handleCancel = () => {
+    if (snapshotRef.current) {
+      const s = snapshotRef.current;
+      onUpdateText?.({
+        text: s.text,
+        color: s.textColor,
+        textColor: s.textColor,
+        fontSize: s.fontSize,
+        bold: s.bold,
+        italic: s.italic,
+        vAlign: s.vAlign,
+        align: s.align,
+      }, true);
+      onUpdateStyle?.(s.lineColor, s.lineSize, s.lineStyle);
+    }
+    onClose();
+  };
+
+  const handleOk = () => {
+    onUpdateText?.({
+      text: text.trim(),
+      color: textColor,
+      textColor,
+      fontSize,
+      bold,
+      italic,
+      vAlign,
+      align: hAlign,
+    }, true);
+    onClose();
+  };
+
+  const quickTextColors = [
+    '#000000',
+    '#ffffff',
+    '#3b82f6',
+    '#22c55e',
+    '#ef4444',
+    '#f97316',
+    '#eab308',
+    '#a855f7',
+    '#06b6d4',
+    '#64748b',
+  ];
+
+  return (
+    <div
+      data-text-editor-box
+      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 p-3 animate-in fade-in duration-100"
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) handleOk();
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+      }}
+    >
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-[390px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl overflow-hidden"
+      >
+        {/* En-tête façon TradingView : Nom de l'outil + crayon ✎ + bouton X */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+              {toolLabel}
+            </h3>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('text');
+                setTimeout(() => textareaRef.current?.focus(), 40);
+              }}
+              className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+              title={isEn ? 'Edit text' : 'Écrire un texte'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                <path d="m15 5 4 4"/>
+              </svg>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="p-1 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Onglets : Style | Text | Coordinates | Visibility */}
+        <div className="flex items-center gap-5 px-5 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold">
+          {[
+            { id: 'style', label: 'Style' },
+            { id: 'text', label: 'Text' },
+            { id: 'coordinates', label: isEn ? 'Coordinates' : 'Coordinates' },
+            { id: 'visibility', label: isEn ? 'Visibility' : 'Visibility' },
+          ].map((tab) => {
+            const isAct = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative py-2.5 transition-colors cursor-pointer ${
+                  isAct
+                    ? 'text-slate-900 dark:text-white font-bold'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                {tab.label}
+                {isAct && (
+                  <span className="absolute bottom-0 left-0 right-0 h-[3px] rounded-full bg-slate-900 dark:bg-white" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Contenu de l'onglet actif */}
+        <div className="p-5 space-y-4">
+          {activeTab === 'text' && (
+            <>
+              {/* Ligne 1 : Couleur | Taille (18 v) | B | I */}
+              <div className="flex items-center gap-2.5 relative">
+                {/* Bouton carré de couleur avec palette rapide + pipette */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowColorPalette((v) => !v)}
+                    className="h-9 w-9 rounded-lg border border-slate-300 dark:border-slate-700 p-1 flex items-center justify-center bg-white dark:bg-slate-800 shadow-xs cursor-pointer"
+                    title={isEn ? 'Text color' : 'Couleur du texte'}
+                  >
+                    <span
+                      className="w-full h-full rounded-sm border border-black/15"
+                      style={{ backgroundColor: textColor }}
+                    />
+                  </button>
+                  {showColorPalette && (
+                    <div className="absolute left-0 top-11 z-30 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl flex items-center gap-1.5 flex-wrap w-56">
+                      {quickTextColors.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setTextColor(c);
+                            setShowColorPalette(false);
+                            pushLiveText({ textColor: c });
+                          }}
+                          className={`h-6 w-6 rounded-md border transition-transform hover:scale-110 ${
+                            textColor === c ? 'ring-2 ring-primary border-white' : 'border-slate-300 dark:border-slate-600'
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                      <label
+                        className="h-6 w-6 rounded-md border border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer relative overflow-hidden"
+                        title={isEn ? 'Custom color' : 'Couleur personnalisée'}
+                      >
+                        <Palette className="h-3.5 w-3.5 text-slate-500" />
+                        <input
+                          type="color"
+                          value={textColor.startsWith('#') && textColor.length === 7 ? textColor : '#3b82f6'}
+                          onChange={(e) => {
+                            setTextColor(e.target.value);
+                            pushLiveText({ textColor: e.target.value });
+                          }}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sélecteur de taille de police */}
+                <select
+                  value={fontSize}
+                  onChange={(e) => {
+                    const nextSize = Number(e.target.value);
+                    setFontSize(nextSize);
+                    pushLiveText({ fontSize: nextSize });
+                  }}
+                  className="h-9 w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                >
+                  {[10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40].map((sz) => (
+                    <option key={sz} value={sz}>{sz}</option>
+                  ))}
+                </select>
+
+                {/* Bouton Gras (B) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextBold = !bold;
+                    setBold(nextBold);
+                    pushLiveText({ bold: nextBold });
+                  }}
+                  className={`h-9 w-9 rounded-lg border text-base font-bold flex items-center justify-center transition-colors cursor-pointer ${
+                    bold
+                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
+                  }`}
+                  title={isEn ? 'Bold' : 'Gras'}
+                >
+                  B
+                </button>
+
+                {/* Bouton Italique (I) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextItalic = !italic;
+                    setItalic(nextItalic);
+                    pushLiveText({ italic: nextItalic });
+                  }}
+                  className={`h-9 w-9 rounded-lg border text-base italic font-serif flex items-center justify-center transition-colors cursor-pointer ${
+                    italic
+                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
+                  }`}
+                  title={isEn ? 'Italic' : 'Italique'}
+                >
+                  I
+                </button>
+              </div>
+
+              {/* Zone de texte multi-lignes façon TradingView */}
+              <div>
+                <textarea
+                  ref={textareaRef}
+                  rows={4}
+                  value={text}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setText(val);
+                    pushLiveText({ text: val });
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      handleOk();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      handleCancel();
+                    }
+                  }}
+                  placeholder={isEn ? 'Enter text...' : 'Écrivez votre texte ici (ex: BOS, CHoCH, OB...)...'}
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/90 p-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+
+              {/* Ligne Text alignment : [Top / Middle / Bottom] [Left / Center / Right] */}
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-sm text-slate-700 dark:text-slate-300 font-medium">
+                  Text alignment
+                </span>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={vAlign}
+                    onChange={(e) => {
+                      const nextV = e.target.value;
+                      setVAlign(nextV);
+                      pushLiveText({ vAlign: nextV });
+                    }}
+                    className="h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="top">Top</option>
+                    <option value="middle">Middle</option>
+                    <option value="bottom">Bottom</option>
+                  </select>
+
+                  <select
+                    value={hAlign}
+                    onChange={(e) => {
+                      const nextH = e.target.value;
+                      setHAlign(nextH);
+                      pushLiveText({ hAlign: nextH });
+                    }}
+                    className="h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="left">Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'style' && (
+            <div className="space-y-4">
+              {/* Couleur du tracé */}
+              <div>
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
+                  <span>{isEn ? 'Line / Tool Color' : 'Couleur de l’outil'}</span>
+                  <span className="font-mono uppercase text-slate-900 dark:text-white">{lineColor}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[
+                    '#3b82f6',
+                    '#22c55e',
+                    '#ef4444',
+                    '#f97316',
+                    '#eab308',
+                    '#a855f7',
+                    '#06b6d4',
+                    '#ec4899',
+                    '#000000',
+                    '#ffffff',
+                    '#64748b',
+                  ].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => onUpdateStyle?.(c, lineSize, lineStyle)}
+                      className={`h-6 w-6 rounded-md border transition-transform cursor-pointer hover:scale-110 ${
+                        lineColor === c ? 'ring-2 ring-blue-500 scale-110' : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                  <label className="h-6 w-6 rounded-md border border-slate-300 dark:border-slate-700 flex items-center justify-center cursor-pointer relative overflow-hidden">
+                    <Palette className="h-3.5 w-3.5 text-slate-500" />
+                    <input
+                      type="color"
+                      value={lineColor?.startsWith('#') && lineColor.length === 7 ? lineColor : '#3b82f6'}
+                      onChange={(e) => onUpdateStyle?.(e.target.value, lineSize, lineStyle)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Épaisseur */}
+              <div>
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
+                  <span>{isEn ? 'Thickness' : 'Épaisseur'}</span>
+                  <span className="text-slate-900 dark:text-white">{lineSize} px</span>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[1, 2, 3, 4, 5].map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => onUpdateStyle?.(lineColor, w, lineStyle)}
+                      className={`h-8 rounded-lg border flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${
+                        lineSize === w
+                          ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white font-bold'
+                          : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <span className="w-5 rounded-full bg-current" style={{ height: `${w}px` }} />
+                      <span className="text-[10px] leading-none">{w}px</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Style de ligne */}
+              <div>
+                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
+                  {isEn ? 'Line Style' : 'Type de ligne'}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStyle?.(lineColor, lineSize, 'solid')}
+                    className={`h-9 px-3 rounded-lg border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                      lineStyle === 'solid'
+                        ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white font-bold'
+                        : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <span className="w-6 h-[2px] bg-current inline-block" />
+                    <span className="text-xs">{isEn ? 'Solid' : 'Continu'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStyle?.(lineColor, lineSize, 'dashed')}
+                    className={`h-9 px-3 rounded-lg border flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                      lineStyle === 'dashed'
+                        ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white font-bold'
+                        : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <span className="w-6 h-[2px] border-b-2 border-dashed border-current inline-block" />
+                    <span className="text-xs">{isEn ? 'Dashed' : 'Pointillé'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'coordinates' && (
+            <div className="space-y-3">
+              {coordPrices.length === 0 ? (
+                <p className="text-xs text-slate-500">Aucune coordonnée modifiable pour cet outil.</p>
+              ) : (
+                coordPrices.map((val, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      #{idx + 1} (Price)
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={val}
+                      onChange={(e) => {
+                        const next = [...coordPrices];
+                        next[idx] = e.target.value;
+                        setCoordPrices(next);
+                        const num = parseFloat(e.target.value);
+                        if (!isNaN(num)) {
+                          onUpdatePoints?.(idx, num);
+                        }
+                      }}
+                      className="h-9 w-44 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {activeTab === 'visibility' && (
+            <div className="space-y-2.5 text-sm">
+              {[
+                { key: 'minutes', label: 'Minutes' },
+                { key: 'hours', label: isEn ? 'Hours' : 'Heures (H1, H4)' },
+                { key: 'days', label: isEn ? 'Days' : 'Jours (D1)' },
+                { key: 'weeks', label: isEn ? 'Weeks' : 'Semaines (W1)' },
+                { key: 'months', label: isEn ? 'Months' : 'Mois (MN)' },
+              ].map((item) => (
+                <label key={item.key} className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={visibility[item.key]}
+                    onChange={(e) => setVisibility({ ...visibility, [item.key]: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 accent-slate-900 dark:accent-white"
+                  />
+                  <span className="text-slate-700 dark:text-slate-200">{item.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pied de modale façon TradingView : [Template v] à gauche, [Cancel] [Ok] à droite */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowTemplateMenu((v) => !v)}
+              className="h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+            >
+              <span>Template</span>
+              <span className="text-[10px]">⌄</span>
+            </button>
+            {showTemplateMenu && (
+              <div className="absolute bottom-11 left-0 z-30 w-44 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVAlign('middle');
+                    setHAlign('center');
+                    setFontSize(18);
+                    pushLiveText({ vAlign: 'middle', hAlign: 'center', fontSize: 18 });
+                    setShowTemplateMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Middle + Center (Défaut)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVAlign('top');
+                    setHAlign('center');
+                    pushLiveText({ vAlign: 'top', hAlign: 'center' });
+                    setShowTemplateMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Top + Center (Au-dessus)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setText('');
+                    pushLiveText({ text: '' });
+                    setShowTemplateMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  {isEn ? 'Clear text' : 'Effacer le texte'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="h-9 px-4 rounded-lg border border-slate-400 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleOk}
+              className="h-9 px-5 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-200 text-sm font-bold text-white dark:text-slate-900 transition-colors cursor-pointer"
+            >
+              Ok
+            </button>
           </div>
         </div>
       </div>
@@ -2870,8 +3814,9 @@ export function TextAnnotationModal({
 export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, onUpdateStyle, className = '' }) {
   const { language } = useLanguageStore();
   const isEn = language === 'en';
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [textModalOpen, setTextModalOpen] = useState(() =>
+  const [tvModalOpen, setTvModalOpen] = useState(false);
+  const [tvModalTab, setTvModalTab] = useState('text');
+  const [inlineTextModalOpen, setInlineTextModalOpen] = useState(() =>
     Boolean(overlay?.name === 'text' && (!overlay?.extendData?.text || overlay?.extendData?.isNew || overlay?._editTrigger))
   );
 
@@ -2879,7 +3824,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
   const currentLineStyle = overlay?.styles?.line || {};
   const currentPolyStyle = overlay?.styles?.polygon || overlay?.styles?.rect || {};
   const [color, setColor] = useState(currentPolyStyle.borderColor || currentLineStyle.color || '#3b82f6');
-  const [size, setSize] = useState(currentPolyStyle.borderSize || currentLineStyle.size || 2.5);
+  const [size, setSize] = useState(currentPolyStyle.borderSize || currentLineStyle.size || 2);
   const [dashStyle, setDashStyle] = useState(currentPolyStyle.borderStyle || currentLineStyle.style || 'solid');
 
   useEffect(() => {
@@ -2892,11 +3837,15 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     if (sz) setSize(sz);
     const st = sPoly.borderStyle || sLine.style;
     if (st) setDashStyle(st);
-    setSettingsOpen(false);
 
-    // Ouvrir immédiatement la zone d'écriture directe dès que l'utilisateur clique sur l'écran avec l'outil texte
+    // Si l'utilisateur clique avec l'outil Texte sur l'écran -> ouvrir la zone d'écriture directe à l'endroit cliqué
     if (overlay.name === 'text' && (!overlay.extendData?.text || overlay.extendData?.isNew || overlay._editTrigger)) {
-      setTextModalOpen(true);
+      setInlineTextModalOpen(true);
+    } else if (overlay.name !== 'text' && overlay._editTrigger) {
+      // Double-clic sur un outil d'analyse (Trendline, Rectangle, etc.) -> ouvrir la modale TradingView sur l'onglet Text
+      overlay._editTrigger = null;
+      setTvModalTab('text');
+      setTvModalOpen(true);
     }
   }, [overlay?.id, overlay?._editTrigger]);
 
@@ -2948,7 +3897,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
             size: newSize,
           },
           text: {
-            color: '#ffffff',
+            color: newColor,
             borderColor: newColor,
           },
         },
@@ -2974,18 +3923,21 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     }
   };
 
-  const updateOverlayTextData = ({ text: newText, color: newColor, fontSize: newSize, align: newAlign, bold: newBold }, finalize = false) => {
+  const updateOverlayTextData = ({ text: newText, color: newColor, textColor: newTextColor, fontSize: newSize, align: newAlign, vAlign: newVAlign, bold: newBold, italic: newItalic }, finalize = false) => {
     const chart = chartRef?.current;
     if (!chart || !overlay?.id) return;
     try {
+      const resolvedTextColor = newTextColor || newColor || color || '#3b82f6';
       const ext = {
         ...(typeof overlay.extendData === 'object' ? overlay.extendData : {}),
         text: newText,
-        color: newColor,
-        textColor: '#ffffff',
-        fontSize: newSize,
-        align: newAlign || 'left',
+        color: resolvedTextColor,
+        textColor: resolvedTextColor,
+        fontSize: Number(newSize) || 18,
+        align: newAlign || 'center',
+        vAlign: newVAlign || 'middle',
         bold: newBold !== false,
+        italic: Boolean(newItalic),
         isNew: !finalize,
       };
       chart.overrideOverlay({
@@ -2995,9 +3947,9 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           ...(overlay.styles || {}),
           text: {
             ...(overlay.styles?.text || {}),
-            color: '#ffffff',
-            borderColor: newColor,
-            size: newSize,
+            color: resolvedTextColor,
+            borderColor: resolvedTextColor,
+            size: Number(newSize) || 18,
           },
         },
       });
@@ -3012,6 +3964,21 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     }
   };
 
+  const handleUpdatePointPrice = (pointIdx, newPrice) => {
+    const chart = chartRef?.current;
+    if (!chart || !overlay?.id || !Array.isArray(overlay.points)) return;
+    try {
+      const nextPoints = overlay.points.map((pt, i) => (i === pointIdx ? { ...pt, value: newPrice } : pt));
+      chart.overrideOverlay({
+        id: overlay.id,
+        points: nextPoints,
+      });
+      overlay.points = nextPoints;
+      chart.adjustPaneViewport?.(false, true, true, true, true);
+      chart._lfxSaveDrawings?.();
+    } catch (_) {}
+  };
+
   const handleApplyText = (payload) => updateOverlayTextData(payload, true);
   const handleLiveTextChange = (payload) => updateOverlayTextData(payload, false);
 
@@ -3019,7 +3986,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
 
   return (
     <div className={`pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center ${className}`}>
-      {/* Barre principale */}
+      {/* Barre flottante façon TradingView */}
       <div className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-card/95 border border-primary/50 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-150">
         <div className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
@@ -3028,9 +3995,14 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           </span>
         </div>
 
-        {/* Pastille indiquant la couleur active */}
-        <span
-          className="h-3 w-3 rounded-full border border-white/40 shadow-xs shrink-0"
+        {/* Pastille de couleur rapide */}
+        <button
+          type="button"
+          onClick={() => {
+            setTvModalTab('style');
+            setTvModalOpen(true);
+          }}
+          className="h-3.5 w-3.5 rounded-full border border-white/40 shadow-xs shrink-0 cursor-pointer hover:scale-110 transition-transform"
           style={{ backgroundColor: color }}
           title={isEn ? `Color: ${color}` : `Couleur: ${color}`}
         />
@@ -3051,25 +4023,35 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           </Button>
         )}
 
-        {/* Bouton Texte / Annotation pour écrire sur le graphique ou sur l'outil */}
+        {/* Bouton Texte (T+) : ouvre l'onglet Text des paramètres TradingView pour les outils, ou la saisie directe pour Texte */}
         <Button
           size="sm"
           variant={overlay.name === 'text' ? 'default' : 'ghost'}
           className={`h-6 px-2 text-xs gap-1.5 cursor-pointer ${overlay.name === 'text' ? 'bg-primary text-primary-foreground font-bold shadow-sm' : 'hover:bg-muted text-muted-foreground hover:text-foreground'}`}
-          onClick={() => setTextModalOpen(true)}
-          title={isEn ? "Add or edit text explanation on this tool" : "Écrire ou modifier le texte explicatif sur cet outil"}
+          onClick={() => {
+            if (overlay.name === 'text') {
+              setInlineTextModalOpen(true);
+            } else {
+              setTvModalTab('text');
+              setTvModalOpen(true);
+            }
+          }}
+          title={isEn ? "Add or edit text on this tool (TradingView style)" : "Écrire ou paramétrer le texte sur cet outil (Style TradingView)"}
         >
           <Type className="h-3.5 w-3.5" />
-          <span>{overlay.extendData?.text ? (isEn ? "Edit Text" : "Modifier texte") : (isEn ? "Write Text" : "Écrire texte")}</span>
+          <span>{overlay.extendData?.text ? (isEn ? "Text" : "Texte") : (isEn ? "+ Text" : "+ Texte")}</span>
         </Button>
 
-        {/* Bouton Engrenage : paramètres couleur, épaisseur, trait continu/discontinu */}
+        {/* Bouton Engrenage (Paramètres complets TradingView : Style | Text | Coordinates | Visibility) */}
         <Button
           size="sm"
           variant="ghost"
-          className={`h-6 w-6 p-0 hover:bg-muted cursor-pointer transition-colors ${settingsOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          onClick={() => setSettingsOpen((prev) => !prev)}
-          title={isEn ? "Tool settings (Color, Thickness, Solid / Dashed line)" : "Paramètres de l'outil (Couleur, Épaisseur, Trait continu / discontinu)"}
+          className={`h-6 w-6 p-0 hover:bg-muted cursor-pointer transition-colors ${tvModalOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => {
+            setTvModalTab('text');
+            setTvModalOpen(true);
+          }}
+          title={isEn ? "Settings (Style, Text, Coordinates, Visibility)" : "Paramètres (Style, Texte, Coordonnées, Visibilité)"}
         >
           <Settings className="h-3.5 w-3.5" />
         </Button>
@@ -3097,10 +4079,10 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
         </button>
       </div>
 
-      {/* Zone de saisie directe du texte sur la zone cliquée du graphique */}
+      {/* Zone de saisie directe sur le graphique (pour l'outil Texte / Annotation) */}
       <TextAnnotationModal
-        open={textModalOpen}
-        onClose={() => setTextModalOpen(false)}
+        open={inlineTextModalOpen}
+        onClose={() => setInlineTextModalOpen(false)}
         onCancelEmpty={() => {
           if (overlay.name === 'text') {
             onDelete?.(overlay);
@@ -3108,119 +4090,32 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
         }}
         currentText={typeof overlay.extendData === 'string' ? overlay.extendData : (overlay.extendData?.text || '')}
         currentAlign={overlay.extendData?.align || 'left'}
+        currentVAlign={overlay.extendData?.vAlign || 'middle'}
         currentBold={overlay.extendData?.bold !== false}
-        currentFontSize={overlay.extendData?.fontSize || 14}
-        currentColor={overlay.extendData?.color || overlay.styles?.text?.borderColor || color}
+        currentItalic={Boolean(overlay.extendData?.italic)}
+        currentFontSize={overlay.extendData?.fontSize || 18}
+        currentColor={overlay.extendData?.textColor || overlay.extendData?.color || overlay.styles?.text?.borderColor || color}
         anchorClientPos={overlay._clientPixel || null}
         onApply={handleApplyText}
         onLiveChange={handleLiveTextChange}
         isEn={isEn}
       />
 
-      {/* Popover Paramètres de l'outil */}
-      {settingsOpen && (
-        <div className="mt-1.5 p-3 rounded-xl bg-card/98 border border-border shadow-2xl backdrop-blur-md w-72 max-w-[90vw] animate-in fade-in slide-in-from-top-1 duration-150 text-xs flex flex-col gap-3">
-          {/* Section 1 : Couleur */}
-          <div>
-            <div className="flex items-center justify-between text-muted-foreground font-semibold mb-1.5 text-[11px]">
-              <span>{isEn ? 'Color' : 'Couleur'}</span>
-              <span className="font-mono text-[10px] uppercase text-foreground">{color}</span>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {[
-                '#3b82f6', // Bleu
-                '#22c55e', // Vert
-                '#ef4444', // Rouge
-                '#f97316', // Orange
-                '#eab308', // Jaune
-                '#a855f7', // Violet
-                '#06b6d4', // Cyan
-                '#ec4899', // Rose
-                '#ffffff', // Blanc
-                '#64748b', // Gris
-              ].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => applyOverlayStyle(c, size, dashStyle)}
-                  className={`h-5 w-5 rounded-md border transition-transform cursor-pointer hover:scale-110 ${color === c ? 'ring-2 ring-primary ring-offset-1 ring-offset-background scale-110' : 'border-white/20'}`}
-                  style={{ backgroundColor: c }}
-                  title={c}
-                />
-              ))}
-              {/* Pipette / Sélecteur personnalisé */}
-              <label
-                className="h-5 w-5 rounded-md border border-white/20 flex items-center justify-center cursor-pointer hover:bg-muted transition-colors relative overflow-hidden"
-                title={isEn ? "Custom color" : "Couleur personnalisée"}
-              >
-                <Palette className="h-3 w-3 text-muted-foreground" />
-                <input
-                  type="color"
-                  value={color.startsWith('#') && color.length === 7 ? color : '#3b82f6'}
-                  onChange={(e) => applyOverlayStyle(e.target.value, size, dashStyle)}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="h-px bg-border/60" />
-
-          {/* Section 2 : Épaisseur */}
-          <div>
-            <div className="flex items-center justify-between text-muted-foreground font-semibold mb-1.5 text-[11px]">
-              <span>{isEn ? 'Thickness' : 'Épaisseur'}</span>
-              <span className="text-foreground">{size} px</span>
-            </div>
-            <div className="grid grid-cols-5 gap-1">
-              {[1, 2, 3, 4, 5].map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => applyOverlayStyle(color, w, dashStyle)}
-                  className={`h-7 rounded-md border flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${size === w ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                  title={`${w}px`}
-                >
-                  <span
-                    className="w-4 rounded-full bg-current"
-                    style={{ height: `${w}px` }}
-                  />
-                  <span className="text-[10px] leading-none">{w}px</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="h-px bg-border/60" />
-
-          {/* Section 3 : Type de trait (Continu vs Discontinu) */}
-          <div>
-            <div className="text-muted-foreground font-semibold mb-1.5 text-[11px]">
-              {isEn ? 'Line style' : 'Type de trait'}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => applyOverlayStyle(color, size, 'solid')}
-                className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${dashStyle === 'solid' ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title={isEn ? "Solid line" : "Trait continu"}
-              >
-                <span className="w-5 h-[2px] bg-current inline-block" />
-                <span className="text-[11px]">{isEn ? 'Solid' : 'Continu'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => applyOverlayStyle(color, size, 'dashed')}
-                className={`h-7 px-2 rounded-md border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${dashStyle === 'dashed' ? 'bg-primary/20 border-primary text-primary font-bold' : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                title={isEn ? "Dashed line" : "Trait discontinu"}
-              >
-                <span className="w-5 h-[2px] border-b-2 border-dashed border-current inline-block" />
-                <span className="text-[11px]">{isEn ? 'Dashed' : 'Discontinu'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modale complète TradingView (Style | Text | Coordinates | Visibility) */}
+      <TradingViewToolSettingsModal
+        open={tvModalOpen}
+        initialTab={tvModalTab}
+        overlay={overlay}
+        toolLabel={label}
+        lineColor={color}
+        lineSize={size}
+        lineStyle={dashStyle}
+        onUpdateStyle={applyOverlayStyle}
+        onUpdateText={updateOverlayTextData}
+        onUpdatePoints={handleUpdatePointPrice}
+        onClose={() => setTvModalOpen(false)}
+        isEn={isEn}
+      />
     </div>
   );
 }

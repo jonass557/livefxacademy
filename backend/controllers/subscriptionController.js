@@ -1,6 +1,108 @@
+const crypto = require('crypto');
 const { SubscriptionPlan, PaymentTransaction, User, BrandingSettings } = require('../models');
 
 const SEBPAY_API_URL = 'https://newapi.sebpay.bj/api/v1';
+
+// Indicatifs téléphoniques internationaux par code ISO pays (format SEBPAY sans +)
+const COUNTRY_DIAL_CODES = {
+  BJ: '229',
+  CI: '225',
+  TG: '228',
+  SN: '221',
+  BF: '226',
+  ML: '223',
+  NE: '227',
+  CM: '237',
+  GN: '224',
+  GA: '241',
+  CG: '242',
+  CD: '243',
+};
+
+// Opérateurs par défaut par pays (fallback si GET /operators indisponible)
+const DEFAULT_OPERATORS_BY_COUNTRY = {
+  BJ: [
+    { code: 'mtn', slug: 'mtn-bj', name: 'MTN Mobile Money (Bénin)', otp_required: false },
+    { code: 'moov', slug: 'moov-bj', name: 'Moov Money (Bénin)', otp_required: false },
+    { code: 'celtiis', slug: 'celtiis-bj', name: 'Celtiis Cash (Bénin)', otp_required: false },
+  ],
+  CI: [
+    { code: 'mtn', slug: 'mtn-ci', name: 'MTN MoMo (Côte d\'Ivoire)', otp_required: false },
+    { code: 'moov', slug: 'moov-ci', name: 'Moov Money (Côte d\'Ivoire)', otp_required: false },
+    { code: 'orange', slug: 'orange-ci', name: 'Orange Money (Côte d\'Ivoire)', otp_required: true },
+    { code: 'wave', slug: 'wave-ci', name: 'Wave (Côte d\'Ivoire)', otp_required: false },
+  ],
+  TG: [
+    { code: 'tmoney', slug: 'tmoney-tg', name: 'TMoney / Yas (Togo)', otp_required: false },
+    { code: 'moov', slug: 'moov-tg', name: 'Moov Money (Togo)', otp_required: false },
+  ],
+  SN: [
+    { code: 'wave', slug: 'wave-sn', name: 'Wave (Sénégal)', otp_required: false },
+    { code: 'orange', slug: 'orange-sn', name: 'Orange Money (Sénégal)', otp_required: true },
+    { code: 'free', slug: 'free-sn', name: 'Free Money / Yas (Sénégal)', otp_required: false },
+  ],
+  BF: [
+    { code: 'orange', slug: 'orange-bf', name: 'Orange Money (Burkina Faso)', otp_required: true },
+    { code: 'moov', slug: 'moov-bf', name: 'Moov Money (Burkina Faso)', otp_required: false },
+  ],
+  CM: [
+    { code: 'mtn', slug: 'mtn-cm', name: 'MTN Mobile Money (Cameroun)', otp_required: false },
+    { code: 'orange', slug: 'orange-cm', name: 'Orange Money (Cameroun)', otp_required: false },
+  ],
+  ML: [
+    { code: 'orange', slug: 'orange-ml', name: 'Orange Money (Mali)', otp_required: false },
+    { code: 'moov', slug: 'moov-ml', name: 'Moov Money (Mali)', otp_required: false },
+  ],
+  NE: [
+    { code: 'airtel', slug: 'airtel-ne', name: 'Airtel Money (Niger)', otp_required: false },
+    { code: 'moov', slug: 'moov-ne', name: 'Moov Money (Niger)', otp_required: false },
+  ],
+};
+
+// Normalise un plan pour exposer systématiquement id et _id
+function serializePlan(planDoc) {
+  if (!planDoc) return null;
+  const obj = typeof planDoc.toObject === 'function' ? planDoc.toObject({ virtuals: true }) : { ...planDoc };
+  const strId = String(obj._id || obj.id || '');
+  return {
+    ...obj,
+    _id: strId,
+    id: strId,
+  };
+}
+
+// Formate le numéro au format international sans (+) exigé par SEBPAY (ex: "22997000000")
+function normalizeSebpayPhone(rawPhone, countryCode) {
+  let digits = String(rawPhone || '').replace(/[^\d]/g, '');
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2);
+  }
+  const iso = String(countryCode || 'BJ').trim().toUpperCase();
+  const dial = COUNTRY_DIAL_CODES[iso];
+  if (dial && digits && !digits.startsWith(dial)) {
+    digits = `${dial}${digits}`;
+  }
+  return digits;
+}
+
+// Active l'abonnement d'un utilisateur lorsqu'une transaction SEBPAY passe à 'approved' / 'completed'
+async function activateUserSubscriptionFromTransaction(transaction, planDoc) {
+  if (!transaction || !transaction.user_id) return null;
+  const user = await User.findById(transaction.user_id);
+  if (!user) return null;
+
+  const plan = planDoc || (transaction.plan_id ? await SubscriptionPlan.findById(transaction.plan_id).catch(() => null) : null);
+  const durationDays = Number(plan?.duration_days) || 30;
+  const now = new Date();
+  const baseDate = (user.subscription_expires_at && new Date(user.subscription_expires_at) > now)
+    ? new Date(user.subscription_expires_at)
+    : now;
+
+  user.subscription_expires_at = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+  user.subscription_plan_name = plan?.name || 'Plan Souscription';
+  await user.save();
+  return user;
+}
 
 // ----------------- PLANS DE SOUSCRIPTION -----------------
 
@@ -8,7 +110,7 @@ const SEBPAY_API_URL = 'https://newapi.sebpay.bj/api/v1';
 exports.getActivePlans = async (req, res) => {
   try {
     const plans = await SubscriptionPlan.find({ is_active: true, is_deleted: { $ne: true } }).sort({ price_xaf: 1 });
-    res.json(plans);
+    res.json(plans.map(serializePlan));
   } catch (err) {
     console.error('getActivePlans error:', err);
     res.status(500).json({ message: 'Erreur lors du chargement des plans' });
@@ -18,8 +120,8 @@ exports.getActivePlans = async (req, res) => {
 // Admin : Liste de tous les plans
 exports.getAdminPlans = async (req, res) => {
   try {
-    const plans = await SubscriptionPlan.find({ is_deleted: { $ne: true } }).sort({ createdAt: -1 });
-    res.json(plans);
+    const plans = await SubscriptionPlan.find({ is_deleted: { $ne: true } }).sort({ created_at: -1 });
+    res.json(plans.map(serializePlan));
   } catch (err) {
     console.error('getAdminPlans error:', err);
     res.status(500).json({ message: 'Erreur serveur' });
@@ -45,7 +147,7 @@ exports.createPlan = async (req, res) => {
       created_by: req.user.id
     });
 
-    res.status(201).json(plan);
+    res.status(201).json(serializePlan(plan));
   } catch (err) {
     console.error('createPlan error:', err);
     res.status(500).json({ message: 'Erreur lors de la création du plan' });
@@ -68,7 +170,7 @@ exports.updatePlan = async (req, res) => {
     }
     const plan = await SubscriptionPlan.findByIdAndUpdate(id, updateData, { new: true });
     if (!plan) return res.status(404).json({ message: 'Plan non trouvé' });
-    res.json(plan);
+    res.json(serializePlan(plan));
   } catch (err) {
     console.error('updatePlan error:', err);
     res.status(500).json({ message: 'Erreur lors de la mise à jour' });
@@ -95,7 +197,7 @@ exports.deletePlan = async (req, res) => {
 exports.startTrial = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { plan_id } = req.body;
+    const planId = req.body.plan_id || req.body.planId || req.body.id || req.body._id;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
 
@@ -103,7 +205,11 @@ exports.startTrial = async (req, res) => {
       return res.status(400).json({ message: 'Vous avez déjà bénéficié d\'une période d\'essai gratuit.' });
     }
 
-    const plan = await SubscriptionPlan.findById(plan_id);
+    let plan = planId ? await SubscriptionPlan.findById(planId).catch(() => null) : null;
+    if (!plan) {
+      const activePlans = await SubscriptionPlan.find({ is_active: true, is_deleted: { $ne: true } }).sort({ price_xaf: 1 });
+      if (activePlans.length === 1) plan = activePlans[0];
+    }
     if (!plan || !plan.is_active || plan.is_deleted) {
       return res.status(404).json({ message: 'Plan indisponible' });
     }
@@ -164,34 +270,95 @@ exports.startTrial = async (req, res) => {
   }
 };
 
-// ----------------- PAIEMENT SEBPAY MOBILE MONEY -----------------
+// ----------------- PAIEMENT SEBPAY MOBILE MONEY (https://new.sebpay.bj/fr/docs) -----------------
 
-// Initier un paiement Mobile Money SEBPAY
+// Récupérer la liste des opérateurs Mobile Money supportés par SEBPAY (GET /api/v1/operators)
+exports.getSebpayOperators = async (req, res) => {
+  try {
+    const country = String(req.query.country || '').trim().toUpperCase();
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+    if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
+      const url = country
+        ? `${SEBPAY_API_URL}/operators?country=${encodeURIComponent(country)}`
+        : `${SEBPAY_API_URL}/operators`;
+      const sebRes = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-Public-Key': sebpayPublicKey,
+          'X-Secret-Key': sebpaySecretKey,
+          'Accept': 'application/json',
+        },
+      }).catch(() => null);
+
+      if (sebRes && sebRes.ok) {
+        const json = await sebRes.json().catch(() => null);
+        const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : null);
+        if (list && list.length > 0) {
+          return res.json(list);
+        }
+      }
+    }
+
+    if (country && DEFAULT_OPERATORS_BY_COUNTRY[country]) {
+      return res.json(DEFAULT_OPERATORS_BY_COUNTRY[country]);
+    }
+    return res.json(DEFAULT_OPERATORS_BY_COUNTRY.BJ);
+  } catch (err) {
+    console.error('getSebpayOperators error:', err);
+    res.json(DEFAULT_OPERATORS_BY_COUNTRY.BJ);
+  }
+};
+
+// Initier un paiement Mobile Money SEBPAY (POST https://newapi.sebpay.bj/api/v1/collections)
 exports.initiateMobilePayment = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { plan_id, phone, operator, country, otp_code } = req.body;
-
-    if (!plan_id || !phone || !operator || !country) {
-      return res.status(400).json({ message: 'Veuillez renseigner le plan, le téléphone, l\'opérateur et le pays' });
-    }
-
-    const plan = await SubscriptionPlan.findById(plan_id);
-    if (!plan || !plan.is_active) {
-      return res.status(404).json({ message: 'Plan de souscription indisponible' });
-    }
-
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
 
+    const rawPlanId = req.body.plan_id || req.body.planId || req.body.id || req.body._id;
+    const rawPlanName = req.body.plan_name || req.body.planName;
+    const rawPhone = String(req.body.phone || req.body.phoneNumber || req.body.customer_phone || user.phone || '').trim();
+    const rawOperator = String(req.body.operator || req.body.provider || 'mtn').trim();
+    const rawCountry = String(req.body.country || 'BJ').trim().toUpperCase();
+    const otp_code = req.body.otp_code || req.body.otpCode || req.body.otp;
+
+    // Résolution robuste du plan (par ID, par nom, ou fallback si 1 seul plan actif existe)
+    let plan = null;
+    if (rawPlanId) {
+      plan = await SubscriptionPlan.findById(rawPlanId).catch(() => null);
+    }
+    if (!plan && rawPlanName) {
+      plan = await SubscriptionPlan.findOne({ name: rawPlanName, is_active: true, is_deleted: { $ne: true } }).catch(() => null);
+    }
+    if (!plan) {
+      const activePlans = await SubscriptionPlan.find({ is_active: true, is_deleted: { $ne: true } }).sort({ price_xaf: 1 });
+      if (activePlans.length >= 1) {
+        plan = activePlans[0];
+      }
+    }
+
+    if (!plan || !plan.is_active) {
+      return res.status(404).json({ message: 'Plan de souscription indisponible ou introuvable' });
+    }
+
+    if (!rawPhone || !rawOperator || !rawCountry) {
+      return res.status(400).json({
+        message: 'Veuillez renseigner votre numéro de téléphone Mobile Money, l\'opérateur et le pays.'
+      });
+    }
+
     // Récupérer les clés API SEBPAY configurées par l'administrateur
     const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
-    const sebpayPublicKey = branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY;
-    const sebpaySecretKey = branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY;
+    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
 
-    if (!sebpayPublicKey || !sebpaySecretKey) {
+    if (!sebpayPublicKey || !sebpaySecretKey || sebpaySecretKey.includes('••')) {
       return res.status(400).json({
-        message: 'Le système de paiement Mobile Money n\'est pas encore configuré par l\'administrateur (clés API SEBPAY manquantes).'
+        message: 'Le système de paiement Mobile Money n\'est pas encore configuré par l\'administrateur (clés API SEBPAY manquantes dans l\'espace Admin > Logos & Identité Visuelle).'
       });
     }
 
@@ -210,21 +377,26 @@ exports.initiateMobilePayment = async (req, res) => {
       }
     }
 
-    // Formater le numéro de téléphone sans le (+)
-    const cleanPhone = String(phone).replace(/\+/g, '').replace(/\s+/g, '');
-    const externalRef = `SUB-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Formater le numéro de téléphone au format international sans (+) comme exigé par SEBPAY (ex: 22997000000)
+    const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
+    if (!cleanPhone || cleanPhone.length < 8) {
+      return res.status(400).json({
+        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 97000000).'
+      });
+    }
 
+    const externalRef = `SUB-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
 
     // Créer la transaction locale d'abord
     const transaction = await PaymentTransaction.create({
       user_id: user._id,
       plan_id: plan._id,
-      amount: plan.price_xaf,
+      amount: Math.round(Number(plan.price_xaf)),
       currency: 'XOF',
       phone: cleanPhone,
-      operator: operator.toLowerCase(),
-      country: country.toUpperCase(),
+      operator: rawOperator.toLowerCase(),
+      country: rawCountry,
       external_reference: externalRef,
       status: 'pending',
       referrer_id: referrerId,
@@ -232,18 +404,20 @@ exports.initiateMobilePayment = async (req, res) => {
       referral_percentage: referralPct
     });
 
-    // Appeler l'API de collectes SEBPAY (https://new.sebpay.bj/fr/docs/collections)
+    // Appeler l'API de collectes SEBPAY (POST https://newapi.sebpay.bj/api/v1/collections)
     const payload = {
-      amount: plan.price_xaf,
+      amount: Math.round(Number(plan.price_xaf)),
       currency: 'XOF',
       phone: cleanPhone,
-      operator: operator.toLowerCase(),
-      country: country.toUpperCase(),
+      operator: rawOperator.toLowerCase(),
+      country: rawCountry,
       external_reference: externalRef,
-      callback_url: callbackUrl
+      callback_url: callbackUrl,
+      customer_name: user.full_name || 'Membre LiveFX',
+      customer_email: user.email || undefined,
     };
 
-    if (otp_code) {
+    if (otp_code && String(otp_code).trim()) {
       payload.otp_code = String(otp_code).trim();
     }
 
@@ -253,7 +427,8 @@ exports.initiateMobilePayment = async (req, res) => {
         headers: {
           'X-Public-Key': sebpayPublicKey,
           'X-Secret-Key': sebpaySecretKey,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify(payload)
       });
@@ -261,31 +436,43 @@ exports.initiateMobilePayment = async (req, res) => {
       const resData = await sebResponse.json().catch(() => ({}));
       const dataPayload = resData.data || resData;
 
-      if (!sebResponse.ok) {
-        throw new Error(resData?.message || `Erreur SEBPAY HTTP ${sebResponse.status}`);
+      if (!sebResponse.ok || resData.success === false) {
+        const errCode = resData?.code || resData?.error_code || dataPayload?.code || '';
+        const isOtpRequired = sebResponse.status === 422 || String(errCode).toUpperCase().includes('OTP_REQUIRED');
+        transaction.status = 'failed';
+        transaction.sebpay_response = resData;
+        await transaction.save();
+
+        return res.status(isOtpRequired ? 422 : 400).json({
+          success: false,
+          otp_required: isOtpRequired,
+          code: errCode,
+          message: resData?.message || dataPayload?.message || (isOtpRequired
+            ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
+            : `Le paiement a été refusé par l'opérateur (HTTP ${sebResponse.status}). Vérifiez votre numéro et l'opérateur choisi.`)
+        });
       }
 
+      const sebStatus = String(dataPayload.status || 'pending').toLowerCase();
       transaction.transaction_id = dataPayload.transaction_id || '';
       transaction.provider_link = dataPayload.provider_link || '';
       transaction.sebpay_response = resData;
-      if (dataPayload.status === 'completed' || dataPayload.status === 'success') {
+
+      if (sebStatus === 'approved' || sebStatus === 'completed' || sebStatus === 'success') {
         transaction.status = 'completed';
-        const durationMs = (Number(plan.duration_days) || 30) * 24 * 60 * 60 * 1000;
-        const baseDate = (user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
-          ? new Date(user.subscription_expires_at)
-          : new Date();
-        user.subscription_expires_at = new Date(baseDate.getTime() + durationMs);
-        user.subscription_plan_name = plan.name;
-        await user.save();
+        await activateUserSubscriptionFromTransaction(transaction, plan);
+      } else if (sebStatus === 'rejected' || sebStatus === 'failed') {
+        transaction.status = 'failed';
       }
       await transaction.save();
 
       return res.json({
         success: true,
-        message: resData.message || 'Demande de paiement initiée. Veuillez valider sur votre téléphone.',
+        message: dataPayload.message || resData.message || 'Demande de paiement envoyée ! Veuillez confirmer sur votre téléphone Mobile Money.',
         transaction_id: transaction.transaction_id,
         external_reference: externalRef,
         provider_link: dataPayload.provider_link || null,
+        payment_url: dataPayload.provider_link || null,
         status: transaction.status
       });
     } catch (sebErr) {
@@ -294,10 +481,9 @@ exports.initiateMobilePayment = async (req, res) => {
       transaction.sebpay_response = { error: sebErr.message };
       await transaction.save();
 
-      const errMsg = sebErr.message || 'Erreur lors de l\'initiation du paiement Mobile Money chez SEBPAY';
       return res.status(400).json({
         success: false,
-        message: errMsg
+        message: sebErr.message || 'Erreur de connexion au service Mobile Money SEBPAY. Veuillez réessayer.'
       });
     }
   } catch (err) {
@@ -306,65 +492,122 @@ exports.initiateMobilePayment = async (req, res) => {
   }
 };
 
-// Webhook SEBPAY pour recevoir la confirmation automatique du paiement
+// Webhook SEBPAY (POST /api/subscriptions/webhook/sebpay) — Documentation: https://new.sebpay.bj/fr/docs/webhooks
 exports.sebpayWebhook = async (req, res) => {
   try {
-    const eventData = req.body;
+    const eventData = req.body || {};
     const ref = eventData.external_reference || eventData.data?.external_reference;
-    const status = (eventData.status || eventData.data?.status || '').toLowerCase();
+    const txId = eventData.transaction_id || eventData.data?.transaction_id;
+    const status = String(eventData.status || eventData.data?.status || '').toLowerCase();
 
-    if (!ref) {
-      return res.status(400).json({ message: 'Missing external_reference' });
+    if (!ref && !txId) {
+      return res.status(400).json({ message: 'Missing external_reference or transaction_id' });
     }
 
-    const transaction = await PaymentTransaction.findOne({ external_reference: ref }).populate('plan_id');
+    const query = ref ? { external_reference: ref } : { transaction_id: txId };
+    const transaction = await PaymentTransaction.findOne(query).populate('plan_id');
     if (!transaction) {
       return res.status(404).json({ message: 'Transaction not found' });
     }
 
-    if (status === 'completed' || status === 'success' || status === 'paid') {
-      const wasCompleted = transaction.status === 'completed';
-      transaction.status = 'completed';
-      if (!wasCompleted && transaction.user_id) {
-        const user = await User.findById(transaction.user_id);
-        if (user) {
-          const durationDays = Number(transaction.plan_id?.duration_days) || 30;
-          const baseDate = (user.subscription_expires_at && new Date(user.subscription_expires_at) > new Date())
-            ? new Date(user.subscription_expires_at)
-            : new Date();
-          user.subscription_expires_at = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
-          user.subscription_plan_name = transaction.plan_id?.name || 'Plan Souscription';
-          await user.save();
+    // Vérification optionnelle de la signature HMAC X-SebPay-Signature si clé secrète présente
+    const signature = req.headers['x-sebpay-signature'];
+    if (signature && req.rawBody) {
+      const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+      const secret = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+      if (secret && !secret.includes('••')) {
+        const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
+        if (signature !== expected) {
+          console.warn('[SEBPAY Webhook] Signature mismatch');
         }
       }
-    } else if (status === 'failed' || status === 'cancelled' || status === 'expired') {
-      transaction.status = 'failed';
     }
+
+    // Dans la doc SEBPAY v1, les statuts finaux sont 'approved' ou 'rejected'
+    if (status === 'approved' || status === 'completed' || status === 'success' || status === 'paid') {
+      const wasCompleted = transaction.status === 'completed';
+      transaction.status = 'completed';
+      if (txId && !transaction.transaction_id) transaction.transaction_id = txId;
+      if (!wasCompleted) {
+        await activateUserSubscriptionFromTransaction(transaction, transaction.plan_id);
+      }
+    } else if (status === 'rejected' || status === 'failed' || status === 'cancelled' || status === 'expired') {
+      if (transaction.status !== 'completed') {
+        transaction.status = 'failed';
+      }
+    }
+
     transaction.sebpay_response = eventData;
     await transaction.save();
 
-    res.json({ received: true });
+    res.status(200).json({ received: true });
   } catch (err) {
     console.error('sebpayWebhook error:', err);
     res.status(500).json({ message: 'Webhook processing error' });
   }
 };
 
-// Vérifier le statut d'une transaction (Polling frontend si besoin)
+// Vérifier le statut d'une transaction (avec revérification directe GET /api/v1/collections/{reference} chez SEBPAY si en attente)
 exports.checkPaymentStatus = async (req, res) => {
   try {
     const { reference } = req.params;
     const transaction = await PaymentTransaction.findOne({ external_reference: reference })
-      .populate('plan_id', 'name price_xaf');
+      .populate('plan_id', 'name price_xaf duration_days');
 
     if (!transaction) return res.status(404).json({ message: 'Transaction non trouvée' });
+
+    // Si la transaction est toujours 'pending', interroger GET /api/v1/collections/{id_or_reference}
+    // Comme indiqué dans la doc SEBPAY : "Si elle est en attente, Sebpay revérifie son statut auprès de l'opérateur."
+    if (transaction.status === 'pending') {
+      try {
+        const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+        const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+        const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+        if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
+          const lookupId = transaction.transaction_id || transaction.external_reference;
+          const sebRes = await fetch(`${SEBPAY_API_URL}/collections/${encodeURIComponent(lookupId)}`, {
+            method: 'GET',
+            headers: {
+              'X-Public-Key': sebpayPublicKey,
+              'X-Secret-Key': sebpaySecretKey,
+              'Accept': 'application/json',
+            },
+          }).catch(() => null);
+
+          if (sebRes && sebRes.ok) {
+            const sebJson = await sebRes.json().catch(() => ({}));
+            const sebData = sebJson.data || sebJson;
+            const liveStatus = String(sebData.status || '').toLowerCase();
+
+            if (liveStatus === 'approved' || liveStatus === 'completed' || liveStatus === 'success') {
+              transaction.status = 'completed';
+              transaction.sebpay_response = sebJson;
+              await transaction.save();
+              await activateUserSubscriptionFromTransaction(transaction, transaction.plan_id);
+            } else if (liveStatus === 'rejected' || liveStatus === 'failed') {
+              transaction.status = 'failed';
+              transaction.sebpay_response = sebJson;
+              await transaction.save();
+            }
+          }
+        }
+      } catch (pollErr) {
+        console.warn('checkPaymentStatus live SEBPAY poll warning:', pollErr.message);
+      }
+    }
+
+    const user = transaction.user_id ? await User.findById(transaction.user_id).lean().catch(() => null) : null;
 
     res.json({
       status: transaction.status,
       amount: transaction.amount,
       plan_name: transaction.plan_id?.name || transaction.sebpay_response?.plan_name || 'Abonnement',
       external_reference: transaction.external_reference,
-      provider_link: transaction.provider_link
+      provider_link: transaction.provider_link || null,
+      has_active_subscription: transaction.status === 'completed',
+      subscription_plan_name: user?.subscription_plan_name || null,
+      subscription_expires_at: user?.subscription_expires_at || null,
     });
   } catch (err) {
     console.error('checkPaymentStatus error:', err);
@@ -377,11 +620,12 @@ exports.getMySubscriptions = async (req, res) => {
   try {
     const list = await PaymentTransaction.find({ user_id: req.user.id })
       .populate('plan_id', 'name price_xaf duration_days')
-      .sort({ createdAt: -1 })
+      .sort({ created_at: -1 })
       .lean();
 
     const enriched = list.map((tx) => ({
       ...tx,
+      id: String(tx._id),
       plan_id: tx.plan_id || {
         name: tx.sebpay_response?.plan_name || 'Abonnement Offert (1 Mois Gratuit)',
         price_xaf: tx.amount || 0,
@@ -400,7 +644,8 @@ exports.getMySubscriptions = async (req, res) => {
 exports.grantFreeMonth = async (req, res) => {
   try {
     const { userId } = req.params;
-    const days = Number(req.body?.days) > 0 ? Number(req.body.days) : 30;
+    const rawDays = req.body?.days || req.body?.duration_days;
+    const days = Number(rawDays) > 0 ? Number(rawDays) : 30;
     const planName = req.body?.plan_name || 'Abonnement Offert (1 Mois Gratuit)';
 
     const user = await User.findById(userId);
@@ -440,7 +685,6 @@ exports.grantFreeMonth = async (req, res) => {
       },
     });
 
-    // Notification email à l'utilisateur (non-bloquant)
     try {
       const { sendMail } = require('../utils/mailer');
       if (user.email) {
@@ -520,4 +764,3 @@ exports.revokeSubscription = async (req, res) => {
     res.status(500).json({ message: 'Erreur lors de la révocation de l\'abonnement' });
   }
 };
-

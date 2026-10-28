@@ -49,13 +49,13 @@ exports.updateSettings = async (req, res) => {
   try {
     const { gemini_api_key, sebpay_public_key, sebpay_secret_key, referral_percentage } = req.body || {};
     const updateData = { updated_by: req.user.id };
-    if (gemini_api_key !== undefined) {
+    if (gemini_api_key !== undefined && !String(gemini_api_key).includes('••')) {
       updateData.gemini_api_key = String(gemini_api_key || '').trim();
     }
     if (sebpay_public_key !== undefined) {
       updateData.sebpay_public_key = String(sebpay_public_key || '').trim();
     }
-    if (sebpay_secret_key !== undefined) {
+    if (sebpay_secret_key !== undefined && !String(sebpay_secret_key).includes('••')) {
       updateData.sebpay_secret_key = String(sebpay_secret_key || '').trim();
     }
     if (referral_percentage !== undefined) {

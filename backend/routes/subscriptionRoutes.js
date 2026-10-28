@@ -5,6 +5,7 @@ const { authenticateToken, requireRole } = require('../middleware/authMiddleware
 
 // Plans publics / pour membres
 router.get('/plans', subscriptionController.getActivePlans);
+router.get('/operators', subscriptionController.getSebpayOperators);
 
 // Admin : gestion des plans
 router.get('/admin/plans', authenticateToken, requireRole(['admin']), subscriptionController.getAdminPlans);

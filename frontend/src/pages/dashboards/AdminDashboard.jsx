@@ -340,12 +340,13 @@ const AdminDashboard = () => {
         description: planForm.description,
         price_xaf: Number(planForm.price_xaf),
         duration_days: Number(planForm.duration_days),
+        trial_days: Math.max(0, Number(planForm.trial_days) || 0),
         features: feats,
         is_active: planForm.is_active
       };
 
       if (editingPlan) {
-        await api.put(`/subscriptions/admin/plans/${editingPlan.id}`, payload);
+        await api.put(`/subscriptions/admin/plans/${editingPlan.id || editingPlan._id}`, payload);
         toast.success('Plan mis à jour avec succès');
       } else {
         await api.post('/subscriptions/admin/plans', payload);
@@ -353,7 +354,7 @@ const AdminDashboard = () => {
       }
       setShowPlanModal(false);
       setEditingPlan(null);
-      setPlanForm({ name: '', description: '', price_xaf: '', duration_days: 30, features: '', is_active: true });
+      setPlanForm({ name: '', description: '', price_xaf: '', duration_days: 30, trial_days: 0, features: '', is_active: true });
       fetchAdminPlans();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erreur lors de l’enregistrement du plan');
@@ -4521,6 +4522,7 @@ const AdminDashboard = () => {
                             description: p.description || '',
                             price_xaf: p.price_xaf,
                             duration_days: p.duration_days,
+                            trial_days: p.trial_days || 0,
                             features: Array.isArray(p.features) ? p.features.join('\n') : '',
                             is_active: p.is_active
                           });
@@ -4532,7 +4534,7 @@ const AdminDashboard = () => {
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => handleDeletePlan(p.id)}
+                        onClick={() => handleDeletePlan(p.id || p._id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>

@@ -307,20 +307,61 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
 
   const handleInitiatePayment = async (e) => {
     e.preventDefault();
-    if (!selectedPlan) return;
+    if (!selectedPlan) {
+      toast.error(isEn ? 'Please select a subscription plan' : 'Veuillez sélectionner un plan de souscription');
+      return;
+    }
+    const cleanPhone = String(payForm.phone || '').trim();
+    if (!cleanPhone) {
+      toast.error(isEn ? 'Please enter your Mobile Money phone number' : 'Veuillez saisir votre numéro de téléphone Mobile Money');
+      return;
+    }
     setSubmittingPayment(true);
     try {
+      const planId = selectedPlan.id || selectedPlan._id;
       const res = await api.post('/subscriptions/pay/mobile', {
-        plan_id: selectedPlan.id,
-        phone: payForm.phone,
-        operator: payForm.operator,
-        country: payForm.country,
-        otp_code: payForm.otp_code || undefined,
+        plan_id: planId,
+        plan_name: selectedPlan.name,
+        phone: cleanPhone,
+        operator: payForm.operator || 'mtn',
+        country: payForm.country || 'BJ',
+        otp_code: payForm.otp_code ? String(payForm.otp_code).trim() : undefined,
       });
       setPaymentResult(res.data);
-      toast.success(res.data?.message || (isEn ? 'Payment initiated successfully' : 'Paiement initié avec succès'));
+      toast.success(res.data?.message || (isEn ? 'Payment initiated successfully' : 'Demande de paiement envoyée sur votre téléphone !'));
+      const redirectUrl = res.data?.provider_link || res.data?.payment_url;
+      if (redirectUrl) {
+        window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+      }
+      // Si la transaction est déjà complétée ou en attente, lancer la vérification automatique
+      if (res.data?.external_reference) {
+        let attempts = 0;
+        const pollTimer = setInterval(async () => {
+          attempts += 1;
+          if (attempts > 30) {
+            clearInterval(pollTimer);
+            return;
+          }
+          try {
+            const stRes = await api.get(`/subscriptions/status/${res.data.external_reference}`);
+            if (stRes.data?.status === 'completed') {
+              clearInterval(pollTimer);
+              toast.success(isEn ? 'Payment confirmed! Your subscription is now active.' : 'Paiement confirmé ! Votre abonnement est maintenant actif.');
+              setPaymentResult((prev) => ({ ...(prev || {}), status: 'completed', message: 'Paiement confirmé ! Votre abonnement est actif.' }));
+              fetchPlans();
+              api.get('/auth/me').then((meRes) => {
+                if (meRes.data) useAuthStore.getState().updateUser(meRes.data);
+              }).catch(() => {});
+            } else if (stRes.data?.status === 'failed') {
+              clearInterval(pollTimer);
+              toast.error(isEn ? 'Payment was declined or expired.' : 'Le paiement a échoué ou a été annulé.');
+              setPaymentResult(null);
+            }
+          } catch (_) {}
+        }, 4000);
+      }
     } catch (err) {
-      toast.error(err.response?.data?.message || (isEn ? 'Error initiating payment' : 'Erreur lors du paiement'));
+      toast.error(err.response?.data?.message || (isEn ? 'Error initiating payment' : 'Erreur lors du paiement Mobile Money'));
     } finally {
       setSubmittingPayment(false);
     }
@@ -1379,7 +1420,7 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
             {plans.map((p) => {
               const features = Array.isArray(p.features) ? p.features : [];
               return (
-                <Card key={p.id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
+                <Card key={p.id || p._id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
                   <CardHeader>
                     <div className="flex items-center justify-between gap-2">
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider">
@@ -1420,12 +1461,12 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
                       {p.trial_days > 0 && !hasActiveSub && (
                         <Button
                           variant="outline"
-                          onClick={() => handleStartTrial(p.id)}
-                          disabled={startingTrialId === p.id}
+                          onClick={() => handleStartTrial(p.id || p._id)}
+                          disabled={startingTrialId === (p.id || p._id)}
                           className="w-full gap-2 border-amber-500/50 text-amber-500 hover:bg-amber-500/10 font-bold"
                         >
                           <Sparkles className="h-4 w-4" />
-                          {startingTrialId === p.id
+                          {startingTrialId === (p.id || p._id)
                             ? (isEn ? 'Activating trial...' : 'Activation en cours...')
                             : (isEn ? `Start ${p.trial_days}-Day Free Trial` : `Démarrer l'essai gratuit (${p.trial_days} jours)`)}
                         </Button>
@@ -1491,9 +1532,9 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
                       {paymentResult.message || (isEn ? 'Please confirm the prompt on your mobile phone' : 'Veuillez confirmer l’invite USSD envoyée sur votre téléphone.')}
                     </p>
                   </div>
-                  {paymentResult.payment_url && (
+                  {(paymentResult.provider_link || paymentResult.payment_url) && (
                     <a
-                      href={paymentResult.payment_url}
+                      href={paymentResult.provider_link || paymentResult.payment_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"

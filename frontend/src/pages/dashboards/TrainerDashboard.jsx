@@ -47,6 +47,10 @@ const TrainerDashboard = () => {
   const activeSection = urlSection || 'dashboard';
   const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuthStore();
+  const [referralStats, setReferralStats] = useState(null);
+  useEffect(() => {
+    api.get('/referrals/my-stats').then((r) => setReferralStats(r.data)).catch(() => {});
+  }, []);
 
   // Increment refresh key when section changes to force data reload
   const handleSectionChange = (section) => {
@@ -71,6 +75,7 @@ const TrainerDashboard = () => {
     { id: 'profile', icon: User, label: 'Mon Profil' },
     { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
     { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
+    { id: 'subscription', icon: CreditCard, label: 'Mon Abonnement' },
     { id: 'referral', icon: Share2, label: 'Parrainer', badge: (referralStats?.is_referral_enabled || user?.is_referral_enabled) ? 'ACTIVÉ' : null },
     { id: 'trading-demo', icon: LineChart, label: 'Graphique (Démo)' },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
