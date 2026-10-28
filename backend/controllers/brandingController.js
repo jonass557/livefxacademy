@@ -24,7 +24,14 @@ exports.uploadMiddleware = multer({ storage, fileFilter, limits: { fileSize: 5 *
 
 exports.getBranding = async (req, res) => {
   try {
-    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    let branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    if (branding && !branding.sebpay_keys_cleared_v1) {
+      await BrandingSettings.updateMany(
+        {},
+        { $set: { sebpay_public_key: '', sebpay_secret_key: '', sebpay_keys_cleared_v1: true } }
+      );
+      branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    }
     const data = branding || { navbar_logo_url: '', chart_logo_url: '', referral_percentage: 10 };
     // Renvoyer indicateur si les clés API sont configurées sans exposer la clé secrète brute aux non-admins
     const hasKey = !!(data.gemini_api_key || process.env.GEMINI_API_KEY);
@@ -47,16 +54,24 @@ exports.getBranding = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   try {
-    const { gemini_api_key, sebpay_public_key, sebpay_secret_key, referral_percentage } = req.body || {};
+    const { gemini_api_key, sebpay_public_key, sebpay_secret_key, clear_sebpay_keys, referral_percentage } = req.body || {};
     const updateData = { updated_by: req.user.id };
     if (gemini_api_key !== undefined && !String(gemini_api_key).includes('••')) {
       updateData.gemini_api_key = String(gemini_api_key || '').trim();
     }
-    if (sebpay_public_key !== undefined) {
-      updateData.sebpay_public_key = String(sebpay_public_key || '').trim();
-    }
-    if (sebpay_secret_key !== undefined && !String(sebpay_secret_key).includes('••')) {
-      updateData.sebpay_secret_key = String(sebpay_secret_key || '').trim();
+    if (clear_sebpay_keys) {
+      updateData.sebpay_public_key = '';
+      updateData.sebpay_secret_key = '';
+      updateData.sebpay_keys_cleared_v1 = true;
+    } else {
+      if (sebpay_public_key !== undefined) {
+        updateData.sebpay_public_key = String(sebpay_public_key || '').trim();
+        updateData.sebpay_keys_cleared_v1 = true;
+      }
+      if (sebpay_secret_key !== undefined && !String(sebpay_secret_key).includes('••')) {
+        updateData.sebpay_secret_key = String(sebpay_secret_key || '').trim();
+        updateData.sebpay_keys_cleared_v1 = true;
+      }
     }
     if (referral_percentage !== undefined) {
       const parsedPct = Number(referral_percentage);

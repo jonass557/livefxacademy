@@ -180,6 +180,22 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleClearSebpayKeys = async () => {
+    if (!window.confirm('Voulez-vous vraiment supprimer les clés API SEBPAY enregistrées ?')) return;
+    setSavingSettings(true);
+    try {
+      await api.patch('/branding/admin/settings', { clear_sebpay_keys: true });
+      setSebpayPublicKeyInput('');
+      setSebpaySecretKeyInput('');
+      toast.success('Clés API SEBPAY supprimées avec succès !');
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression des clés SEBPAY');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const handleSaveSebpayKeys = async () => {
     setSavingSettings(true);
     try {
