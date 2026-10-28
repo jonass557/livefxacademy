@@ -206,7 +206,7 @@ const LandingPage = () => {
               <div className="flex flex-col sm:flex-row gap-4 w-full justify-center lg:justify-start">
                 <Link to="/register">
                   <Button size="lg" className="w-full sm:w-auto gap-2 text-lg h-12 px-8 shadow-md">
-                    {language === 'fr' ? 'Rejoindre Gratuitement' : 'Join Free'} <ArrowRight className="h-5 w-5" />
+                    {language === 'fr' ? "S'inscrire" : 'Sign Up'} <ArrowRight className="h-5 w-5" />
                   </Button>
                 </Link>
                 <Link to="/login">
@@ -281,7 +281,7 @@ const LandingPage = () => {
               {plans.map((p) => {
                 const feats = Array.isArray(p.features) ? p.features : [];
                 return (
-                  <Card key={p.id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/60 transition-all shadow-md hover:shadow-xl bg-card">
+                  <Card key={p.id || p._id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/60 transition-all shadow-md hover:shadow-xl bg-card">
                     <div className="p-6 space-y-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/15 text-primary">
@@ -317,7 +317,7 @@ const LandingPage = () => {
                         )}
                       </div>
 
-                      <Link to={`/register?plan_id=${p.id}`}>
+                      <Link to={`/register?plan_id=${p.id || p._id}`}>
                         <Button className="w-full gap-2 font-bold shadow-md">
                           <span>{p.trial_days > 0 ? (language === 'fr' ? 'Démarrer avec essai gratuit' : 'Start with Free Trial') : (language === 'fr' ? 'Choisir ce plan' : 'Choose this plan')}</span>
                           <ArrowRight className="h-4 w-4" />
@@ -430,7 +430,7 @@ const LandingPage = () => {
                   <div className="pt-4 border-t">
                     <Link to="/register">
                       <Button className="w-full" size="lg">
-                        {language === 'fr' ? 'Inscription Gratuite' : 'Free Registration'}
+                        {language === 'fr' ? "S'inscrire" : 'Sign Up'}
                       </Button>
                     </Link>
                   </div>
@@ -453,14 +453,14 @@ const LandingPage = () => {
             </h3>
             <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
               {language === 'fr'
-                ? 'Rejoignez des centaines d\'étudiants qui ont déjà transformé leur vie grâce au trading. Inscrivez-vous gratuitement et accédez à nos formations.'
-                : 'Join hundreds of students who have already transformed their lives through trading. Sign up for free and access our training.'
+                ? 'Rejoignez des centaines d\'étudiants qui ont déjà transformé leur vie grâce au trading. Choisissez votre plan, inscrivez-vous et accédez à nos formations.'
+                : 'Join hundreds of students who have already transformed their lives through trading. Choose your plan, sign up and access our training.'
               }
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/register">
                 <Button size="lg" className="gap-2">
-                  {language === 'fr' ? 'Rejoindre Gratuitement' : 'Join Free'} <ArrowRight className="h-4 w-4" />
+                  {language === 'fr' ? "S'inscrire" : 'Sign Up'} <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
               <Link to="/login">

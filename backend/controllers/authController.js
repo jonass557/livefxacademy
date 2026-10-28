@@ -1,4 +1,4 @@
-const { User, Trainer, SubscriptionPlan } = require('../models');
+const { User, Trainer, SubscriptionPlan, PaymentTransaction, BrandingSettings } = require('../models');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
@@ -31,11 +31,43 @@ exports.register = async (req, res) => {
   try {
     const parsed = registerSchema.parse(req.body);
     const email = parsed.email.trim().toLowerCase();
-    const { password, full_name, role, phone, referral_code } = parsed;
+    const { password, full_name, role, phone, referral_code, payment_reference } = parsed;
     
     const userExists = await User.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') });
     if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'Un compte existe déjà avec cette adresse email.' });
+    }
+
+    // Vérifier s'il existe des plans actifs sur la plateforme
+    const activePlansCount = await SubscriptionPlan.countDocuments({ is_active: true, is_deleted: { $ne: true } });
+    let paidTransaction = null;
+    let subscribedPlan = null;
+
+    if (role !== 'admin' && activePlansCount > 0) {
+      if (!payment_reference) {
+        return res.status(400).json({
+          message: "Veuillez d'abord sélectionner un plan de souscription et valider le paiement avant de vous inscrire en tant qu'élève ou formateur."
+        });
+      }
+
+      paidTransaction = await PaymentTransaction.findOne({
+        $or: [
+          { external_reference: payment_reference.trim() },
+          { transaction_id: payment_reference.trim() }
+        ],
+        status: 'completed',
+        user_id: null
+      });
+
+      if (!paidTransaction) {
+        return res.status(400).json({
+          message: "Votre paiement de souscription n'est pas encore confirmé ou a déjà été utilisé. Veuillez valider le paiement du plan choisi avant de vous inscrire."
+        });
+      }
+
+      if (paidTransaction.plan_id) {
+        subscribedPlan = await SubscriptionPlan.findById(paidTransaction.plan_id).catch(() => null);
+      }
     }
 
     // Vérifier si un parrain correspond au code fourni
@@ -50,8 +82,21 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    const activePlansCount = await SubscriptionPlan.countDocuments({ is_active: true, is_deleted: { $ne: true } });
-    const is_subscription_required = (role !== 'admin' && activePlansCount > 0);
+    let subscriptionPlanName = null;
+    let subscriptionExpiresAt = null;
+    let isFreeTrialGranted = false;
+
+    if (paidTransaction) {
+      const isTrial = paidTransaction.operator === 'free_trial';
+      const durationDays = isTrial
+        ? (Number(subscribedPlan?.trial_days) || 7)
+        : (Number(subscribedPlan?.duration_days) || 30);
+      subscriptionPlanName = isTrial
+        ? `${subscribedPlan?.name || 'Plan'} (Essai ${durationDays}j)`
+        : (subscribedPlan?.name || 'Abonnement Actif');
+      subscriptionExpiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+      isFreeTrialGranted = isTrial;
+    }
 
     const newUser = await User.create({
       email,
@@ -59,9 +104,26 @@ exports.register = async (req, res) => {
       full_name,
       role: role || 'client',
       phone,
-      referred_by: referredByUser ? referredByUser._id : null,
-      is_subscription_required
+      referred_by: referredByUser ? referredByUser._id : (paidTransaction?.referrer_id || null),
+      is_subscription_required: false,
+      subscription_plan_name: subscriptionPlanName,
+      subscription_expires_at: subscriptionExpiresAt,
+      is_free_trial_granted: isFreeTrialGranted,
     });
+
+    // Rattacher la transaction de paiement au nouvel utilisateur créé
+    if (paidTransaction) {
+      paidTransaction.user_id = newUser._id;
+      if (referredByUser && !paidTransaction.referrer_id && paidTransaction.amount > 0) {
+        const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+        const globalPct = branding?.referral_percentage != null ? branding.referral_percentage : 10;
+        const pct = referredByUser.custom_referral_percentage != null ? referredByUser.custom_referral_percentage : globalPct;
+        paidTransaction.referrer_id = referredByUser._id;
+        paidTransaction.referral_percentage = pct;
+        paidTransaction.referral_commission_amount = Math.round((paidTransaction.amount * pct) / 100);
+      }
+      await paidTransaction.save();
+    }
 
     // If trainer, create trainer profile
     if (role === 'trainer') {
@@ -73,7 +135,9 @@ exports.register = async (req, res) => {
       email: newUser.email,
       role: newUser.role,
       full_name: newUser.full_name,
-      referred_by: newUser.referred_by
+      referred_by: newUser.referred_by,
+      subscription_plan_name: newUser.subscription_plan_name,
+      subscription_expires_at: newUser.subscription_expires_at,
     });
   } catch (err) {
     console.error(err);

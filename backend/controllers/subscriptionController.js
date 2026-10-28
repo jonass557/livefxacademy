@@ -839,3 +839,288 @@ exports.revokeSubscription = async (req, res) => {
     res.status(500).json({ message: 'Erreur lors de la révocation de l\'abonnement' });
   }
 };
+
+
+// ----------------- PAIEMENT PUBLIC AVANT INSCRIPTION (NOUVEAUX UTILISATEURS) -----------------
+
+exports.initiatePublicMobilePayment = async (req, res) => {
+  try {
+    const rawPlanId = req.body.plan_id || req.body.planId || req.body.id || req.body._id;
+    const rawPlanName = req.body.plan_name || req.body.planName;
+    const rawPhone = String(req.body.phone || req.body.phoneNumber || req.body.customer_phone || '').trim();
+    const rawOperator = String(req.body.operator || req.body.provider || 'mtn').trim();
+    const rawCountry = String(req.body.country || 'BJ').trim().toUpperCase();
+    const otp_code = req.body.otp_code || req.body.otpCode || req.body.otp;
+    const referralCode = String(req.body.referral_code || '').trim().toUpperCase();
+
+    let plan = null;
+    if (rawPlanId) {
+      plan = await SubscriptionPlan.findById(rawPlanId).catch(() => null);
+    }
+    if (!plan && rawPlanName) {
+      plan = await SubscriptionPlan.findOne({ name: rawPlanName, is_active: true, is_deleted: { $ne: true } }).catch(() => null);
+    }
+    if (!plan) {
+      const activePlans = await SubscriptionPlan.find({ is_active: true, is_deleted: { $ne: true } }).sort({ price_xaf: 1 });
+      if (activePlans.length >= 1) {
+        plan = activePlans[0];
+      }
+    }
+
+    if (!plan || !plan.is_active) {
+      return res.status(404).json({ message: 'Plan de souscription indisponible ou introuvable' });
+    }
+
+    if (!rawPhone || !rawOperator || !rawCountry) {
+      return res.status(400).json({
+        message: 'Veuillez renseigner votre numéro de téléphone Mobile Money, l\'opérateur et le pays.'
+      });
+    }
+
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+    if (!sebpayPublicKey || !sebpaySecretKey || sebpaySecretKey.includes('••')) {
+      return res.status(400).json({
+        message: 'Le système de paiement Mobile Money n\'est pas encore configuré par l\'administrateur (clés API SEBPAY manquantes).'
+      });
+    }
+
+    let referrerId = null;
+    let referralCommission = 0;
+    let referralPct = 0;
+    if (referralCode) {
+      const referrer = await User.findOne({ referral_code: referralCode, is_referral_enabled: true });
+      if (referrer) {
+        referrerId = referrer._id;
+        const globalPct = branding?.referral_percentage != null ? branding.referral_percentage : 10;
+        referralPct = referrer.custom_referral_percentage != null ? referrer.custom_referral_percentage : globalPct;
+        referralCommission = Math.round((plan.price_xaf * referralPct) / 100);
+      }
+    }
+
+    const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
+    if (!cleanPhone || cleanPhone.length < 8) {
+      return res.status(400).json({
+        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 97000000).'
+      });
+    }
+
+    const externalRef = `PRE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
+
+    const transaction = await PaymentTransaction.create({
+      user_id: null,
+      plan_id: plan._id,
+      amount: Math.round(Number(plan.price_xaf)),
+      currency: 'XOF',
+      phone: cleanPhone,
+      operator: rawOperator.toLowerCase(),
+      country: rawCountry,
+      external_reference: externalRef,
+      status: 'pending',
+      referrer_id: referrerId,
+      referral_commission_amount: referralCommission,
+      referral_percentage: referralPct
+    });
+
+    const payload = {
+      amount: Math.round(Number(plan.price_xaf)),
+      currency: 'XOF',
+      phone: cleanPhone,
+      operator: rawOperator.toLowerCase(),
+      country: rawCountry,
+      external_reference: externalRef,
+      callback_url: callbackUrl,
+      customer_name: req.body.customer_name || 'Nouveau Membre LiveFX',
+      customer_email: req.body.customer_email || undefined,
+    };
+
+    if (otp_code && String(otp_code).trim()) {
+      payload.otp_code = String(otp_code).trim();
+    }
+
+    const sebResponse = await fetch(`${SEBPAY_API_URL}/collections`, {
+      method: 'POST',
+      headers: {
+        'X-Public-Key': sebpayPublicKey,
+        'X-Secret-Key': sebpaySecretKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const resData = await sebResponse.json().catch(() => ({}));
+    const dataPayload = resData.data || resData;
+
+    if (!sebResponse.ok || resData.success === false) {
+      const errCode = resData?.code || resData?.error_code || dataPayload?.code || '';
+      const rawSebMessage = resData?.message || dataPayload?.message || '';
+      const isOtpRequired = sebResponse.status === 422 || String(errCode).toUpperCase().includes('OTP_REQUIRED');
+      const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawSebMessage);
+      transaction.status = 'failed';
+      transaction.sebpay_response = resData;
+      await transaction.save();
+
+      let finalMessage = rawSebMessage;
+      if (isIpBlocked) {
+        const srvIp = await detectServerPublicIp();
+        finalMessage = `Cette adresse IP (${srvIp}) n'est pas encore autorisée sur la clé API SEBPAY. L'administrateur doit autoriser l'IP ${srvIp} (ou laisser la liste d'IP vide) dans son compte SEBPAY.`;
+      } else if (!finalMessage) {
+        finalMessage = isOtpRequired
+          ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
+          : `Le paiement a été refusé par l'opérateur (HTTP ${sebResponse.status}). Vérifiez votre numéro et l'opérateur choisi.`;
+      }
+
+      return res.status(isOtpRequired ? 422 : 400).json({
+        success: false,
+        otp_required: isOtpRequired,
+        code: errCode,
+        message: finalMessage
+      });
+    }
+
+    const sebStatus = String(dataPayload.status || 'pending').toLowerCase();
+    transaction.transaction_id = dataPayload.transaction_id || '';
+    transaction.provider_link = dataPayload.provider_link || '';
+    transaction.sebpay_response = resData;
+
+    if (sebStatus === 'approved' || sebStatus === 'completed' || sebStatus === 'success') {
+      transaction.status = 'completed';
+    } else if (sebStatus === 'rejected' || sebStatus === 'failed') {
+      transaction.status = 'failed';
+    }
+    await transaction.save();
+
+    return res.json({
+      success: true,
+      message: transaction.status === 'completed'
+        ? 'Paiement validé ! Vous pouvez maintenant finaliser votre inscription Élève ou Formateur.'
+        : 'Demande de paiement envoyée sur votre téléphone. Validez avec votre code secret Mobile Money pour débloquer l\'inscription.',
+      reference: externalRef,
+      transaction_id: transaction.transaction_id,
+      provider_link: transaction.provider_link,
+      status: transaction.status,
+      plan: serializePlan(plan)
+    });
+  } catch (err) {
+    console.error('initiatePublicMobilePayment error:', err);
+    res.status(500).json({ message: 'Erreur lors de l\'initialisation du paiement' });
+  }
+};
+
+exports.startPublicTrial = async (req, res) => {
+  try {
+    const rawPlanId = req.body.plan_id || req.body.planId || req.body.id || req.body._id;
+    let plan = null;
+    if (rawPlanId) {
+      plan = await SubscriptionPlan.findById(rawPlanId).catch(() => null);
+    }
+    if (!plan) {
+      plan = await SubscriptionPlan.findOne({ is_active: true, is_deleted: { $ne: true }, trial_days: { $gt: 0 } }).sort({ price_xaf: 1 });
+    }
+    if (!plan || !plan.is_active) {
+      return res.status(404).json({ message: 'Plan introuvable ou indisponible' });
+    }
+    const trialDays = Number(plan.trial_days) || 0;
+    if (trialDays <= 0) {
+      return res.status(400).json({ message: 'Ce plan ne propose pas de période d\'essai gratuit.' });
+    }
+
+    const externalRef = `TRIAL-PRE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    await PaymentTransaction.create({
+      user_id: null,
+      plan_id: plan._id,
+      amount: 0,
+      currency: 'XOF',
+      phone: req.body.phone || 'TRIAL-FREE',
+      operator: 'free_trial',
+      country: 'BJ',
+      external_reference: externalRef,
+      transaction_id: externalRef,
+      status: 'completed',
+      sebpay_response: {
+        trial_started: true,
+        plan_name: plan.name,
+        duration_days: trialDays,
+      },
+    });
+
+    return res.json({
+      success: true,
+      is_trial: true,
+      reference: externalRef,
+      status: 'completed',
+      plan: serializePlan(plan),
+      message: `Période d'essai de ${trialDays} jours sélectionnée ! Vous pouvez maintenant finaliser votre inscription Élève ou Formateur.`
+    });
+  } catch (err) {
+    console.error('startPublicTrial error:', err);
+    res.status(500).json({ message: 'Erreur lors de l\'activation de l\'essai' });
+  }
+};
+
+exports.checkPublicPaymentStatus = async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const transaction = await PaymentTransaction.findOne({
+      $or: [
+        { external_reference: reference },
+        { transaction_id: reference }
+      ]
+    }).populate('plan_id');
+
+    if (!transaction) {
+      return res.status(404).json({ message: 'Transaction non trouvée' });
+    }
+
+    if (transaction.status === 'pending') {
+      const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+      const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+      const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+      if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
+        const lookupId = transaction.transaction_id || transaction.external_reference;
+        const sebRes = await fetch(`${SEBPAY_API_URL}/collections/${encodeURIComponent(lookupId)}`, {
+          method: 'GET',
+          headers: {
+            'X-Public-Key': sebpayPublicKey,
+            'X-Secret-Key': sebpaySecretKey,
+            'Accept': 'application/json',
+          },
+        }).catch(() => null);
+
+        if (sebRes && sebRes.ok) {
+          const resJson = await sebRes.json().catch(() => ({}));
+          const dataPayload = resJson.data || resJson;
+          const remoteStatus = String(dataPayload?.status || '').toLowerCase();
+
+          if (remoteStatus === 'approved' || remoteStatus === 'completed' || remoteStatus === 'success') {
+            transaction.status = 'completed';
+            transaction.sebpay_response = resJson;
+            await transaction.save();
+          } else if (remoteStatus === 'rejected' || remoteStatus === 'failed' || remoteStatus === 'cancelled') {
+            transaction.status = 'failed';
+            transaction.sebpay_response = resJson;
+            await transaction.save();
+          }
+        }
+      }
+    }
+
+    res.json({
+      reference: transaction.external_reference,
+      transaction_id: transaction.transaction_id,
+      status: transaction.status,
+      is_paid: transaction.status === 'completed',
+      plan: transaction.plan_id ? serializePlan(transaction.plan_id) : null,
+      amount: transaction.amount,
+      created_at: transaction.created_at
+    });
+  } catch (err) {
+    console.error('checkPublicPaymentStatus error:', err);
+    res.status(500).json({ message: 'Erreur lors de la vérification du paiement' });
+  }
+};

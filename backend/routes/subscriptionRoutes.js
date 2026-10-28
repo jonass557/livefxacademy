@@ -6,6 +6,9 @@ const { authenticateToken, requireRole } = require('../middleware/authMiddleware
 // Plans publics / pour membres
 router.get('/plans', subscriptionController.getActivePlans);
 router.get('/operators', subscriptionController.getSebpayOperators);
+router.post('/public/pay', subscriptionController.initiatePublicMobilePayment);
+router.post('/public/start-trial', subscriptionController.startPublicTrial);
+router.get('/public/status/:reference', subscriptionController.checkPublicPaymentStatus);
 
 // Admin : gestion des plans
 router.get('/admin/plans', authenticateToken, requireRole(['admin']), subscriptionController.getAdminPlans);

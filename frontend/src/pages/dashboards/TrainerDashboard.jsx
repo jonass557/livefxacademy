@@ -74,9 +74,7 @@ const TrainerDashboard = () => {
   const navItems = [
     { id: 'profile', icon: User, label: 'Mon Profil' },
     { id: 'registration', icon: FileText, label: "Ma Fiche d'Inscription" },
-    { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },
-    { id: 'subscription', icon: CreditCard, label: 'Mon Abonnement' },
-    { id: 'referral', icon: Share2, label: 'Parrainer', badge: (referralStats?.is_referral_enabled || user?.is_referral_enabled) ? 'ACTIVÉ' : null },
+    { id: 'strategies', icon: Lightbulb, label: 'Mes Stratégies' },    { id: 'referral', icon: Share2, label: 'Parrainer', badge: (referralStats?.is_referral_enabled || user?.is_referral_enabled) ? 'ACTIVÉ' : null },
     { id: 'trading-demo', icon: LineChart, label: 'Graphique (Démo)' },
     { id: 'backtesting', icon: BarChart3, label: 'Backtesting' },
     { id: 'backtest-history', icon: History, label: 'Historique de backtest' },
