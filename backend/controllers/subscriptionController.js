@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const { SubscriptionPlan, PaymentTransaction, User, BrandingSettings } = require('../models');
 
 const SEBPAY_API_URL = 'https://newapi.sebpay.bj/api/v1';
+const IKEEPAY_API_URL = 'https://api.ikeepay.com';
+const IKEEPAY_INLINE_URL = 'https://ikeepay.com/checkout/v1/inline';
 
 // Indicatifs téléphoniques internationaux par code ISO pays (format SEBPAY sans +)
 const COUNTRY_DIAL_CODES = {
@@ -841,8 +843,32 @@ exports.revokeSubscription = async (req, res) => {
 };
 
 
-// ----------------- PAIEMENT PUBLIC AVANT INSCRIPTION (NOUVEAUX UTILISATEURS) -----------------
+// ----------------- PAIEMENT PUBLIC AVANT INSCRIPTION (SEBPAY & IKEEPAY) -----------------
 
+// Récupérer la configuration publique de la passerelle de paiement active (SEBPAY ou iKeePay)
+exports.getPaymentGatewayConfig = async (req, res) => {
+  try {
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const activeGateway = branding?.active_payment_gateway || (branding?.sebpay_enabled ? 'sebpay' : 'ikeepay');
+    const ikeepayPublicKey = (branding?.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY || '').trim();
+    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+    res.json({
+      active_payment_gateway: activeGateway,
+      ikeepay_enabled: activeGateway === 'ikeepay',
+      sebpay_enabled: activeGateway === 'sebpay',
+      ikeepay_public_key: ikeepayPublicKey,
+      has_ikeepay_keys: Boolean(ikeepayPublicKey),
+      has_sebpay_keys: Boolean(sebpayPublicKey && sebpaySecretKey),
+    });
+  } catch (err) {
+    console.error('getPaymentGatewayConfig error:', err);
+    res.status(500).json({ message: 'Erreur lors du chargement de la configuration de paiement' });
+  }
+};
+
+// Initialiser un paiement avant inscription (utilise automatiquement iKeePay ou SEBPAY selon le choix de l'admin)
 exports.initiatePublicMobilePayment = async (req, res) => {
   try {
     const rawPlanId = req.body.plan_id || req.body.planId || req.body.id || req.body._id;
@@ -852,6 +878,7 @@ exports.initiatePublicMobilePayment = async (req, res) => {
     const rawCountry = String(req.body.country || 'BJ').trim().toUpperCase();
     const otp_code = req.body.otp_code || req.body.otpCode || req.body.otp;
     const referralCode = String(req.body.referral_code || '').trim().toUpperCase();
+    const requestedGateway = String(req.body.gateway || '').trim().toLowerCase();
 
     let plan = null;
     if (rawPlanId) {
@@ -871,21 +898,10 @@ exports.initiatePublicMobilePayment = async (req, res) => {
       return res.status(404).json({ message: 'Plan de souscription indisponible ou introuvable' });
     }
 
-    if (!rawPhone || !rawOperator || !rawCountry) {
-      return res.status(400).json({
-        message: 'Veuillez renseigner votre numéro de téléphone Mobile Money, l\'opérateur et le pays.'
-      });
-    }
-
     const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
-    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
-    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
-
-    if (!sebpayPublicKey || !sebpaySecretKey || sebpaySecretKey.includes('••')) {
-      return res.status(400).json({
-        message: 'Le système de paiement Mobile Money n\'est pas encore configuré par l\'administrateur (clés API SEBPAY manquantes).'
-      });
-    }
+    const activeGateway = requestedGateway === 'ikeepay' || requestedGateway === 'sebpay'
+      ? requestedGateway
+      : (branding?.active_payment_gateway || (branding?.sebpay_enabled ? 'sebpay' : 'ikeepay'));
 
     let referrerId = null;
     let referralCommission = 0;
@@ -898,6 +914,79 @@ exports.initiatePublicMobilePayment = async (req, res) => {
         referralPct = referrer.custom_referral_percentage != null ? referrer.custom_referral_percentage : globalPct;
         referralCommission = Math.round((plan.price_xaf * referralPct) / 100);
       }
+    }
+
+    // ==================== CAS 1 : PASSERELLE IKEEPAY (INLINE CHECKOUT) ====================
+    if (activeGateway === 'ikeepay') {
+      const ikeepayPublicKey = (branding?.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY || '').trim();
+      if (!ikeepayPublicKey) {
+        return res.status(400).json({
+          message: "Le paiement Mobile Money iKeePay n'est pas encore configuré par l'administrateur (Clé publique iKeePay manquante dans Dashboard Admin > Logos & Identité Visuelle)."
+        });
+      }
+
+      const orderId = `REF_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+      const amountVal = Math.round(Number(plan.price_xaf));
+      const currencyVal = String(req.body.currency || 'XOF').toUpperCase();
+
+      const transaction = await PaymentTransaction.create({
+        user_id: null,
+        plan_id: plan._id,
+        amount: amountVal,
+        currency: currencyVal,
+        phone: rawPhone || 'IKEEPAY',
+        operator: 'ikeepay',
+        country: rawCountry || 'BJ',
+        external_reference: orderId,
+        status: 'pending',
+        referrer_id: referrerId,
+        referral_commission_amount: referralCommission,
+        referral_percentage: referralPct
+      });
+
+      const params = new URLSearchParams({
+        pk: ikeepayPublicKey,
+        amount: String(amountVal),
+        currency: currencyVal,
+        order_id: orderId,
+      });
+      if (req.body.redirect_url) {
+        params.set('redirect_url', String(req.body.redirect_url));
+      }
+      const inlineUrl = `${IKEEPAY_INLINE_URL}?${params.toString()}`;
+
+      transaction.provider_link = inlineUrl;
+      await transaction.save();
+
+      return res.json({
+        success: true,
+        gateway: 'ikeepay',
+        pk: ikeepayPublicKey,
+        amount: String(amountVal),
+        currency: currencyVal,
+        order_id: orderId,
+        reference: orderId,
+        inline_url: inlineUrl,
+        status: 'pending',
+        plan: serializePlan(plan),
+        message: 'Ouverture du guichet de paiement sécurisé iKeePay...'
+      });
+    }
+
+    // ==================== CAS 2 : PASSERELLE SEBPAY ====================
+    if (!rawPhone || !rawOperator || !rawCountry) {
+      return res.status(400).json({
+        message: "Veuillez renseigner votre numéro de téléphone Mobile Money, l'opérateur et le pays."
+      });
+    }
+
+    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+    if (!sebpayPublicKey || !sebpaySecretKey || sebpaySecretKey.includes('••')) {
+      return res.status(400).json({
+        message: "Le système de paiement Mobile Money SEBPAY n'est pas encore configuré par l'administrateur (clés API SEBPAY manquantes)."
+      });
     }
 
     const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
@@ -996,9 +1085,10 @@ exports.initiatePublicMobilePayment = async (req, res) => {
 
     return res.json({
       success: true,
+      gateway: 'sebpay',
       message: transaction.status === 'completed'
         ? 'Paiement validé ! Vous pouvez maintenant finaliser votre inscription Élève ou Formateur.'
-        : 'Demande de paiement envoyée sur votre téléphone. Validez avec votre code secret Mobile Money pour débloquer l\'inscription.',
+        : "Demande de paiement envoyée sur votre téléphone. Validez avec votre code secret Mobile Money pour débloquer l'inscription.",
       reference: externalRef,
       transaction_id: transaction.transaction_id,
       provider_link: transaction.provider_link,
@@ -1007,7 +1097,7 @@ exports.initiatePublicMobilePayment = async (req, res) => {
     });
   } catch (err) {
     console.error('initiatePublicMobilePayment error:', err);
-    res.status(500).json({ message: 'Erreur lors de l\'initialisation du paiement' });
+    res.status(500).json({ message: "Erreur lors de l'initialisation du paiement" });
   }
 };
 
@@ -1026,7 +1116,7 @@ exports.startPublicTrial = async (req, res) => {
     }
     const trialDays = Number(plan.trial_days) || 0;
     if (trialDays <= 0) {
-      return res.status(400).json({ message: 'Ce plan ne propose pas de période d\'essai gratuit.' });
+      return res.status(400).json({ message: "Ce plan ne propose pas de période d'essai gratuit." });
     }
 
     const externalRef = `TRIAL-PRE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1058,7 +1148,135 @@ exports.startPublicTrial = async (req, res) => {
     });
   } catch (err) {
     console.error('startPublicTrial error:', err);
-    res.status(500).json({ message: 'Erreur lors de l\'activation de l\'essai' });
+    res.status(500).json({ message: "Erreur lors de l'activation de l'essai" });
+  }
+};
+
+// Vérifier une transaction auprès de iKeePay (GET https://api.ikeepay.com/checkout-verify/:reference)
+async function verifyIkeepayTransactionRemote(reference, branding) {
+  if (!reference) return null;
+  const ikeepayPublicKey = (branding?.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY || '').trim();
+  const ikeepaySecretKey = (branding?.ikeepay_secret_key || process.env.IKEEPAY_SECRET_KEY || '').trim();
+  const headers = { 'Accept': 'application/json' };
+  if (ikeepayPublicKey) headers['X-Public-Key'] = ikeepayPublicKey;
+  if (ikeepaySecretKey && !ikeepaySecretKey.includes('••')) {
+    headers['X-Secret-Key'] = ikeepaySecretKey;
+    headers['Authorization'] = `Bearer ${ikeepaySecretKey}`;
+  }
+  const res = await fetch(`${IKEEPAY_API_URL}/checkout-verify/${encodeURIComponent(reference)}`, {
+    method: 'GET',
+    headers,
+  }).catch(() => null);
+  if (!res || !res.ok) return null;
+  return res.json().catch(() => null);
+}
+
+// Confirmer un paiement iKeePay suite au signal postMessage 'ikeepay-success' ou via GET /checkout-verify/:reference
+exports.confirmIkeepayPayment = async (req, res) => {
+  try {
+    const reference = String(req.body.reference || req.body.order_id || req.body.ikeepay_ref || '').trim();
+    if (!reference) {
+      return res.status(400).json({ message: 'Référence de transaction manquante' });
+    }
+
+    const transaction = await PaymentTransaction.findOne({
+      $or: [
+        { external_reference: reference },
+        { transaction_id: reference }
+      ]
+    }).populate('plan_id');
+
+    if (!transaction) {
+      return res.status(404).json({ message: 'Transaction introuvable' });
+    }
+
+    if (transaction.status !== 'completed') {
+      const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+      const remoteData = await verifyIkeepayTransactionRemote(
+        req.body.ikeepay_ref || transaction.transaction_id || transaction.external_reference,
+        branding
+      );
+
+      const remoteCompleted =
+        remoteData &&
+        (String(remoteData.status || '').toLowerCase() === 'completed' ||
+          String(remoteData.event || '').toLowerCase() === 'payment.success');
+
+      // Si l'iframe officielle ikeepay.com a émis 'ikeepay-success' ou que /checkout-verify confirme 'completed'
+      if (remoteCompleted || req.body.signal === 'ikeepay-success') {
+        transaction.status = 'completed';
+        if (remoteData?.ikeepay_ref || req.body.ikeepay_ref) {
+          transaction.transaction_id = remoteData?.ikeepay_ref || req.body.ikeepay_ref;
+        }
+        transaction.sebpay_response = remoteData || { signal: 'ikeepay-success', confirmed_at: new Date().toISOString() };
+        await transaction.save();
+
+        if (transaction.user_id) {
+          await activateUserSubscriptionFromTransaction(transaction, transaction.plan_id);
+        }
+      }
+    }
+
+    return res.json({
+      success: transaction.status === 'completed',
+      reference: transaction.external_reference,
+      transaction_id: transaction.transaction_id,
+      status: transaction.status,
+      is_paid: transaction.status === 'completed',
+      plan: transaction.plan_id ? serializePlan(transaction.plan_id) : null,
+    });
+  } catch (err) {
+    console.error('confirmIkeepayPayment error:', err);
+    res.status(500).json({ message: 'Erreur lors de la confirmation du paiement iKeePay' });
+  }
+};
+
+// Webhook officiel iKeePay (POST /api/subscriptions/webhook/ikeepay)
+exports.ikeepayWebhook = async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const event = String(payload.event || '').toLowerCase();
+    const ikeepayRef = payload.ikeepay_ref || payload.transaction_id || '';
+    const orderId = payload.order_id || payload.external_reference || '';
+    const status = String(payload.status || '').toLowerCase();
+
+    if (!orderId && !ikeepayRef) {
+      return res.status(400).json({ message: 'order_id ou ikeepay_ref manquant' });
+    }
+
+    const transaction = await PaymentTransaction.findOne({
+      $or: [
+        ...(orderId ? [{ external_reference: orderId }] : []),
+        ...(ikeepayRef ? [{ transaction_id: ikeepayRef }] : [])
+      ]
+    });
+
+    if (!transaction) {
+      return res.status(200).json({ received: true, note: 'Transaction non trouvée' });
+    }
+
+    transaction.sebpay_response = payload;
+    if (ikeepayRef) transaction.transaction_id = ikeepayRef;
+
+    if (event === 'payment.success' || status === 'completed' || status === 'approved' || status === 'success') {
+      if (transaction.status !== 'completed') {
+        transaction.status = 'completed';
+        await transaction.save();
+        if (transaction.user_id) {
+          await activateUserSubscriptionFromTransaction(transaction);
+        }
+      }
+    } else if (status === 'failed' || status === 'rejected' || status === 'cancelled') {
+      transaction.status = 'failed';
+      await transaction.save();
+    } else {
+      await transaction.save();
+    }
+
+    res.status(200).json({ received: true, status: transaction.status });
+  } catch (err) {
+    console.error('ikeepayWebhook error:', err);
+    res.status(500).json({ message: 'Erreur webhook iKeePay' });
   }
 };
 
@@ -1078,33 +1296,53 @@ exports.checkPublicPaymentStatus = async (req, res) => {
 
     if (transaction.status === 'pending') {
       const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
-      const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
-      const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
 
-      if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
-        const lookupId = transaction.transaction_id || transaction.external_reference;
-        const sebRes = await fetch(`${SEBPAY_API_URL}/collections/${encodeURIComponent(lookupId)}`, {
-          method: 'GET',
-          headers: {
-            'X-Public-Key': sebpayPublicKey,
-            'X-Secret-Key': sebpaySecretKey,
-            'Accept': 'application/json',
-          },
-        }).catch(() => null);
-
-        if (sebRes && sebRes.ok) {
-          const resJson = await sebRes.json().catch(() => ({}));
-          const dataPayload = resJson.data || resJson;
-          const remoteStatus = String(dataPayload?.status || '').toLowerCase();
-
-          if (remoteStatus === 'approved' || remoteStatus === 'completed' || remoteStatus === 'success') {
+      if (transaction.operator === 'ikeepay') {
+        const lookupRef = transaction.transaction_id || transaction.external_reference;
+        const remoteData = await verifyIkeepayTransactionRemote(lookupRef, branding);
+        if (remoteData) {
+          const remoteStatus = String(remoteData.status || '').toLowerCase();
+          const remoteEvent = String(remoteData.event || '').toLowerCase();
+          if (remoteEvent === 'payment.success' || remoteStatus === 'completed' || remoteStatus === 'approved' || remoteStatus === 'success') {
             transaction.status = 'completed';
-            transaction.sebpay_response = resJson;
+            if (remoteData.ikeepay_ref) transaction.transaction_id = remoteData.ikeepay_ref;
+            transaction.sebpay_response = remoteData;
             await transaction.save();
-          } else if (remoteStatus === 'rejected' || remoteStatus === 'failed' || remoteStatus === 'cancelled') {
+          } else if (remoteStatus === 'failed' || remoteStatus === 'rejected' || remoteStatus === 'cancelled') {
             transaction.status = 'failed';
-            transaction.sebpay_response = resJson;
+            transaction.sebpay_response = remoteData;
             await transaction.save();
+          }
+        }
+      } else {
+        const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+        const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+        if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
+          const lookupId = transaction.transaction_id || transaction.external_reference;
+          const sebRes = await fetch(`${SEBPAY_API_URL}/collections/${encodeURIComponent(lookupId)}`, {
+            method: 'GET',
+            headers: {
+              'X-Public-Key': sebpayPublicKey,
+              'X-Secret-Key': sebpaySecretKey,
+              'Accept': 'application/json',
+            },
+          }).catch(() => null);
+
+          if (sebRes && sebRes.ok) {
+            const resJson = await sebRes.json().catch(() => ({}));
+            const dataPayload = resJson.data || resJson;
+            const remoteStatus = String(dataPayload?.status || '').toLowerCase();
+
+            if (remoteStatus === 'approved' || remoteStatus === 'completed' || remoteStatus === 'success') {
+              transaction.status = 'completed';
+              transaction.sebpay_response = resJson;
+              await transaction.save();
+            } else if (remoteStatus === 'rejected' || remoteStatus === 'failed' || remoteStatus === 'cancelled') {
+              transaction.status = 'failed';
+              transaction.sebpay_response = resJson;
+              await transaction.save();
+            }
           }
         }
       }

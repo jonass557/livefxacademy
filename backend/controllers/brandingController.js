@@ -32,18 +32,37 @@ exports.getBranding = async (req, res) => {
       );
       branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
     }
-    const data = branding || { navbar_logo_url: '', chart_logo_url: '', referral_percentage: 10 };
-    // Renvoyer indicateur si les clés API sont configurées sans exposer la clé secrète brute aux non-admins
+    const data = branding || {
+      navbar_logo_url: '',
+      chart_logo_url: '',
+      referral_percentage: 10,
+      active_payment_gateway: 'ikeepay',
+      sebpay_enabled: false,
+      ikeepay_enabled: true,
+    };
+
     const hasKey = !!(data.gemini_api_key || process.env.GEMINI_API_KEY);
     const hasSebpay = !!(data.sebpay_public_key && data.sebpay_secret_key);
+    const hasIkeepay = !!(data.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY);
     const isAdmin = req.user && req.user.role === 'admin';
+
+    const activeGateway = data.active_payment_gateway || (data.sebpay_enabled ? 'sebpay' : 'ikeepay');
+    const ikeepayEnabled = activeGateway === 'ikeepay';
+    const sebpayEnabled = activeGateway === 'sebpay';
+
     res.json({
       ...data,
+      active_payment_gateway: activeGateway,
+      ikeepay_enabled: ikeepayEnabled,
+      sebpay_enabled: sebpayEnabled,
       has_gemini_key: hasKey,
       gemini_api_key: isAdmin ? (data.gemini_api_key || '') : (hasKey ? '••••••••' : ''),
       has_sebpay_keys: hasSebpay,
-      sebpay_public_key: isAdmin ? (data.sebpay_public_key || '') : (data.sebpay_public_key || ''),
+      sebpay_public_key: data.sebpay_public_key || '',
       sebpay_secret_key: isAdmin ? (data.sebpay_secret_key || '') : (hasSebpay ? '••••••••' : ''),
+      has_ikeepay_keys: hasIkeepay,
+      ikeepay_public_key: data.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY || '',
+      ikeepay_secret_key: isAdmin ? (data.ikeepay_secret_key || '') : (data.ikeepay_secret_key ? '••••••••' : ''),
       referral_percentage: Number(data.referral_percentage || 10)
     });
   } catch (err) {
@@ -54,11 +73,37 @@ exports.getBranding = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   try {
-    const { gemini_api_key, sebpay_public_key, sebpay_secret_key, clear_sebpay_keys, referral_percentage } = req.body || {};
+    const {
+      gemini_api_key,
+      active_payment_gateway,
+      sebpay_enabled,
+      ikeepay_enabled,
+      sebpay_public_key,
+      sebpay_secret_key,
+      clear_sebpay_keys,
+      ikeepay_public_key,
+      ikeepay_secret_key,
+      clear_ikeepay_keys,
+      referral_percentage
+    } = req.body || {};
+
     const updateData = { updated_by: req.user.id };
+
     if (gemini_api_key !== undefined && !String(gemini_api_key).includes('••')) {
       updateData.gemini_api_key = String(gemini_api_key || '').trim();
     }
+
+    // Bascule mutuellement exclusive entre SEBPAY et iKeePay
+    if (active_payment_gateway === 'ikeepay' || ikeepay_enabled === true || sebpay_enabled === false) {
+      updateData.active_payment_gateway = 'ikeepay';
+      updateData.ikeepay_enabled = true;
+      updateData.sebpay_enabled = false;
+    } else if (active_payment_gateway === 'sebpay' || sebpay_enabled === true || ikeepay_enabled === false) {
+      updateData.active_payment_gateway = 'sebpay';
+      updateData.sebpay_enabled = true;
+      updateData.ikeepay_enabled = false;
+    }
+
     if (clear_sebpay_keys) {
       updateData.sebpay_public_key = '';
       updateData.sebpay_secret_key = '';
@@ -73,21 +118,37 @@ exports.updateSettings = async (req, res) => {
         updateData.sebpay_keys_cleared_v1 = true;
       }
     }
+
+    if (clear_ikeepay_keys) {
+      updateData.ikeepay_public_key = '';
+      updateData.ikeepay_secret_key = '';
+    } else {
+      if (ikeepay_public_key !== undefined) {
+        updateData.ikeepay_public_key = String(ikeepay_public_key || '').trim();
+      }
+      if (ikeepay_secret_key !== undefined && !String(ikeepay_secret_key).includes('••')) {
+        updateData.ikeepay_secret_key = String(ikeepay_secret_key || '').trim();
+      }
+    }
+
     if (referral_percentage !== undefined) {
       const parsedPct = Number(referral_percentage);
       if (!isNaN(parsedPct) && parsedPct >= 0 && parsedPct <= 100) {
         updateData.referral_percentage = parsedPct;
       }
     }
+
     const branding = await BrandingSettings.findOneAndUpdate(
       {},
       { $set: updateData },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
+
     res.json({
       ...branding.toObject(),
       has_gemini_key: !!(branding.gemini_api_key || process.env.GEMINI_API_KEY),
       has_sebpay_keys: !!(branding.sebpay_public_key && branding.sebpay_secret_key),
+      has_ikeepay_keys: !!(branding.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY),
     });
   } catch (err) {
     console.error('updateSettings error:', err);

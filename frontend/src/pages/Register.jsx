@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -19,7 +19,7 @@ import {
   RefreshCw,
   Lock,
   Sparkles,
-  ArrowRight
+  X
 } from 'lucide-react';
 import { useLanguageStore } from '../store/languageStore';
 import { toast } from 'sonner';
@@ -39,6 +39,12 @@ const Register = () => {
 
   // Plans & Pre-registration Payment State
   const [plans, setPlans] = useState([]);
+  const [paymentConfig, setPaymentConfig] = useState({
+    active_payment_gateway: 'ikeepay',
+    ikeepay_enabled: true,
+    sebpay_enabled: false,
+    ikeepay_public_key: '',
+  });
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [payForm, setPayForm] = useState({
@@ -53,15 +59,27 @@ const Register = () => {
   const [paidReference, setPaidReference] = useState('');
   const [checkingStatus, setCheckingStatus] = useState(false);
 
-  // Charger les plans actifs à l'ouverture
+  // iKeePay Inline Checkout state
+  const [ikeepayInlineUrl, setIkeepayInlineUrl] = useState('');
+  const [ikeepayOverlayVisible, setIkeepayOverlayVisible] = useState(false);
+  const [ikeepayOrderRef, setIkeepayOrderRef] = useState('');
+  const ikeepayOrderRefCurrent = useRef('');
+
+  // Charger les plans actifs et la passerelle active (iKeePay ou SEBPAY) à l'ouverture
   useEffect(() => {
     let active = true;
     setLoadingPlans(true);
-    api.get('/subscriptions/plans')
-      .then((res) => {
+    Promise.all([
+      api.get('/subscriptions/plans').catch(() => ({ data: [] })),
+      api.get('/subscriptions/payment-config').catch(() => ({ data: null })),
+    ])
+      .then(([plansRes, configRes]) => {
         if (!active) return;
-        const list = Array.isArray(res.data) ? res.data : [];
+        const list = Array.isArray(plansRes.data) ? plansRes.data : [];
         setPlans(list);
+        if (configRes.data) {
+          setPaymentConfig(configRes.data);
+        }
         if (list.length > 0) {
           const found = planIdFromUrl
             ? list.find((p) => String(p.id || p._id) === String(planIdFromUrl))
@@ -69,14 +87,77 @@ const Register = () => {
           setSelectedPlan(found || list[0]);
         }
       })
-      .catch(() => {
-        if (active) setPlans([]);
-      })
       .finally(() => {
         if (active) setLoadingPlans(false);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [planIdFromUrl]);
+
+  // Écoute des signaux postMessage d'iKeePay Inline Checkout ('ikeepay-ready', 'ikeepay-success', 'ikeepay-close')
+  useEffect(() => {
+    const handleIkeepayMessage = async (e) => {
+      const msg = e.data;
+      const msgType = typeof msg === 'string' ? msg : (msg?.type || msg?.event || '');
+
+      if (msg === 'ikeepay-ready' || msgType === 'ikeepay-ready') {
+        const overlayEl = document.getElementById('ikeepay-overlay');
+        if (overlayEl) overlayEl.style.display = 'flex';
+        setIkeepayOverlayVisible(true);
+        setSubmittingPayment(false);
+      } else if (
+        msg === 'ikeepay-success' ||
+        msgType === 'ikeepay-success' ||
+        msgType === 'payment.success' ||
+        (typeof msg === 'object' && msg && String(msg.status || '').toLowerCase() === 'completed')
+      ) {
+        const ref = ikeepayOrderRefCurrent.current || msg?.order_id || paymentResult?.reference;
+        const ikeepayRef = typeof msg === 'object' ? (msg.ikeepay_ref || msg.reference) : undefined;
+        setIkeepayOverlayVisible(false);
+        setIkeepayInlineUrl('');
+        const overlayEl = document.getElementById('ikeepay-overlay');
+        if (overlayEl) overlayEl.style.display = 'none';
+
+        if (ref) {
+          try {
+            await api.post('/subscriptions/public/confirm-ikeepay', {
+              reference: ref,
+              ikeepay_ref: ikeepayRef,
+              signal: 'ikeepay-success',
+            });
+          } catch (_) {}
+          setPaidReference(ref);
+          setPaymentResult((prev) => (prev ? { ...prev, status: 'completed' } : { reference: ref, status: 'completed' }));
+        }
+        toast.success(
+          isEn
+            ? 'Payment validated via iKeePay! You can now complete your Student or Trainer registration below.'
+            : 'Paiement validé avec succès ! Vous pouvez maintenant compléter votre inscription Élève ou Formateur ci-dessous.'
+        );
+      } else if (msg === 'ikeepay-close' || msgType === 'ikeepay-close') {
+        setIkeepayOverlayVisible(false);
+        setIkeepayInlineUrl('');
+        setSubmittingPayment(false);
+        const overlayEl = document.getElementById('ikeepay-overlay');
+        if (overlayEl) overlayEl.style.display = 'none';
+
+        const ref = ikeepayOrderRefCurrent.current;
+        if (ref && !paidReference) {
+          try {
+            const st = await api.get(`/subscriptions/public/status/${ref}`);
+            if (st.data?.status === 'completed' || st.data?.is_paid) {
+              setPaidReference(ref);
+              toast.success(isEn ? 'Payment confirmed!' : 'Paiement confirmé !');
+            }
+          } catch (_) {}
+        }
+      }
+    };
+
+    window.addEventListener('message', handleIkeepayMessage);
+    return () => window.removeEventListener('message', handleIkeepayMessage);
+  }, [isEn, paidReference, paymentResult?.reference]);
 
   // Polling automatique toutes les 4s lorsqu'un paiement Mobile Money est en attente
   useEffect(() => {
@@ -87,6 +168,8 @@ const Register = () => {
         if (res.data?.status === 'completed' || res.data?.is_paid) {
           setPaymentResult((prev) => (prev ? { ...prev, status: 'completed' } : prev));
           setPaidReference(paymentResult.reference);
+          setIkeepayOverlayVisible(false);
+          setIkeepayInlineUrl('');
           toast.success(
             isEn
               ? 'Payment confirmed! You can now complete your Student or Trainer registration below.'
@@ -101,7 +184,49 @@ const Register = () => {
     return () => clearInterval(interval);
   }, [paymentResult?.reference, paymentResult?.status, paidReference, isEn]);
 
-  const handlePaySelectedPlan = async (e) => {
+  const activeGateway = paymentConfig.active_payment_gateway || 'ikeepay';
+
+  // Lancer le paiement Inline Checkout iKeePay
+  const handleStartIkeepayCheckout = async () => {
+    if (!selectedPlan) {
+      toast.warning(isEn ? 'Please select a subscription plan first.' : 'Veuillez d’abord sélectionner un plan de souscription.');
+      return;
+    }
+
+    setSubmittingPayment(true);
+    try {
+      const res = await api.post('/subscriptions/public/pay', {
+        gateway: 'ikeepay',
+        plan_id: selectedPlan.id || selectedPlan._id,
+        plan_name: selectedPlan.name,
+        currency: 'XOF',
+        referral_code: referralCode ? referralCode.trim() : undefined,
+        redirect_url: window.location.href,
+      });
+
+      const orderId = res.data?.order_id || res.data?.reference || ('REF_' + Date.now());
+      ikeepayOrderRefCurrent.current = orderId;
+      setIkeepayOrderRef(orderId);
+      setPaymentResult(res.data);
+
+      // Construction de l'URL officielle iKeePay Inline Checkout selon la documentation
+      const params = new URLSearchParams({
+        pk: res.data?.pk || paymentConfig.ikeepay_public_key,
+        amount: String(res.data?.amount || Math.round(Number(selectedPlan.price_xaf))),
+        currency: String(res.data?.currency || 'XOF'),
+        order_id: orderId,
+        redirect_url: window.location.origin + '/register',
+      });
+      const url = res.data?.inline_url || `https://ikeepay.com/checkout/v1/inline?${params.toString()}`;
+      setIkeepayInlineUrl(url);
+    } catch (err) {
+      setSubmittingPayment(false);
+      toast.error(err.response?.data?.message || (isEn ? 'Unable to start iKeePay checkout' : "Erreur lors de l'ouverture du paiement iKeePay"));
+    }
+  };
+
+  // Lancer le paiement SEBPAY
+  const handlePaySelectedPlanSebpay = async (e) => {
     e.preventDefault();
     if (!selectedPlan) {
       toast.warning(isEn ? 'Please select a subscription plan first.' : 'Veuillez d’abord sélectionner un plan de souscription.');
@@ -116,6 +241,7 @@ const Register = () => {
     setPaymentResult(null);
     try {
       const res = await api.post('/subscriptions/public/pay', {
+        gateway: 'sebpay',
         plan_id: selectedPlan.id || selectedPlan._id,
         plan_name: selectedPlan.name,
         phone: payForm.phone,
@@ -152,18 +278,21 @@ const Register = () => {
   };
 
   const handleManualVerifyPayment = async () => {
-    if (!paymentResult?.reference) return;
+    const ref = paymentResult?.reference || ikeepayOrderRef;
+    if (!ref) return;
     setCheckingStatus(true);
     try {
-      const res = await api.get(`/subscriptions/public/status/${paymentResult.reference}`);
+      const res = await api.get(`/subscriptions/public/status/${ref}`);
       if (res.data?.status === 'completed' || res.data?.is_paid) {
         setPaymentResult((prev) => (prev ? { ...prev, status: 'completed' } : prev));
-        setPaidReference(paymentResult.reference);
+        setPaidReference(ref);
+        setIkeepayOverlayVisible(false);
+        setIkeepayInlineUrl('');
         toast.success(isEn ? 'Payment confirmed! Complete your registration below.' : 'Paiement confirmé ! Vous pouvez maintenant vous inscrire ci-dessous.');
       } else if (res.data?.status === 'failed') {
         toast.error(isEn ? 'Payment declined by operator.' : "Le paiement a été refusé par l'opérateur.");
       } else {
-        toast.info(isEn ? 'Still awaiting validation on your phone...' : 'Toujours en attente de validation sur votre téléphone...');
+        toast.info(isEn ? 'Still awaiting validation...' : 'Toujours en attente de validation...');
       }
     } catch (_) {
       toast.error(isEn ? 'Unable to check status' : 'Impossible de vérifier le statut');
@@ -206,7 +335,6 @@ const Register = () => {
     resolver: zodResolver(registerSchema),
   });
 
-  // Pré-remplir le téléphone d'inscription avec celui utilisé pour le paiement
   useEffect(() => {
     if (payForm.phone && payForm.phone.trim().length >= 8) {
       setValue('phone', payForm.phone.trim());
@@ -254,6 +382,46 @@ const Register = () => {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      {/* ==================== OVERLAY INLINE CHECKOUT IKEEPAY (Structure HTML Officielle) ==================== */}
+      <div
+        id="ikeepay-overlay"
+        style={{ display: ikeepayOverlayVisible ? 'flex' : 'none' }}
+        className="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 backdrop-blur-sm p-3"
+      >
+        <div className="relative w-full max-w-[450px] h-[90vh]">
+          <button
+            type="button"
+            onClick={() => {
+              setIkeepayOverlayVisible(false);
+              setIkeepayInlineUrl('');
+              setSubmittingPayment(false);
+              const overlayEl = document.getElementById('ikeepay-overlay');
+              if (overlayEl) overlayEl.style.display = 'none';
+            }}
+            className="absolute -top-2 -right-2 z-20 h-8 w-8 rounded-full bg-card border shadow-lg flex items-center justify-center text-foreground hover:bg-destructive hover:text-white transition-colors"
+            title={isEn ? 'Close' : 'Fermer'}
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <iframe
+            id="ikeepay-iframe"
+            src={ikeepayInlineUrl}
+            allowTransparency="true"
+            onLoad={() => {
+              if (ikeepayInlineUrl) {
+                setTimeout(() => {
+                  const overlayEl = document.getElementById('ikeepay-overlay');
+                  if (overlayEl) overlayEl.style.display = 'flex';
+                  setIkeepayOverlayVisible(true);
+                  setSubmittingPayment(false);
+                }, 900);
+              }
+            }}
+            className="w-full h-full border-none bg-transparent rounded-2xl"
+          />
+        </div>
+      </div>
+
       {/* ==================== ÉTAPE 1 : CHOIX DU PLAN & PAIEMENT (SI PLANS ACTIFS) ==================== */}
       {requiresPlanPayment && (
         <Card className={`border-2 transition-all ${paidReference ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-primary/40 shadow-lg'}`}>
@@ -339,14 +507,16 @@ const Register = () => {
               })}
             </div>
 
-            {/* Formulaire de paiement Mobile Money SEBPAY (si pas encore payé) */}
+            {/* Zone de paiement selon la passerelle active (iKeePay ou SEBPAY) */}
             {selectedPlan && !paidReference && (
               <div className="rounded-2xl border bg-card p-5 space-y-4 shadow-sm">
                 <div className="flex items-center justify-between flex-wrap gap-2 border-b pb-3">
                   <div className="flex items-center gap-2">
                     <Smartphone className="h-5 w-5 text-primary" />
                     <h4 className="font-bold text-sm sm:text-base">
-                      {isEn ? `Mobile Money Payment — ${selectedPlan.name}` : `Paiement Mobile Money — ${selectedPlan.name}`}
+                      {activeGateway === 'ikeepay'
+                        ? (isEn ? `Instant Mobile Money Payment (iKeePay) — ${selectedPlan.name}` : `Paiement Mobile Money (iKeePay) — ${selectedPlan.name}`)
+                        : (isEn ? `Mobile Money Payment (SEBPAY) — ${selectedPlan.name}` : `Paiement Mobile Money (SEBPAY) — ${selectedPlan.name}`)}
                     </h4>
                   </div>
                   <span className="text-lg font-extrabold text-primary">
@@ -354,8 +524,64 @@ const Register = () => {
                   </span>
                 </div>
 
-                {!paymentResult ? (
-                  <form onSubmit={handlePaySelectedPlan} className="space-y-4">
+                {activeGateway === 'ikeepay' ? (
+                  <div className="space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      {isEn
+                        ? 'Click the button below to open the secure iKeePay payment window directly on this page without leaving the site.'
+                        : 'Cliquez sur le bouton ci-dessous pour ouvrir le guichet de paiement sécurisé iKeePay directement sur cette page.'}
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        type="button"
+                        onClick={handleStartIkeepayCheckout}
+                        disabled={submittingPayment}
+                        className="flex-1 gap-2 font-bold h-11 text-sm shadow-md"
+                      >
+                        {submittingPayment ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ShieldCheck className="h-4 w-4" />
+                        )}
+                        <span>
+                          {submittingPayment
+                            ? (isEn ? 'Loading secure iKeePay checkout...' : 'Chargement sécurisé iKeePay...')
+                            : (isEn
+                                ? `Pay ${Number(selectedPlan.price_xaf).toLocaleString()} XAF with iKeePay`
+                                : `Payer ${Number(selectedPlan.price_xaf).toLocaleString()} XAF avec iKeePay`)}
+                        </span>
+                      </Button>
+
+                      {Number(selectedPlan.trial_days) > 0 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={startingTrial}
+                          onClick={handleStartTrialPreReg}
+                          className="gap-2 border-amber-500/50 text-amber-600 hover:bg-amber-500/10 font-bold h-11"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                          <span>
+                            {startingTrial
+                              ? (isEn ? 'Activating...' : 'Activation...')
+                              : (isEn ? `Start ${selectedPlan.trial_days}d Trial` : `Essai gratuit (${selectedPlan.trial_days}j)`)}
+                          </span>
+                        </Button>
+                      )}
+                    </div>
+
+                    {ikeepayOrderRef && (
+                      <div className="pt-2 flex items-center justify-between flex-wrap gap-2 border-t text-xs">
+                        <span className="text-muted-foreground font-mono">Réf : {ikeepayOrderRef}</span>
+                        <Button size="sm" variant="outline" onClick={handleManualVerifyPayment} disabled={checkingStatus} className="gap-1.5 h-8 text-xs">
+                          <RefreshCw className={`h-3.5 w-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                          <span>{isEn ? 'Verify payment status' : 'Vérifier le statut du paiement'}</span>
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : !paymentResult ? (
+                  <form onSubmit={handlePaySelectedPlanSebpay} className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <label className="text-xs font-semibold block mb-1">{isEn ? 'Country' : 'Pays'}</label>

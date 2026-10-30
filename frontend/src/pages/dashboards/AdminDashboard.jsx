@@ -149,20 +149,87 @@ const AdminDashboard = () => {
   const fetchBranding = async () => {
     try {
       const res = await api.get('/branding');
+      const gw = res.data?.active_payment_gateway || (res.data?.sebpay_enabled ? 'sebpay' : 'ikeepay');
       setBranding({
         navbar_logo_url: res.data?.navbar_logo_url || '',
         chart_logo_url: res.data?.chart_logo_url || '',
         gemini_api_key: res.data?.gemini_api_key || '',
+        active_payment_gateway: gw,
+        sebpay_enabled: gw === 'sebpay',
+        ikeepay_enabled: gw === 'ikeepay',
         sebpay_public_key: res.data?.sebpay_public_key || '',
         sebpay_secret_key: res.data?.sebpay_secret_key || '',
+        ikeepay_public_key: res.data?.ikeepay_public_key || '',
+        ikeepay_secret_key: res.data?.ikeepay_secret_key || '',
         referral_percentage: res.data?.referral_percentage ?? 10
       });
-      if (res.data?.gemini_api_key) setGeminiApiKeyInput(res.data.gemini_api_key);
-      if (res.data?.sebpay_public_key) setSebpayPublicKeyInput(res.data.sebpay_public_key);
-      if (res.data?.sebpay_secret_key) setSebpaySecretKeyInput(res.data.sebpay_secret_key);
+      setActiveGatewayInput(gw);
+      setGeminiApiKeyInput(res.data?.gemini_api_key && !res.data.gemini_api_key.includes('••') ? res.data.gemini_api_key : '');
+      setSebpayPublicKeyInput(res.data?.sebpay_public_key || '');
+      setSebpaySecretKeyInput(res.data?.sebpay_secret_key && !res.data.sebpay_secret_key.includes('••') ? res.data.sebpay_secret_key : '');
+      setIkeepayPublicKeyInput(res.data?.ikeepay_public_key || '');
+      setIkeepaySecretKeyInput(res.data?.ikeepay_secret_key && !res.data.ikeepay_secret_key.includes('••') ? res.data.ikeepay_secret_key : '');
       if (res.data?.referral_percentage != null) setReferralPercentageInput(res.data.referral_percentage);
     } catch (err) {
       console.error("Error fetching branding", err);
+    }
+  };
+
+  const handleSwitchPaymentGateway = async (gateway) => {
+    setSavingSettings(true);
+    try {
+      await api.patch('/branding/admin/settings', {
+        active_payment_gateway: gateway,
+        ikeepay_enabled: gateway === 'ikeepay',
+        sebpay_enabled: gateway === 'sebpay',
+      });
+      setActiveGatewayInput(gateway);
+      toast.success(
+        gateway === 'ikeepay'
+          ? 'iKeePay est maintenant ACTIVÉ (SEBPAY désactivé) !'
+          : 'SEBPAY est maintenant ACTIVÉ (iKeePay désactivé) !'
+      );
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors du changement de passerelle');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSaveIkeepayKeys = async () => {
+    setSavingSettings(true);
+    try {
+      await api.patch('/branding/admin/settings', {
+        ikeepay_public_key: ikeepayPublicKeyInput,
+        ikeepay_secret_key: ikeepaySecretKeyInput,
+        active_payment_gateway: 'ikeepay',
+        ikeepay_enabled: true,
+        sebpay_enabled: false,
+      });
+      setActiveGatewayInput('ikeepay');
+      toast.success('Clés API iKeePay enregistrées et passerelle iKeePay activée !');
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement des clés iKeePay");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleClearIkeepayKeys = async () => {
+    if (!window.confirm('Voulez-vous vraiment supprimer les clés API iKeePay enregistrées ?')) return;
+    setSavingSettings(true);
+    try {
+      await api.patch('/branding/admin/settings', { clear_ikeepay_keys: true });
+      setIkeepayPublicKeyInput('');
+      setIkeepaySecretKeyInput('');
+      toast.success('Clés API iKeePay supprimées avec succès !');
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression des clés iKeePay');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -1566,30 +1633,102 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Configuration Clés API SEBPAY (Paiement Mobile Money MTN, Moov, Orange, Wave) */}
-        <Card className="border-primary/30">
+        {/* Choix de la Passerelle Active & Configuration Clés API (iKeePay / SEBPAY) */}
+        <Card className="border-2 border-primary/40 shadow-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-primary" /> Passerelle de Paiement Mobile Money SEBPAY
+              <CreditCard className="h-5 w-5 text-primary" /> Choix de la Passerelle de Paiement Mobile Money (iKeePay / SEBPAY)
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <p className="text-sm text-muted-foreground">
-              Intégrez votre compte marchand <strong>SEBPAY</strong> (documentation officielle : <a href="https://new.sebpay.bj/fr/docs/auth" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">new.sebpay.bj</a>) pour encaisser les souscriptions mensuelles par Mobile Money.
+              Choisissez la passerelle de paiement Mobile Money active sur votre site. Activer <strong>iKeePay</strong> désactive automatiquement <strong>SEBPAY</strong> et vice versa.
             </p>
-            <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2 max-w-xl">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
-                    ⚠️ Adresse IP du serveur à autoriser dans SEBPAY (Clés API &gt; Adresses IP autorisées) :
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Ajoutez obligatoirement cette IP dans votre compte SEBPAY (ou laissez le champ IP vide dans SEBPAY pour autoriser toutes les IPs) :
-                  </p>
+
+            {/* Bascule 1-clic entre iKeePay et SEBPAY */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div
+                onClick={() => handleSwitchPaymentGateway('ikeepay')}
+                className={`cursor-pointer rounded-2xl border-2 p-4 transition-all flex flex-col justify-between ${
+                  activeGatewayInput === 'ikeepay'
+                    ? 'border-emerald-500 bg-emerald-500/10 shadow-md'
+                    : 'border-border bg-card hover:border-primary/40'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="font-extrabold text-base">iKeePay (Inline Checkout)</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    activeGatewayInput === 'ikeepay'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {activeGatewayInput === 'ikeepay' ? '● ACTIF' : 'DÉSACTIVÉ'}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <code className="px-2.5 py-1 rounded bg-background border font-mono text-xs font-bold text-primary select-all">
-                    57.129.148.42
+                <p className="text-xs text-muted-foreground mb-3">
+                  Tunnel de paiement intégré directement sur le site sans quitter la page (aucune restriction d'adresse IP serveur).
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeGatewayInput === 'ikeepay' ? 'default' : 'outline'}
+                  disabled={savingSettings}
+                  className={`w-full font-bold ${activeGatewayInput === 'ikeepay' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                >
+                  {activeGatewayInput === 'ikeepay' ? '✓ Passerelle Active (SEBPAY désactivé)' : 'Activer iKeePay (Désactiver SEBPAY)'}
+                </Button>
+              </div>
+
+              <div
+                onClick={() => handleSwitchPaymentGateway('sebpay')}
+                className={`cursor-pointer rounded-2xl border-2 p-4 transition-all flex flex-col justify-between ${
+                  activeGatewayInput === 'sebpay'
+                    ? 'border-emerald-500 bg-emerald-500/10 shadow-md'
+                    : 'border-border bg-card hover:border-primary/40'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="font-extrabold text-base">SEBPAY Mobile Money</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    activeGatewayInput === 'sebpay'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {activeGatewayInput === 'sebpay' ? '● ACTIF' : 'DÉSACTIVÉ'}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Collecte directe Mobile Money via l'API SEBPAY (nécessite d'autoriser l'IP 57.129.148.42 sur SEBPAY).
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeGatewayInput === 'sebpay' ? 'default' : 'outline'}
+                  disabled={savingSettings}
+                  className={`w-full font-bold ${activeGatewayInput === 'sebpay' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                >
+                  {activeGatewayInput === 'sebpay' ? '✓ Passerelle Active (iKeePay désactivé)' : 'Activer SEBPAY (Désactiver iKeePay)'}
+                </Button>
+              </div>
+            </div>
+
+            {/* 1. Configuration iKeePay */}
+            <div className={`rounded-2xl border-2 p-5 space-y-4 transition-all ${activeGatewayInput === 'ikeepay' ? 'border-primary/50 bg-primary/5' : 'border-border bg-card/60'}`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h4 className="font-bold text-base flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                  <span>Paramètres & Clés API iKeePay</span>
+                </h4>
+                {branding.ikeepay_public_key && (
+                  <span className="text-xs text-emerald-600 font-bold">● Clé iKeePay enregistrée</span>
+                )}
+              </div>
+
+              <div className="p-3 rounded-xl border bg-background/80 space-y-1.5 max-w-xl">
+                <p className="text-xs font-bold">URL de Notification Webhook iKeePay (à coller dans votre compte iKeePay) :</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="px-2 py-1 rounded bg-muted font-mono text-[11px] select-all flex-1 truncate">
+                    https://api.livefx-trading.com/api/subscriptions/webhook/ikeepay
                   </code>
                   <Button
                     type="button"
@@ -1597,65 +1736,164 @@ const AdminDashboard = () => {
                     variant="outline"
                     className="h-7 text-xs"
                     onClick={() => {
-                      navigator.clipboard.writeText('57.129.148.42');
-                      alert('Adresse IP du serveur copiée : 57.129.148.42');
+                      navigator.clipboard.writeText('https://api.livefx-trading.com/api/subscriptions/webhook/ikeepay');
+                      toast.success('URL Webhook iKeePay copiée !');
                     }}
                   >
-                    Copier l'IP
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="default"
-                    className="h-7 text-xs"
-                    onClick={async () => {
-                      try {
-                        const res = await api.post('/subscriptions/admin/test-sebpay', {
-                          sebpay_public_key: sebpayPublicKeyInput,
-                          sebpay_secret_key: sebpaySecretKeyInput,
-                        });
-                        alert(res.data?.message || 'Test effectué.');
-                      } catch (err) {
-                        alert(err.response?.data?.message || 'Erreur lors du test SEBPAY');
-                      }
-                    }}
-                  >
-                    Tester SEBPAY
+                    Copier Webhook
                   </Button>
                 </div>
               </div>
+
+              <div className="space-y-3 max-w-xl">
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Clé Publique iKeePay (pk) * :</label>
+                  <Input
+                    type="text"
+                    placeholder="pk_live_cc90c4cc40f2437a80b0b88dd3b8bd3b"
+                    value={ikeepayPublicKeyInput}
+                    onChange={(e) => setIkeepayPublicKeyInput(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Clé Secrète iKeePay (sk - Optionnel) :</label>
+                  <Input
+                    type="password"
+                    placeholder="sk_live_..."
+                    value={ikeepaySecretKeyInput}
+                    onChange={(e) => setIkeepaySecretKeyInput(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="pt-1 flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={handleSaveIkeepayKeys}
+                    disabled={savingSettings}
+                    className="gap-1.5"
+                  >
+                    {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                    Enregistrer & Activer iKeePay
+                  </Button>
+                  {(branding.ikeepay_public_key || ikeepayPublicKeyInput || ikeepaySecretKeyInput) && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleClearIkeepayKeys}
+                      disabled={savingSettings}
+                      className="gap-1.5"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Supprimer les clés iKeePay
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="space-y-3 max-w-xl">
-              <div>
-                <label className="text-xs font-semibold block mb-1">Clé Publique SEBPAY (X-Public-Key) :</label>
-                <Input
-                  type="text"
-                  placeholder="pub_live_..."
-                  value={sebpayPublicKeyInput}
-                  onChange={(e) => setSebpayPublicKeyInput(e.target.value)}
-                  className="font-mono text-sm"
-                />
+
+            {/* 2. Configuration SEBPAY */}
+            <div className={`rounded-2xl border-2 p-5 space-y-4 transition-all ${activeGatewayInput === 'sebpay' ? 'border-primary/50 bg-primary/5' : 'border-border bg-card/60'}`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h4 className="font-bold text-base flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                  <span>Paramètres & Clés API SEBPAY</span>
+                </h4>
+                {branding.sebpay_public_key && (
+                  <span className="text-xs text-emerald-600 font-bold">● Clés SEBPAY enregistrées</span>
+                )}
               </div>
-              <div>
-                <label className="text-xs font-semibold block mb-1">Clé Secrète SEBPAY (X-Secret-Key) :</label>
-                <Input
-                  type="password"
-                  placeholder="sec_live_..."
-                  value={sebpaySecretKeyInput}
-                  onChange={(e) => setSebpaySecretKeyInput(e.target.value)}
-                  className="font-mono text-sm"
-                />
+
+              <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2 max-w-xl">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                      ⚠️ Adresse IP du serveur à autoriser dans SEBPAY (Clés API &gt; Adresses IP autorisées) :
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="px-2.5 py-1 rounded bg-background border font-mono text-xs font-bold text-primary select-all">
+                      57.129.148.42
+                    </code>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText('57.129.148.42');
+                        toast.success('Adresse IP copiée : 57.129.148.42');
+                      }}
+                    >
+                      Copier l'IP
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs"
+                      onClick={async () => {
+                        try {
+                          const res = await api.post('/subscriptions/admin/test-sebpay', {
+                            sebpay_public_key: sebpayPublicKeyInput,
+                            sebpay_secret_key: sebpaySecretKeyInput,
+                          });
+                          alert(res.data?.message || 'Test effectué.');
+                        } catch (err) {
+                          alert(err.response?.data?.message || 'Erreur lors du test SEBPAY');
+                        }
+                      }}
+                    >
+                      Tester SEBPAY
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="pt-1 flex items-center gap-3">
-                <Button
-                  onClick={handleSaveSebpayKeys}
-                  disabled={savingSettings}
-                  className="gap-1.5"
-                >
-                  {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                  Enregistrer les clés SEBPAY
-                </Button>
-                {branding.sebpay_public_key && <span className="text-xs text-green-600 font-semibold">● Clés configurées</span>}
+
+              <div className="space-y-3 max-w-xl">
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Clé Publique SEBPAY (X-Public-Key) :</label>
+                  <Input
+                    type="text"
+                    placeholder="pub_live_..."
+                    value={sebpayPublicKeyInput}
+                    onChange={(e) => setSebpayPublicKeyInput(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Clé Secrète SEBPAY (X-Secret-Key) :</label>
+                  <Input
+                    type="password"
+                    placeholder="sec_live_..."
+                    value={sebpaySecretKeyInput}
+                    onChange={(e) => setSebpaySecretKeyInput(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="pt-1 flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={handleSaveSebpayKeys}
+                    disabled={savingSettings}
+                    className="gap-1.5"
+                  >
+                    {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                    Enregistrer les clés SEBPAY
+                  </Button>
+                  {(branding.sebpay_public_key || sebpayPublicKeyInput || sebpaySecretKeyInput) && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleClearSebpayKeys}
+                      disabled={savingSettings}
+                      className="gap-1.5"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Supprimer les clés SEBPAY
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -4431,6 +4669,57 @@ const AdminDashboard = () => {
             </Button>
           </div>
         </div>
+
+        {/* Bandeau rapide de sélection de passerelle (iKeePay / SEBPAY) directement dans l'onglet Plans */}
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-primary" />
+                <span className="font-bold text-sm">
+                  Passerelle Mobile Money actuellement active :{' '}
+                  <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-xs uppercase font-extrabold">
+                    {activeGatewayInput === 'ikeepay' ? 'iKeePay (Inline Checkout)' : 'SEBPAY'}
+                  </span>
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Basculez en 1 clic entre iKeePay et SEBPAY ou configurez vos clés API.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={activeGatewayInput === 'ikeepay' ? 'default' : 'outline'}
+                onClick={() => handleSwitchPaymentGateway('ikeepay')}
+                disabled={savingSettings}
+                className={activeGatewayInput === 'ikeepay' ? 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold' : ''}
+              >
+                {activeGatewayInput === 'ikeepay' ? '● iKeePay Actif' : 'Activer iKeePay'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={activeGatewayInput === 'sebpay' ? 'default' : 'outline'}
+                onClick={() => handleSwitchPaymentGateway('sebpay')}
+                disabled={savingSettings}
+                className={activeGatewayInput === 'sebpay' ? 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold' : ''}
+              >
+                {activeGatewayInput === 'sebpay' ? '● SEBPAY Actif' : 'Activer SEBPAY'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveSection('branding')}
+                className="gap-1.5"
+              >
+                Configurer les clés API <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Modal Création / Modification de Plan */}
         {showPlanModal && (
