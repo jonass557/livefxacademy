@@ -47,6 +47,7 @@ const Home = () => {
 
   const [posts, setPosts] = useState([]);
   const [vacationPrograms, setVacationPrograms] = useState([]);
+  const [partnerBrokers, setPartnerBrokers] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -70,14 +71,16 @@ const Home = () => {
   const fetchFeedAndData = async () => {
     setLoading(true);
     try {
-      const [announcementsRes, vacationRes, plansRes] = await Promise.all([
+      const [announcementsRes, vacationRes, plansRes, brandingRes] = await Promise.all([
         api.get('/announcements').catch(() => ({ data: [] })),
         api.get('/vacation-programs').catch(() => ({ data: [] })),
         api.get('/subscriptions/plans').catch(() => ({ data: [] })),
+        api.get('/branding').catch(() => ({ data: null })),
       ]);
       setPosts(announcementsRes.data || []);
       setVacationPrograms(vacationRes.data || []);
       setPlans(plansRes.data || []);
+      if (Array.isArray(brandingRes?.data?.brokers)) setPartnerBrokers(brandingRes.data.brokers);
     } catch (err) {
       console.error('Erreur lors du chargement des données', err);
     } finally {
@@ -415,85 +418,96 @@ const Home = () => {
 
       {/* ==================== 4. LIEN BROKERS ==================== */}
       <div className="space-y-4 pt-4 border-t">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500">
-            <LinkIcon className="h-5 w-5" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500">
+              <LinkIcon className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-tight">{isEn ? 'Recommended Partner Brokers' : 'Brokers Partenaires Recommandés'}</h2>
+              <p className="text-xs text-muted-foreground">{isEn ? 'Trade on regulated platforms with ultra-low spreads' : 'Tradez sur des plateformes régulées avec spreads ultra-compétitifs'}</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-bold tracking-tight">{isEn ? 'Recommended Partner Brokers' : 'Brokers Partenaires Recommandés'}</h2>
-            <p className="text-xs text-muted-foreground">{isEn ? 'Trade on regulated platforms with ultra-low spreads' : 'Tradez sur des plateformes régulées avec spreads ultra-compétitifs'}</p>
-          </div>
+          <Link to="/dashboard?section=broker">
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+              <span>{isEn ? 'All Brokers' : 'Voir tous les brokers'}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
         </div>
 
-        <Card className="overflow-hidden border-blue-500/20 bg-gradient-to-br from-card via-card to-blue-500/5 shadow-sm">
-          <CardContent className="p-6">
-            <div className="grid gap-6 md:grid-cols-2 items-center">
-              <div className="space-y-4">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600">
-                  <Award className="h-3.5 w-3.5" />
-                  <span>{isEn ? 'Official LivefxTrading Partner' : 'Partenaire Officiel LivefxTrading'}</span>
-                </div>
-                <h3 className="text-xl font-extrabold tracking-tight">
-                  {isEn ? 'Open an account with our Partner Broker' : 'Ouvrez un compte chez notre Broker Partenaire'}
-                </h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {isEn
-                    ? 'Take advantage of institutional trading conditions with ultra-fast order execution, zero hidden fees, and dedicated support.'
-                    : 'Profitez de conditions de trading institutionnelles avec une exécution ultra-rapide des ordres, aucun frais caché et un accompagnement complet.'}
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 text-xs font-medium">
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
-                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>{isEn ? 'Instant Deposits' : 'Dépôts Instantanés'}</span>
+        {partnerBrokers.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {partnerBrokers.map((brk) => (
+              <Card key={brk.id || brk.name} className="overflow-hidden border-blue-500/20 hover:border-primary/50 transition-all shadow-sm flex flex-col justify-between bg-card">
+                <CardContent className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 rounded-xl border bg-muted/40 flex items-center justify-center overflow-hidden shrink-0">
+                        {brk.logo_url ? (
+                          <img src={formatMediaUrl(brk.logo_url)} alt={brk.name} className="h-full w-full object-contain p-1" />
+                        ) : (
+                          <LinkIcon className="h-6 w-6 text-blue-500" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600">
+                          {isEn ? 'Official Partner' : 'Partenaire Officiel'}
+                        </span>
+                        <h3 className="font-extrabold text-base truncate mt-0.5">{brk.name}</h3>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-3">
+                      {brk.description || (isEn
+                        ? 'Take advantage of institutional trading conditions with fast execution and instant deposits.'
+                        : 'Profitez de conditions de trading institutionnelles avec une exécution rapide et des dépôts instantanés.')}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
-                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>{isEn ? 'Spreads from 0.0' : 'Spreads à partir de 0.0'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
-                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>{isEn ? 'Regulated & 100% Secure' : 'Régulé & 100% Sécurisé'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/60">
-                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    <span>{isEn ? 'Dedicated 24/7 Support' : 'Support Dédié 24/7'}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-muted/40 border border-dashed border-primary/30 text-center space-y-4">
-                <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
-                  <LinkIcon className="h-8 w-8" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-bold text-base">{isEn ? 'Official Affiliate Link' : "Lien d'affiliation officiel"}</h4>
-                  <p className="text-xs text-muted-foreground max-w-xs">
-                    {isEn ? 'Register via our link to enjoy reduced commissions and exclusive bonuses.' : 'Inscrivez-vous via notre lien pour bénéficier de réductions sur les commissions et de bonus exclusifs.'}
-                  </p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
-                  <a
-                    href="https://livefx.link/broker-affiliation"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full"
-                  >
-                    <Button className="w-full gap-2 shadow-md">
+                  <a href={brk.url} target="_blank" rel="noopener noreferrer" className="block w-full pt-2 border-t">
+                    <Button size="sm" className="w-full gap-2 font-bold">
                       <span>{isEn ? 'Open Account' : 'Ouvrir un Compte'}</span>
-                      <ExternalLink className="h-4 w-4" />
+                      <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
                   </a>
-                  <Link to="/dashboard?section=broker" className="w-full">
-                    <Button variant="outline" className="w-full text-xs">
-                      {isEn ? 'Learn more' : 'En savoir plus'}
-                    </Button>
-                  </Link>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="overflow-hidden border-blue-500/20 bg-gradient-to-br from-card via-card to-blue-500/5 shadow-sm">
+            <CardContent className="p-6">
+              <div className="grid gap-6 md:grid-cols-2 items-center">
+                <div className="space-y-4">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600">
+                    <Award className="h-3.5 w-3.5" />
+                    <span>{isEn ? 'Official LivefxTrading Partner' : 'Partenaire Officiel LivefxTrading'}</span>
+                  </div>
+                  <h3 className="text-xl font-extrabold tracking-tight">
+                    {isEn ? 'Open an account with our Partner Broker' : 'Ouvrez un compte chez notre Broker Partenaire'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {isEn
+                      ? 'Take advantage of institutional trading conditions with ultra-fast order execution, zero hidden fees, and dedicated support.'
+                      : 'Profitez de conditions de trading institutionnelles avec une exécution ultra-rapide des ordres, aucun frais caché et un accompagnement complet.'}
+                  </p>
+                </div>
+                <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-muted/40 border border-dashed border-primary/30 text-center space-y-4">
+                  <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+                    <LinkIcon className="h-8 w-8" />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
+                    <Link to="/dashboard?section=broker" className="w-full">
+                      <Button className="w-full gap-2 shadow-md">
+                        <span>{isEn ? 'View Partner Brokers' : 'Voir les Brokers Partenaires'}</span>
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* ==================== 5. CONTACT & SUPPORT ==================== */}

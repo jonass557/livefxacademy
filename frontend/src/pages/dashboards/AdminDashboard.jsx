@@ -28,8 +28,16 @@ const AdminDashboard = () => {
     referral_percentage: 10
   });
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('');
+  const [activeGatewayInput, setActiveGatewayInput] = useState('ikeepay');
   const [sebpayPublicKeyInput, setSebpayPublicKeyInput] = useState('');
   const [sebpaySecretKeyInput, setSebpaySecretKeyInput] = useState('');
+  const [ikeepayPublicKeyInput, setIkeepayPublicKeyInput] = useState('');
+  const [ikeepaySecretKeyInput, setIkeepaySecretKeyInput] = useState('');
+  const [brokersList, setBrokersList] = useState([]);
+  const [brokerForm, setBrokerForm] = useState({ name: '', url: '', description: '', logo_url: '' });
+  const [brokerLogoFile, setBrokerLogoFile] = useState(null);
+  const [editingBrokerId, setEditingBrokerId] = useState(null);
+  const [savingBroker, setSavingBroker] = useState(false);
   const [referralPercentageInput, setReferralPercentageInput] = useState(10);
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -164,6 +172,7 @@ const AdminDashboard = () => {
         referral_percentage: res.data?.referral_percentage ?? 10
       });
       setActiveGatewayInput(gw);
+      setBrokersList(Array.isArray(res.data?.brokers) ? res.data.brokers : []);
       setGeminiApiKeyInput(res.data?.gemini_api_key && !res.data.gemini_api_key.includes('••') ? res.data.gemini_api_key : '');
       setSebpayPublicKeyInput(res.data?.sebpay_public_key || '');
       setSebpaySecretKeyInput(res.data?.sebpay_secret_key && !res.data.sebpay_secret_key.includes('••') ? res.data.sebpay_secret_key : '');
@@ -230,6 +239,57 @@ const AdminDashboard = () => {
       toast.error(err.response?.data?.message || 'Erreur lors de la suppression des clés iKeePay');
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleSaveBroker = async (e) => {
+    e.preventDefault();
+    if (!brokerForm.name.trim() || !brokerForm.url.trim()) {
+      toast.warning('Veuillez renseigner le nom du broker et son lien (URL).');
+      return;
+    }
+    setSavingBroker(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', brokerForm.name.trim());
+      formData.append('url', brokerForm.url.trim());
+      formData.append('description', brokerForm.description || '');
+      formData.append('logo_url', brokerForm.logo_url || '');
+      if (brokerLogoFile) {
+        formData.append('logo', brokerLogoFile);
+      }
+
+      if (editingBrokerId) {
+        await api.put(`/branding/admin/brokers/${editingBrokerId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast.success('Broker mis à jour avec succès !');
+      } else {
+        await api.post('/branding/admin/brokers', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast.success('Nouveau lien Broker ajouté avec succès !');
+      }
+
+      setBrokerForm({ name: '', url: '', description: '', logo_url: '' });
+      setBrokerLogoFile(null);
+      setEditingBrokerId(null);
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement du broker");
+    } finally {
+      setSavingBroker(false);
+    }
+  };
+
+  const handleDeleteBroker = async (brokerId) => {
+    if (!window.confirm('Supprimer ce lien broker ?')) return;
+    try {
+      await api.delete(`/branding/admin/brokers/${brokerId}`);
+      toast.success('Broker supprimé');
+      fetchBranding();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression du broker');
     }
   };
 
@@ -1895,6 +1955,167 @@ const AdminDashboard = () => {
                   )}
                 </div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Gestion des Liens Brokers Partenaires (avec Logo optionnel) */}
+        <Card className="border-2 border-primary/40 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ExternalLink className="h-5 w-5 text-primary" /> Gestion des Liens Brokers Partenaires (Élèves & Formateurs)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+              Ajoutez les liens d'affiliation de vos brokers recommandés ainsi que leur logo (optionnel). Ces brokers s'afficheront automatiquement dans la page <strong>Lien Brokers</strong> des espaces Élèves et Formateurs.
+            </p>
+
+            {/* Formulaire d'ajout / modification d'un Broker */}
+            <form onSubmit={handleSaveBroker} className="rounded-2xl border bg-muted/20 p-4 sm:p-5 space-y-4 max-w-2xl">
+              <h4 className="font-bold text-sm sm:text-base">
+                {editingBrokerId ? 'Modifier le Broker sélectionné' : '+ Ajouter un nouveau Broker Partenaire'}
+              </h4>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Nom du Broker *</label>
+                  <Input
+                    required
+                    placeholder="Ex: Exness, Deriv, XM, Vantage..."
+                    value={brokerForm.name}
+                    onChange={(e) => setBrokerForm({ ...brokerForm, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Lien du Broker (URL d'affiliation) *</label>
+                  <Input
+                    required
+                    placeholder="https://..."
+                    value={brokerForm.url}
+                    onChange={(e) => setBrokerForm({ ...brokerForm, url: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold block mb-1">Description / Avantages (Optionnel)</label>
+                <Input
+                  placeholder="Ex: Spreads dès 0.0, Dépôts et retraits Mobile Money instantanés..."
+                  value={brokerForm.description}
+                  onChange={(e) => setBrokerForm({ ...brokerForm, description: e.target.value })}
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Logo du Broker — Fichier image (Optionnel)</label>
+                  <Input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={(e) => setBrokerLogoFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Ou URL directe du Logo (Optionnel)</label>
+                  <Input
+                    placeholder="https://.../logo.png (facultatif)"
+                    value={brokerForm.logo_url}
+                    onChange={(e) => setBrokerForm({ ...brokerForm, logo_url: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button type="submit" disabled={savingBroker} className="gap-1.5">
+                  {savingBroker ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                  <span>{editingBrokerId ? 'Mettre à jour le Broker' : 'Ajouter ce Broker'}</span>
+                </Button>
+                {editingBrokerId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingBrokerId(null);
+                      setBrokerForm({ name: '', url: '', description: '', logo_url: '' });
+                      setBrokerLogoFile(null);
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                )}
+              </div>
+            </form>
+
+            {/* Liste des Brokers enregistrés */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-sm">
+                Brokers actuellement publiés ({brokersList.length})
+              </h4>
+              {brokersList.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">
+                  Aucun broker personnalisé ajouté pour le moment. Utilisez le formulaire ci-dessus pour ajouter vos brokers.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {brokersList.map((brk) => (
+                    <div key={brk.id} className="rounded-xl border bg-card p-4 flex flex-col justify-between gap-3 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="h-12 w-12 rounded-xl border bg-muted/40 flex items-center justify-center overflow-hidden shrink-0">
+                          {brk.logo_url ? (
+                            <img src={assetUrl(brk.logo_url)} alt={brk.name} className="h-full w-full object-contain p-1" />
+                          ) : (
+                            <ExternalLink className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h5 className="font-bold text-sm truncate">{brk.name}</h5>
+                          <a
+                            href={brk.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-primary hover:underline truncate block font-mono"
+                          >
+                            {brk.url}
+                          </a>
+                          {brk.description && (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{brk.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 h-8 text-xs"
+                          onClick={() => {
+                            setEditingBrokerId(brk.id);
+                            setBrokerForm({
+                              name: brk.name || '',
+                              url: brk.url || '',
+                              description: brk.description || '',
+                              logo_url: brk.logo_url || ''
+                            });
+                            setBrokerLogoFile(null);
+                          }}
+                        >
+                          <Edit2 className="h-3.5 w-3.5 mr-1" /> Modifier
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          className="h-8 text-xs"
+                          onClick={() => handleDeleteBroker(brk.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -107,6 +107,7 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
   const [submittingConsultation, setSubmittingConsultation] = useState(false);
   const [vacationPrograms, setVacationPrograms] = useState([]);
   const [services, setServices] = useState([]);
+  const [partnerBrokers, setPartnerBrokers] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
 
   // Referral state
@@ -184,6 +185,7 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
           api.get('/announcements').catch(() => ({ data: [] })),
           api.get('/vacation-programs').catch(() => ({ data: [] })),
           api.get('/services').catch(() => ({ data: [] })),
+        api.get('/branding').catch(() => ({ data: null })),
           api.get('/auth/me').catch(() => ({ data: null })),
         ]);
         setVideos(Array.isArray(videosRes.data) ? videosRes.data : []);
@@ -776,55 +778,125 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
     </div>
   );
 
-  // Section: Broker Link
-  const renderBroker = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold flex items-center gap-2">
-        <LinkIcon className="h-6 w-6" /> {t('client.brokerTitle')}
-      </h2>
-      
-      <Card>
-        <CardContent className="pt-6 space-y-6">
-          <div className="text-center space-y-4">
-            <div className="inline-flex p-4 rounded-full bg-blue-500/10">
-              <LinkIcon className="h-16 w-16 text-blue-500" />
-            </div>
-            <h3 className="text-2xl font-bold">Broker Partenaire</h3>
-            <p className="text-muted-foreground max-w-lg mx-auto">
-              {t('client.brokerDesc')}
-            </p>
+  // Section: Broker Link (affiche tous les brokers configurés par l'administrateur pour Élèves et Formateurs)
+  const renderBroker = () => {
+    const resolveBrokerLogo = (url) => {
+      if (!url) return '';
+      return url.startsWith('http') ? url : `${API_URL}${url}`;
+    };
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <LinkIcon className="h-6 w-6 text-primary" /> {t('client.brokerTitle')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isEn
+              ? 'Official partner brokers recommended by the academy for students and trainers.'
+              : "Retrouvez ci-dessous les brokers partenaires recommandés par l'académie pour créer votre compte de trading."}
+          </p>
+        </div>
+
+        {partnerBrokers.length > 0 ? (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {partnerBrokers.map((brk) => (
+              <Card key={brk.id || brk.name} className="overflow-hidden border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-xl flex flex-col justify-between bg-card">
+                <CardContent className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="h-16 w-16 rounded-2xl border bg-muted/40 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                        {brk.logo_url ? (
+                          <img
+                            src={resolveBrokerLogo(brk.logo_url)}
+                            alt={brk.name}
+                            className="h-full w-full object-contain p-1.5"
+                          />
+                        ) : (
+                          <LinkIcon className="h-8 w-8 text-blue-500" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 mb-1">
+                          <CheckCircle className="h-3 w-3" /> {isEn ? 'Verified Partner' : 'Broker Partenaire'}
+                        </span>
+                        <h3 className="text-xl font-extrabold truncate">{brk.name}</h3>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {brk.description || (isEn
+                        ? 'Regulated trading platform with competitive spreads, fast execution, and instant deposits/withdrawals.'
+                        : 'Plateforme de trading régulée avec spreads compétitifs, exécution rapide et dépôts/retraits instantanés.')}
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 p-2 bg-muted/50 rounded-lg">
+                        <CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        <span>{isEn ? 'Instant Deposits' : 'Dépôts Instantanés'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 p-2 bg-muted/50 rounded-lg">
+                        <CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        <span>{isEn ? 'Regulated & Safe' : 'Régulé & Sécurisé'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <a href={brk.url} target="_blank" rel="noopener noreferrer" className="block w-full">
+                      <Button className="w-full gap-2 font-bold shadow-md">
+                        <span>{isEn ? 'Open an Account' : 'Ouvrir un Compte'}</span>
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </a>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-          
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <span>Dépôts Instantanés</span>
-            </div>
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <span>Support 24/7</span>
-            </div>
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <span>Régulé & Sécurisé</span>
-            </div>
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <span>Spreads compétitifs</span>
-            </div>
-          </div>
-          
-          <div className="flex justify-center">
-            <a href="https://livefx.link/broker-affiliation" target="_blank" rel="noopener noreferrer">
-              <Button size="lg" className="gap-2">
-                Ouvrir un Compte <ExternalLink className="h-4 w-4" />
-              </Button>
-            </a>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+        ) : (
+          <Card>
+            <CardContent className="pt-6 space-y-6">
+              <div className="text-center space-y-4">
+                <div className="inline-flex p-4 rounded-full bg-blue-500/10">
+                  <LinkIcon className="h-16 w-16 text-blue-500" />
+                </div>
+                <h3 className="text-2xl font-bold">Broker Partenaire</h3>
+                <p className="text-muted-foreground max-w-lg mx-auto">
+                  {t('client.brokerDesc')}
+                </p>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <span>Dépôts Instantanés</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <span>Support 24/7</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <span>Régulé & Sécurisé</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <span>Spreads compétitifs</span>
+                </div>
+              </div>
+              <div className="flex justify-center">
+                <a href="https://livefx.link/broker-affiliation" target="_blank" rel="noopener noreferrer">
+                  <Button size="lg" className="gap-2">
+                    Ouvrir un Compte <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   // Section: Contact
   const renderContact = () => (

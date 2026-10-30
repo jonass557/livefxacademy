@@ -63,6 +63,7 @@ exports.getBranding = async (req, res) => {
       has_ikeepay_keys: hasIkeepay,
       ikeepay_public_key: data.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY || '',
       ikeepay_secret_key: isAdmin ? (data.ikeepay_secret_key || '') : (data.ikeepay_secret_key ? '••••••••' : ''),
+      brokers: Array.isArray(data.brokers) ? data.brokers : [],
       referral_percentage: Number(data.referral_percentage || 10)
     });
   } catch (err) {
@@ -282,5 +283,124 @@ exports.syncLogoFiles = async () => {
     }
   } catch (err) {
     console.warn('[branding] syncLogoFiles warning:', err.message);
+  }
+};
+
+
+// ----------------- GESTION DES LIENS BROKERS PARTENAIRES (AVEC LOGO OPTIONNEL) -----------------
+
+exports.addBroker = async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    let url = String(req.body?.url || '').trim();
+    const description = String(req.body?.description || '').trim();
+    const rawLogoUrl = String(req.body?.logo_url || '').trim();
+
+    if (!name || !url) {
+      return res.status(400).json({ message: 'Veuillez renseigner le nom du broker et son lien (URL).' });
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
+
+    let finalLogoUrl = rawLogoUrl;
+    if (req.file) {
+      finalLogoUrl = `/uploads/branding/${req.file.filename}`;
+    }
+
+    const newBroker = {
+      id: `brk_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+      name,
+      url,
+      description,
+      logo_url: finalLogoUrl || '',
+      created_at: new Date()
+    };
+
+    const branding = await BrandingSettings.findOneAndUpdate(
+      {},
+      {
+        $push: { brokers: newBroker },
+        $set: { updated_by: req.user.id }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    res.status(201).json({
+      message: 'Broker ajouté avec succès !',
+      broker: newBroker,
+      brokers: branding.brokers || []
+    });
+  } catch (err) {
+    console.error('addBroker error:', err);
+    res.status(500).json({ message: err.message || "Erreur lors de l'ajout du broker" });
+  }
+};
+
+exports.updateBroker = async (req, res) => {
+  try {
+    const { brokerId } = req.params;
+    const name = String(req.body?.name || '').trim();
+    let url = String(req.body?.url || '').trim();
+    const description = String(req.body?.description || '').trim();
+    const rawLogoUrl = req.body?.logo_url !== undefined ? String(req.body.logo_url || '').trim() : undefined;
+
+    if (!name || !url) {
+      return res.status(400).json({ message: 'Veuillez renseigner le nom du broker et son lien (URL).' });
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
+
+    const branding = await BrandingSettings.findOne();
+    if (!branding || !Array.isArray(branding.brokers)) {
+      return res.status(404).json({ message: 'Broker introuvable' });
+    }
+
+    const idx = branding.brokers.findIndex((b) => String(b.id) === String(brokerId));
+    if (idx === -1) {
+      return res.status(404).json({ message: 'Broker introuvable' });
+    }
+
+    branding.brokers[idx].name = name;
+    branding.brokers[idx].url = url;
+    branding.brokers[idx].description = description;
+    if (req.file) {
+      branding.brokers[idx].logo_url = `/uploads/branding/${req.file.filename}`;
+    } else if (rawLogoUrl !== undefined) {
+      branding.brokers[idx].logo_url = rawLogoUrl;
+    }
+
+    branding.markModified('brokers');
+    await branding.save();
+
+    res.json({
+      message: 'Broker mis à jour avec succès !',
+      brokers: branding.brokers
+    });
+  } catch (err) {
+    console.error('updateBroker error:', err);
+    res.status(500).json({ message: err.message || 'Erreur lors de la modification du broker' });
+  }
+};
+
+exports.deleteBroker = async (req, res) => {
+  try {
+    const { brokerId } = req.params;
+    const branding = await BrandingSettings.findOneAndUpdate(
+      {},
+      {
+        $pull: { brokers: { id: brokerId } },
+        $set: { updated_by: req.user.id }
+      },
+      { new: true }
+    );
+    res.json({
+      message: 'Broker supprimé avec succès',
+      brokers: branding?.brokers || []
+    });
+  } catch (err) {
+    console.error('deleteBroker error:', err);
+    res.status(500).json({ message: err.message || 'Erreur lors de la suppression du broker' });
   }
 };

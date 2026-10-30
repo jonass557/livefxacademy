@@ -8,6 +8,9 @@ router.get('/current-logo', brandingController.getCurrentLogo);
 router.get('/logo', brandingController.getCurrentLogo);
 router.post('/admin/upload', authenticateToken, requireRole(['admin']), brandingController.uploadMiddleware.single('logo'), brandingController.uploadLogo);
 router.patch('/admin/settings', authenticateToken, requireRole(['admin']), brandingController.updateSettings);
+router.post('/admin/brokers', authenticateToken, requireRole(['admin']), brandingController.uploadMiddleware.single('logo'), brandingController.addBroker);
+router.put('/admin/brokers/:brokerId', authenticateToken, requireRole(['admin']), brandingController.uploadMiddleware.single('logo'), brandingController.updateBroker);
+router.delete('/admin/brokers/:brokerId', authenticateToken, requireRole(['admin']), brandingController.deleteBroker);
 router.delete('/admin/:type', authenticateToken, requireRole(['admin']), brandingController.deleteLogo);
 
 module.exports = router;
