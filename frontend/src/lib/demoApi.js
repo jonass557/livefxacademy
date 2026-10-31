@@ -126,7 +126,7 @@ export const demoApi = {
   cancelPending: (id) => api.delete(`/demo/orders/${id}`).then((r) => r.data),
   watchlist: () => api.get('/demo/watchlist').then((r) => r.data).catch(() => ({ symbols: ['EURUSD', 'GBPUSD', 'XAUUSD', 'BTCUSD', 'R_75'] })),
   updateWatchlist: (symbol, action) => api.post('/demo/watchlist', { symbol, action }).then((r) => r.data),
-  alerts: (symbol) => api.get('/demo/alerts', { params: symbol ? { symbol } : {} }).then((r) => r.data),
+  alerts: (symbol, extraParams = {}) => api.get('/demo/alerts', { params: { ...(symbol ? { symbol } : {}), ...extraParams } }).then((r) => r.data),
   createAlert: (body) => api.post('/demo/alerts', body).then((r) => r.data),
   toggleAlert: (id) => api.patch(`/demo/alerts/${id}`).then((r) => r.data),
   triggerAlert: (id, body) => api.post(`/demo/alerts/${id}/trigger`, body || {}).then((r) => r.data),

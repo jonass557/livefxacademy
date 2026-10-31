@@ -439,19 +439,47 @@ function publicTrade(t) {
 // --- ALERTES DE PRIX (TradingView / MT5 avec notifications email) ---
 const alertWatcher = require('../utils/alerts/alertWatcher');
 
+function normalizeLevelType(levelType, note = '') {
+  const lt = String(levelType || '').toLowerCase().trim();
+  if (lt === 'sl' || lt === 'stop_loss' || lt === 'stoploss') return 'sl';
+  if (lt === 'tp' || lt === 'take_profit' || lt === 'takeprofit') return 'tp';
+  const txt = String(note || '').trim();
+  if (/(\b(sl)\b|stop\s*[-_]?\s*loss)/i.test(txt)) return 'sl';
+  if (/(\b(tp)\b|take\s*[-_]?\s*profit)/i.test(txt)) return 'tp';
+  return 'price';
+}
+
 exports.getAlerts = async (req, res) => {
   try {
+    const includeRecentTriggered = req.query.include_recent_triggered === '1';
     const filter = { user_id: req.user.id };
+    if (includeRecentTriggered) {
+      filter.$and = [
+        {
+          $or: [
+            { status: 'active' },
+            { status: 'triggered', triggered_at: { $gte: new Date(Date.now() - 60000) } },
+          ],
+        },
+      ];
+    } else {
+      filter.status = 'active';
+    }
     if (req.query.symbol) {
       const raw = String(req.query.symbol).trim();
       const clean = raw.replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
-      filter.$or = [
+      const symOr = [
         { symbol: raw },
         { symbol: clean },
         { symbol: `frx${clean}` },
         { symbol: new RegExp(`^(frx)?${clean}$`, 'i') },
         { symbol: new RegExp(`^${raw}$`, 'i') },
       ];
+      if (filter.$and) {
+        filter.$and.push({ $or: symOr });
+      } else {
+        filter.$or = symOr;
+      }
     }
     const alerts = await PriceAlert.find(filter).sort({ created_at: -1 });
     res.json(alerts.map(publicAlert));
@@ -465,6 +493,7 @@ exports.createAlert = async (req, res) => {
   try {
     const {
       symbol, target_price, condition = 'crossing',
+      level_type = 'price',
       trigger_frequency = 'once', expires_at = null,
       note = '', notify_email = true, created_price: clientCreatedPrice = null,
     } = req.body || {};
@@ -478,12 +507,14 @@ exports.createAlert = async (req, res) => {
     const quote = liveFeed.getQuote(cleanSym) || liveFeed.getQuote(rawSym);
     const parsedClientPrice = clientCreatedPrice != null ? parseFloat(clientCreatedPrice) : null;
     const created_price = quote?.mid || (parsedClientPrice && !isNaN(parsedClientPrice) ? parsedClientPrice : null);
+    const resolvedLevelType = normalizeLevelType(level_type, note);
 
     const alert = await PriceAlert.create({
       user_id: req.user.id,
       symbol: cleanSym || rawSym,
       target_price: tp,
       condition,
+      level_type: resolvedLevelType,
       trigger_frequency: ['once', 'every_time'].includes(trigger_frequency) ? trigger_frequency : 'once',
       expires_at: expires_at ? new Date(expires_at) : null,
       note: (note || '').slice(0, 200),
@@ -521,7 +552,7 @@ exports.toggleAlert = async (req, res) => {
 exports.triggerAlert = async (req, res) => {
   try {
     const alert = await PriceAlert.findOne({ _id: req.params.id, user_id: req.user.id });
-    if (!alert) return res.status(404).json({ message: 'Alerte introuvable' });
+    if (!alert) return res.json({ triggered: true, deleted: true });
 
     const rawPrice = parseFloat(req.body?.triggered_price ?? req.body?.price);
     const quote = liveFeed.getQuote(alert.symbol);
@@ -529,19 +560,16 @@ exports.triggerAlert = async (req, res) => {
       ? rawPrice
       : (quote?.mid || alert.target_price);
 
+    if (req.body?.level_type) {
+      alert.level_type = normalizeLevelType(req.body.level_type, alert.note);
+    }
+
     const now = new Date();
-    const shouldSendEmail = alert.notify_email !== false && (
-      !alert.email_sent ||
-      alert.trigger_frequency === 'every_time'
-    );
+    const shouldSendEmail = alert.notify_email !== false && !alert.email_sent;
 
     alert.triggered_at = now;
     alert.triggered_price = currentPrice;
-    if (alert.trigger_frequency !== 'every_time') {
-      alert.status = 'triggered';
-    } else {
-      alert.created_price = currentPrice;
-    }
+    alert.status = 'triggered';
 
     if (shouldSendEmail) {
       if (alertWatcher && typeof alertWatcher.sendAlertEmail === 'function') {
@@ -552,9 +580,12 @@ exports.triggerAlert = async (req, res) => {
         if (sent) alert.email_sent = true;
       }
     }
-    await alert.save();
 
-    res.json(publicAlert(alert));
+    const out = publicAlert(alert);
+    // Supprimer définitivement l'alerte déclenchée pour qu'elle ne réapparaisse jamais sur le graphique
+    await PriceAlert.findByIdAndDelete(alert._id);
+
+    res.json({ ...out, deleted: true });
   } catch (err) {
     console.error('demo triggerAlert:', err.message);
     res.status(400).json({ message: err.message || 'Déclenchement alerte impossible' });
@@ -564,7 +595,7 @@ exports.triggerAlert = async (req, res) => {
 exports.deleteAlert = async (req, res) => {
   try {
     const alert = await PriceAlert.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
-    if (!alert) return res.status(404).json({ message: 'Alerte introuvable' });
+    if (!alert) return res.json({ message: 'Alerte déjà supprimée', id: req.params.id });
     res.json({ message: 'Alerte supprimée', id: alert._id });
   } catch (err) {
     res.status(400).json({ message: err.message || 'Suppression impossible' });
@@ -597,6 +628,7 @@ function publicAlert(a) {
     symbol: a.symbol,
     targetPrice: a.target_price,
     condition: a.condition,
+    levelType: normalizeLevelType(a.level_type, a.note),
     triggerFrequency: a.trigger_frequency || 'once',
     expiresAt: a.expires_at,
     note: a.note || '',

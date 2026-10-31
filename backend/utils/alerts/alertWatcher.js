@@ -6,8 +6,45 @@
 // et lui envoie un email de notification immédiat (via mailer).
 
 const liveFeed = require('../marketData/liveFeed');
-const { PriceAlert, User } = require('../../models');
+const { PriceAlert, User, DemoAccount, Position, PendingOrder } = require('../../models');
 const { sendMail } = require('../mailer');
+
+function inferLevelTypeFromNote(note = '', currentLevelType = 'price') {
+  if (currentLevelType === 'sl' || currentLevelType === 'tp') return currentLevelType;
+  const txt = String(note || '').trim();
+  if (/(\b(sl)\b|stop\s*[-_]?\s*loss)/i.test(txt)) return 'sl';
+  if (/(\b(tp)\b|take\s*[-_]?\s*profit)/i.test(txt)) return 'tp';
+  return 'price';
+}
+
+async function resolveAlertLevelType(alert) {
+  const fromFieldOrNote = inferLevelTypeFromNote(alert?.note, alert?.level_type);
+  if (fromFieldOrNote === 'sl' || fromFieldOrNote === 'tp') return fromFieldOrNote;
+  try {
+    const userId = alert?.user_id?._id || alert?.user_id;
+    const tp = Number(alert?.target_price);
+    if (!userId || !tp || isNaN(tp)) return 'price';
+    const account = await DemoAccount.findOne({ user_id: userId }).select('_id').lean();
+    if (!account) return 'price';
+    const rawSym = String(alert.symbol || '').replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
+    const [positions, orders] = await Promise.all([
+      Position.find({ demo_account_id: account._id, status: 'OPEN' }).select('symbol stop_loss take_profit').lean(),
+      PendingOrder.find({ demo_account_id: account._id, status: 'PENDING' }).select('symbol stop_loss take_profit').lean(),
+    ]);
+    const allItems = [...(positions || []), ...(orders || [])];
+    for (const item of allItems) {
+      const itemSym = String(item.symbol || '').replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
+      if (rawSym && itemSym && rawSym !== itemSym) continue;
+      if (item.stop_loss != null && Math.abs(tp - Number(item.stop_loss)) / Math.max(Math.abs(tp), 1e-9) <= 0.0025) {
+        return 'sl';
+      }
+      if (item.take_profit != null && Math.abs(tp - Number(item.take_profit)) / Math.max(Math.abs(tp), 1e-9) <= 0.0025) {
+        return 'tp';
+      }
+    }
+  } catch (_) {}
+  return 'price';
+}
 
 async function sendAlertEmail(alert, currentPrice) {
   if (!alert || alert.notify_email === false) return false;
@@ -27,20 +64,40 @@ async function sendAlertEmail(alert, currentPrice) {
     const symbol = alert.symbol;
     const tp = alert.target_price;
     const execPrice = currentPrice ?? tp;
+    const levelType = await resolveAlertLevelType(alert);
+
     const condLabel = alert.condition === 'above'
       ? 'franchi à la hausse (>=)'
       : alert.condition === 'below'
       ? 'franchi à la baisse (<=)'
       : 'croisé';
 
-    const subject = `🔔 Alerte LivefxTrading : ${symbol} a atteint ${tp}`;
-    const title = `Alerte de Prix Déclenchée : ${symbol}`;
+    let subject = `🔔 Alerte LivefxTrading : ${symbol} a atteint ${tp}`;
+    let title = `Alerte de Prix Déclenchée : ${symbol}`;
+    let introHtml = `<p>Votre alerte de prix configurée sur <strong>${symbol}</strong> vient de se déclencher :</p>`;
+    let accentColor = '#6366f1';
+    let targetBadgeHtml = `<p style="margin:4px 0;"><strong>Prix cible :</strong> <span style="font-size:16px; font-weight:bold; color:#4f46e5;">${tp}</span></p>`;
+
+    if (levelType === 'sl') {
+      subject = `🛑 Alerte Stop Loss LivefxTrading : Le Stop Loss (${tp}) sur ${symbol} a été atteint`;
+      title = `🛑 Stop Loss Atteint : ${symbol}`;
+      introHtml = `<p><strong>Le Stop Loss (${tp}) sur ${symbol} a été atteint par l'alerte placée !</strong></p>`;
+      accentColor = '#ef4444';
+      targetBadgeHtml = `<p style="margin:4px 0;"><strong>Niveau atteint :</strong> <span style="font-size:16px; font-weight:bold; color:#dc2626;">🛑 Stop Loss (SL) @ ${tp}</span></p>`;
+    } else if (levelType === 'tp') {
+      subject = `🎯 Alerte Take Profit LivefxTrading : Le Take Profit (${tp}) sur ${symbol} a été atteint`;
+      title = `🎯 Take Profit Atteint : ${symbol}`;
+      introHtml = `<p><strong>Le Take Profit (${tp}) sur ${symbol} a été atteint par l'alerte placée !</strong></p>`;
+      accentColor = '#22c55e';
+      targetBadgeHtml = `<p style="margin:4px 0;"><strong>Niveau atteint :</strong> <span style="font-size:16px; font-weight:bold; color:#16a34a;">🎯 Take Profit (TP) @ ${tp}</span></p>`;
+    }
+
     const html = `
       <p>Bonjour <strong>${userName}</strong>,</p>
-      <p>Votre alerte de prix configurée sur <strong>${symbol}</strong> vient de se déclencher :</p>
-      <div style="background:#f3f4f6; border-left:4px solid #6366f1; padding:15px; margin:15px 0; border-radius:4px;">
+      ${introHtml}
+      <div style="background:#f3f4f6; border-left:4px solid ${accentColor}; padding:15px; margin:15px 0; border-radius:4px;">
         <p style="margin:4px 0;"><strong>Instrument :</strong> ${symbol}</p>
-        <p style="margin:4px 0;"><strong>Prix cible :</strong> <span style="font-size:16px; font-weight:bold; color:#4f46e5;">${tp}</span></p>
+        ${targetBadgeHtml}
         <p style="margin:4px 0;"><strong>Prix d'exécution :</strong> ${execPrice}</p>
         <p style="margin:4px 0;"><strong>Condition :</strong> ${condLabel}</p>
         ${alert.note ? `<p style="margin:4px 0;"><strong>Note / Commentaire :</strong> ${alert.note}</p>` : ''}

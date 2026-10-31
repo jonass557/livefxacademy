@@ -127,7 +127,7 @@ export default function TradingDemo() {
   );
   const chartEl = (
     <DemoChart symbol={selected} symbolName={selectedInstrument?.name} timeframe={timeframe}
-      onSelectTimeframe={setTimeframe} liveQuote={selectedQuote} />
+      onSelectTimeframe={setTimeframe} liveQuote={selectedQuote} positions={positions} orders={orders} />
   );
   const ticketEl = (
     <OrderTicket instrument={selectedInstrument} quote={selectedQuote} onMarket={onMarket} onPending={onPending} busy={busy} />

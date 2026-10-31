@@ -11,6 +11,7 @@ import {
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
   ChartErrorBoundary, Dropdown, usePriceAlerts, ChartAlertsMenu,
   CreatePriceAlertDialog, ChartContextMenu, setChartLatestPrice,
+  formatAlertNotificationMessage,
 } from './chartShared';
 import { useLanguageStore } from '../../store/languageStore';
 import {
@@ -68,13 +69,19 @@ export default function ReplayChart({
   const [cutIndex, setCutIndex] = useState(null);
   const [isCutting, setIsCutting] = useState(false);
 
-  const { language, t } = useLanguageStore();
-  const isEnglish = language === 'en';
-  const alertsManager = usePriceAlerts(symbolName || 'BACKTEST', chartRef);
-
   // Positions et Ordres
   const [position, setPosition] = useState(null);
   const [pendingOrders, setPendingOrders] = useState([]);
+
+  const { language, t } = useLanguageStore();
+  const isEnglish = language === 'en';
+  const alertsManager = usePriceAlerts(symbolName || 'BACKTEST', chartRef, {
+    positions: position ? [position] : [],
+    orders: pendingOrders,
+    onServerAlertTriggered: (al) => {
+      toast.warning(formatAlertNotificationMessage(al, symbolName || 'Prix', isEnglish), { duration: 8000 });
+    },
+  });
   const [balance, setBalance] = useState(initialBalance);
   const [closedTrades, setClosedTrades] = useState(0);
 
@@ -105,7 +112,7 @@ export default function ReplayChart({
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
 
-  const overlayManager = useChartOverlayManager(chartRef, containerRef, { symbol: symbolName || 'REPLAY' });
+  const overlayManager = useChartOverlayManager(chartRef, containerRef, { symbol: symbolName || 'REPLAY', alertsManager });
 
   const klineData = useMemo(
     () => (candles || []).map((c) => ({
@@ -367,9 +374,12 @@ export default function ReplayChart({
       setPlaying(false);
       triggeredAlerts.forEach((al) => {
         toast.warning(
-          isEnglish
-            ? `🔔 ALERT: ${symbolName || 'Price'} reached ${al.targetPrice}${al.note ? ` (${al.note})` : ''}! Replay paused.`
-            : `🔔 ALERTE : ${symbolName || 'Prix'} a atteint ${al.targetPrice}${al.note ? ` (${alert.note})` : ''} ! Replay mis en pause.`,
+          formatAlertNotificationMessage(
+            al,
+            symbolName || (isEnglish ? 'Price' : 'Prix'),
+            isEnglish,
+            isEnglish ? ' Replay paused.' : ' Replay mis en pause.'
+          ),
           { duration: 8000 }
         );
       });
@@ -1422,6 +1432,7 @@ export default function ReplayChart({
               setAlertTargetPrice(price != null ? String(price) : '');
               setAlertModalOpen(true);
             }}
+            alertsManager={alertsManager}
             isEnglish={isEnglish}
           />
 
@@ -1433,6 +1444,7 @@ export default function ReplayChart({
             symbol={symbolName || 'Chart'}
             currentPrice={cur?.close}
             isEnglish={isEnglish}
+            alertsManager={alertsManager}
             onCreateAlert={async (data) => {
               await alertsManager.createAlert(data);
             }}

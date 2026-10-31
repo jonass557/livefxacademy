@@ -1401,16 +1401,21 @@ export function ensureCustomOverlaysAndIndicators() {
 
   // Price Alert Line (Alerte de Prix TradingView / MT5)
   // Ligne ultra-fine et discrète (1px) sans texte sur le graphique pour ne pas gêner l'analyse des élèves.
+  // Dès qu'une alerte est déclenchée, elle disparaît immédiatement du graphique.
   registerOverlay({
     name: 'priceAlertLine',
     totalStep: 2,
     needDefaultPointFigure: false,
     createPointFigures: ({ coordinates, bounding, overlay }) => {
       if (!coordinates || coordinates.length < 1) return [];
+      if (overlay.extendData?.triggered) return [];
       const y = coordinates[0].y;
-      const triggered = overlay.extendData?.triggered || false;
-      // Opacité et luminosité très douces et atténuées
-      const lineColor = triggered ? 'rgba(156, 163, 175, 0.4)' : 'rgba(245, 158, 11, 0.55)';
+      const levelType = overlay.extendData?.levelType || 'price';
+      const lineColor = levelType === 'sl'
+        ? 'rgba(239, 68, 68, 0.8)'
+        : levelType === 'tp'
+        ? 'rgba(34, 197, 94, 0.8)'
+        : 'rgba(245, 158, 11, 0.65)';
 
       return [
         {
@@ -1423,7 +1428,7 @@ export function ensureCustomOverlaysAndIndicators() {
           },
           styles: {
             color: lineColor,
-            size: 1, // Épaisseur réduite à 1px
+            size: 1,
             style: 'dashed',
             dashedValue: [5, 4],
           },
@@ -1438,12 +1443,17 @@ export function ensureCustomOverlaysAndIndicators() {
     },
     createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
       if (!coordinates || coordinates.length < 1) return [];
+      if (overlay.extendData?.triggered) return [];
       const y = coordinates[0].y;
       const price = overlay.points[0]?.value || 0;
       const dec = precision?.price ?? 4;
-      const triggered = overlay.extendData?.triggered || false;
-      // Badge discret sur l'axe des ordonnées à droite (hors du graphique des chandeliers)
-      const bgColor = triggered ? 'rgba(107, 114, 128, 0.65)' : 'rgba(217, 119, 6, 0.75)';
+      const levelType = overlay.extendData?.levelType || 'price';
+      const bgColor = levelType === 'sl'
+        ? 'rgba(220, 38, 38, 0.9)'
+        : levelType === 'tp'
+        ? 'rgba(22, 163, 74, 0.9)'
+        : 'rgba(217, 119, 6, 0.82)';
+      const prefix = levelType === 'sl' ? '🛑 SL 🔔 ' : levelType === 'tp' ? '🎯 TP 🔔 ' : '🔔 ';
       const isFromZero = yAxis?.isFromZero ? yAxis.isFromZero() : false;
       const width = bounding?.width || 65;
       const textX = isFromZero ? 4 : width - 4;
@@ -1461,11 +1471,11 @@ export function ensureCustomOverlaysAndIndicators() {
           attrs: {
             x: textX,
             y,
-            text: `🔔 ${Number(price).toFixed(dec)}`,
+            text: `${prefix}${Number(price).toFixed(dec)}`,
             align,
             baseline: 'middle',
           },
-          styles: { color: '#ffffff', size: 9, weight: 'normal' },
+          styles: { color: '#ffffff', size: 9, weight: 'bold' },
           ignoreEvent: true,
         },
       ];
@@ -2432,6 +2442,8 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       try {
         const ov = chart.getOverlayById?.(id);
         if (ov && ov.groupId === 'draw' && Array.isArray(ov.points) && ov.points.length > 0) {
+          // Les alertes de prix sont gérées dynamiquement par usePriceAlerts (jamais stockées comme tracé fixe)
+          if (ov.name === 'priceAlertLine') return;
           // Ne pas enregistrer un outil texte vide jamais validé
           if (ov.name === 'text') {
             const txt = typeof ov.extendData === 'string' ? ov.extendData : (ov.extendData?.text || '');
@@ -2460,6 +2472,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
   useEffect(() => {
     if (chartRef?.current) {
       chartRef.current._lfxSaveDrawings = saveDrawings;
+      chartRef.current._lfxActiveOverlayIds = activeOverlayIdsRef.current;
     }
   }, [chartRef, saveDrawings]);
 
@@ -2513,6 +2526,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       if (Array.isArray(list)) {
         list.forEach((item) => {
           if (!item.name || !Array.isArray(item.points) || !item.points.length) return;
+          if (item.name === 'priceAlertLine') return;
           if (activeOverlayIdsRef.current.has(item.id) && chart.getOverlayById?.(item.id)) return;
           const cleanPoints = item.points.map((pt) => ({
             ...(pt.timestamp != null ? { timestamp: pt.timestamp } : {}),
@@ -2772,6 +2786,21 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       try {
         const overlay = chart.getOverlayById?.(info.overlayId);
         if (overlay && SINGLE_POINT_OVERLAY_TOOLS.has(overlay.name)) {
+          // Si l'utilisateur place une Alerte de prix depuis le menu Outils :
+          // on la convertit en véritable alerte surveillée (qui se supprimera dès déclenchement)
+          if (overlay.name === 'priceAlertLine') {
+            const targetVal = info.pt1?.value;
+            activeOverlayIdsRef.current.delete(info.overlayId);
+            drawingOverlayIdRef.current = null;
+            try { chart.removeOverlay({ id: info.overlayId }); } catch (_) {}
+            try { chart.setScrollEnabled?.(true); } catch (_) {}
+            const mgr = options?.alertsManager || chart._lfxAlertsManager;
+            if (mgr && typeof mgr.addAlert === 'function' && targetVal != null) {
+              mgr.addAlert({ targetPrice: targetVal });
+            }
+            touchDragInfoRef.current = null;
+            return;
+          }
           // Outil à 1 seul point (comme Texte / Annotation) : dès le simple clic sur la zone du graphique,
           // on fixe le point et on ouvre immédiatement la zone d'écriture directe à cet endroit précis !
           chart.overrideOverlay?.({
@@ -4870,22 +4899,352 @@ export const playAlertSound = () => {
 };
 
 /**
- * Hook de gestion des alertes de prix par symbole / instrument.
- * Synchronise les lignes d'alerte sur le graphique KlineCharts et surveille les franchissements.
+ * Extrait tous les niveaux de Stop Loss (SL) et Take Profit (TP) présents sur le graphique :
+ * - Outils Position Long / Position Short (positionLong, positionShort)
+ * - Lignes d'ordres SL / TP (backtestSlLine, backtestTpLine)
+ * - Tracés annotés "SL" / "Stop Loss" ou "TP" / "Take Profit"
+ * - Positions ouvertes et ordres en attente (Trading Démo & Replay)
  */
-export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
+export function extractChartSlTpLevels(chart, positions = [], orders = [], symbol = null) {
+  const slLevels = [];
+  const tpLevels = [];
+  const zones = [];
+
+  const addOverlayData = (ov) => {
+    if (!ov || !Array.isArray(ov.points) || ov.points.length === 0) return;
+    if (ov.name === 'positionLong') {
+      const pEntry = Number(ov.points[0]?.value);
+      const pTp = Number(ov.points[1]?.value);
+      const pSl = ov.points[2]?.value != null
+        ? Number(ov.points[2].value)
+        : (Number.isFinite(pEntry) && Number.isFinite(pTp) ? pEntry - Math.abs(pTp - pEntry) * 0.5 : NaN);
+      if (Number.isFinite(pTp) && pTp > 0) tpLevels.push(pTp);
+      if (Number.isFinite(pSl) && pSl > 0) slLevels.push(pSl);
+      if (Number.isFinite(pEntry) && pEntry > 0) {
+        zones.push({ entryPrice: pEntry, tpPrice: Number.isFinite(pTp) ? pTp : null, slPrice: Number.isFinite(pSl) ? pSl : null });
+      }
+    } else if (ov.name === 'positionShort') {
+      const pEntry = Number(ov.points[0]?.value);
+      const pTp = Number(ov.points[1]?.value);
+      const pSl = ov.points[2]?.value != null
+        ? Number(ov.points[2].value)
+        : (Number.isFinite(pEntry) && Number.isFinite(pTp) ? pEntry + Math.abs(pEntry - pTp) * 0.5 : NaN);
+      if (Number.isFinite(pTp) && pTp > 0) tpLevels.push(pTp);
+      if (Number.isFinite(pSl) && pSl > 0) slLevels.push(pSl);
+      if (Number.isFinite(pEntry) && pEntry > 0) {
+        zones.push({ entryPrice: pEntry, tpPrice: Number.isFinite(pTp) ? pTp : null, slPrice: Number.isFinite(pSl) ? pSl : null });
+      }
+    } else if (ov.name === 'backtestSlLine') {
+      const v = Number(ov.points[0]?.value);
+      if (Number.isFinite(v) && v > 0) slLevels.push(v);
+    } else if (ov.name === 'backtestTpLine') {
+      const v = Number(ov.points[0]?.value);
+      if (Number.isFinite(v) && v > 0) tpLevels.push(v);
+    } else {
+      const txt = typeof ov.extendData === 'string' ? ov.extendData : (ov.extendData?.text || '');
+      if (txt) {
+        if (/(\b(sl)\b|stop\s*[-_]?\s*loss)/i.test(txt)) {
+          ov.points.forEach((pt) => {
+            const v = Number(pt?.value);
+            if (Number.isFinite(v) && v > 0) slLevels.push(v);
+          });
+        } else if (/(\b(tp)\b|take\s*[-_]?\s*profit)/i.test(txt)) {
+          ov.points.forEach((pt) => {
+            const v = Number(pt?.value);
+            if (Number.isFinite(v) && v > 0) tpLevels.push(v);
+          });
+        }
+      }
+    }
+  };
+
+  if (chart) {
+    try {
+      const seenIds = new Set();
+      if (chart._lfxActiveOverlayIds && typeof chart._lfxActiveOverlayIds.forEach === 'function') {
+        chart._lfxActiveOverlayIds.forEach((id) => {
+          try {
+            const ov = chart.getOverlayById?.(id);
+            if (ov) {
+              seenIds.add(ov.id);
+              addOverlayData(ov);
+            }
+          } catch (_) {}
+        });
+      }
+      const names = ['positionLong', 'positionShort', 'backtestSlLine', 'backtestTpLine'];
+      names.forEach((name) => {
+        try {
+          const list = chart.getOverlayList?.({ name }) || [];
+          list.forEach((ov) => {
+            if (ov && !seenIds.has(ov.id)) {
+              seenIds.add(ov.id);
+              addOverlayData(ov);
+            }
+          });
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }
+
+  // Fallback sur les dessins sauvegardés dans localStorage pour ce symbole
+  if (symbol && typeof window !== 'undefined') {
+    try {
+      const cleanSym = String(symbol).toUpperCase().replace(/[\/\s_-]/g, '');
+      let uid = 'guest';
+      try { uid = useAuthStore.getState().user?.id || 'guest'; } catch (_) {}
+      const raw = localStorage.getItem(`lfx_chart_drawings_${uid}_${cleanSym}`);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          list.forEach((item) => addOverlayData(item));
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Positions et ordres actifs (Trading Démo ou Replay)
+  const cleanTargetSym = symbol ? String(symbol).replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase() : null;
+  const allTradeItems = [...(Array.isArray(positions) ? positions : []), ...(Array.isArray(orders) ? orders : [])];
+  allTradeItems.forEach((item) => {
+    if (!item) return;
+    if (cleanTargetSym && item.symbol) {
+      const itemSym = String(item.symbol).replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
+      if (itemSym && itemSym !== cleanTargetSym) return;
+    }
+    const sl = Number(item.stop_loss ?? item.sl);
+    const tp = Number(item.take_profit ?? item.tp);
+    const entry = Number(item.entry_price ?? item.entryPrice ?? item.price);
+    if (Number.isFinite(sl) && sl > 0) slLevels.push(sl);
+    if (Number.isFinite(tp) && tp > 0) tpLevels.push(tp);
+    if (Number.isFinite(entry) && entry > 0 && (Number.isFinite(sl) || Number.isFinite(tp))) {
+      zones.push({
+        entryPrice: entry,
+        slPrice: Number.isFinite(sl) && sl > 0 ? sl : null,
+        tpPrice: Number.isFinite(tp) && tp > 0 ? tp : null,
+      });
+    }
+  });
+
+  return { slLevels, tpLevels, zones };
+}
+
+/**
+ * Détecte automatiquement si un prix d'alerte est placé sur un Stop Loss ('sl') ou un Take Profit ('tp').
+ */
+export function detectSlTpContext(chart, targetPrice, positions = [], orders = [], note = '', explicitLevelType = null, symbol = null) {
+  if (explicitLevelType === 'sl' || explicitLevelType === 'tp') return explicitLevelType;
+  const cleanNote = String(note || '').trim();
+  if (/(\b(sl)\b|stop\s*[-_]?\s*loss)/i.test(cleanNote)) return 'sl';
+  if (/(\b(tp)\b|take\s*[-_]?\s*profit)/i.test(cleanNote)) return 'tp';
+
+  const price = Number(targetPrice);
+  if (!Number.isFinite(price) || price <= 0) return 'price';
+
+  const { slLevels, tpLevels, zones } = extractChartSlTpLevels(chart, positions, orders, symbol);
+  if (slLevels.length === 0 && tpLevels.length === 0 && zones.length === 0) return 'price';
+
+  const getPixelY = (val) => {
+    if (!chart) return null;
+    try {
+      const pane = chart.getDrawPaneById?.('candle_pane');
+      const yAxis = pane?.getAxisComponent?.();
+      if (yAxis?.convertToPixel) {
+        const py = yAxis.convertToPixel(val);
+        if (typeof py === 'number' && Number.isFinite(py)) return py;
+      }
+    } catch (_) {}
+    try {
+      const res = chart.convertToPixel?.({ value: val }, { paneId: 'candle_pane' });
+      if (res && typeof res.y === 'number' && Number.isFinite(res.y)) return res.y;
+    } catch (_) {}
+    return null;
+  };
+
+  const targetY = getPixelY(price);
+
+  let bestSlDiff = Infinity;
+  let slMatched = false;
+  for (const sl of slLevels) {
+    const relDiff = Math.abs(price - sl) / Math.max(Math.abs(sl), 1e-9);
+    const slY = getPixelY(sl);
+    const pxDiff = (targetY != null && slY != null) ? Math.abs(targetY - slY) : Infinity;
+    if (pxDiff <= 24 || relDiff <= 0.0025) {
+      slMatched = true;
+      if (relDiff < bestSlDiff) bestSlDiff = relDiff;
+    }
+  }
+
+  let bestTpDiff = Infinity;
+  let tpMatched = false;
+  for (const tp of tpLevels) {
+    const relDiff = Math.abs(price - tp) / Math.max(Math.abs(tp), 1e-9);
+    const tpY = getPixelY(tp);
+    const pxDiff = (targetY != null && tpY != null) ? Math.abs(targetY - tpY) : Infinity;
+    if (pxDiff <= 24 || relDiff <= 0.0025) {
+      tpMatched = true;
+      if (relDiff < bestTpDiff) bestTpDiff = relDiff;
+    }
+  }
+
+  if (slMatched && tpMatched) {
+    return bestSlDiff <= bestTpDiff ? 'sl' : 'tp';
+  }
+  if (slMatched) return 'sl';
+  if (tpMatched) return 'tp';
+
+  // Vérification si l'alerte a été placée dans la zone Stop Loss (rouge) ou Take Profit (verte) d'un outil Position Long/Short
+  for (const z of zones) {
+    if (z.entryPrice > 0 && z.slPrice != null && z.slPrice > 0) {
+      const span = Math.abs(z.entryPrice - z.slPrice);
+      if (span > 0) {
+        if (z.slPrice < z.entryPrice) {
+          // Position Long : SL sous l'entrée
+          if (price <= z.entryPrice - span * 0.15 && price >= z.slPrice - span * 0.45) return 'sl';
+        } else {
+          // Position Short : SL au-dessus de l'entrée
+          if (price >= z.entryPrice + span * 0.15 && price <= z.slPrice + span * 0.45) return 'sl';
+        }
+      }
+    }
+    if (z.entryPrice > 0 && z.tpPrice != null && z.tpPrice > 0) {
+      const span = Math.abs(z.entryPrice - z.tpPrice);
+      if (span > 0) {
+        if (z.tpPrice > z.entryPrice) {
+          // Position Long : TP au-dessus de l'entrée
+          if (price >= z.entryPrice + span * 0.15 && price <= z.tpPrice + span * 0.45) return 'tp';
+        } else {
+          // Position Short : TP sous l'entrée
+          if (price <= z.entryPrice - span * 0.15 && price >= z.tpPrice - span * 0.45) return 'tp';
+        }
+      }
+    }
+  }
+
+  return 'price';
+}
+
+/**
+ * Formate le message de notification lorsqu'une alerte est déclenchée.
+ * Mentionne explicitement si le Stop Loss ou le Take Profit a été atteint par l'alerte placée.
+ */
+export function formatAlertNotificationMessage(alert, symbolLabel = 'Instrument', isEnglish = false, extraSuffix = '') {
+  const levelType = alert?.levelType || (/(\b(sl)\b|stop\s*[-_]?\s*loss)/i.test(alert?.note || '') ? 'sl' : /(\b(tp)\b|take\s*[-_]?\s*profit)/i.test(alert?.note || '') ? 'tp' : 'price');
+  const priceStr = alert?.targetPrice ?? alert?.triggeredPrice ?? '';
+
+  if (levelType === 'sl') {
+    return isEnglish
+      ? `🛑 STOP LOSS ALERT: The Stop Loss (${priceStr}) on ${symbolLabel} has been reached by the placed alert!${extraSuffix}`
+      : `🛑 ALERTE STOP LOSS : Le Stop Loss (${priceStr}) sur ${symbolLabel} a été atteint par l'alerte placée !${extraSuffix}`;
+  }
+  if (levelType === 'tp') {
+    return isEnglish
+      ? `🎯 TAKE PROFIT ALERT: The Take Profit (${priceStr}) on ${symbolLabel} has been reached by the placed alert!${extraSuffix}`
+      : `🎯 ALERTE TAKE PROFIT : Le Take Profit (${priceStr}) sur ${symbolLabel} a été atteint par l'alerte placée !${extraSuffix}`;
+  }
+
+  const notePart = alert?.note ? ` (${alert.note})` : '';
+  return isEnglish
+    ? `🔔 ALERT: ${symbolLabel} reached ${priceStr}${notePart}!${extraSuffix}`
+    : `🔔 ALERTE : ${symbolLabel} a atteint ${priceStr}${notePart} !${extraSuffix}`;
+}
+
+/**
+ * Hook de gestion des alertes de prix par symbole / instrument.
+ * Synchronise les lignes d'alerte sur le graphique KlineCharts, surveille les franchissements,
+ * envoie la notification (avec mention Stop Loss / Take Profit si applicable) et retire immédiatement
+ * l'alerte du graphique dès qu'elle est déclenchée.
+ */
+export function usePriceAlerts(symbol = 'DEFAULT', chartRef, options = {}) {
   const token = useAuthStore((s) => s.token);
   const storageKey = `livefx_chart_alerts_${symbol}`;
   const [alerts, setAlerts] = useState(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      return raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      // Ne jamais conserver d'anciennes alertes déjà déclenchées sur le graphique
+      return Array.isArray(parsed) ? parsed.filter((a) => a && !a.triggered && a.status !== 'triggered') : [];
     } catch (_) {
       return [];
     }
   });
 
+  const alertsRef = useRef(alerts);
+  useEffect(() => {
+    alertsRef.current = alerts;
+  }, [alerts]);
+
   const lastCheckedPriceRef = useRef(null);
+  const triggeredIdsRef = useRef(new Set());
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
+
+  // Supprimer immédiatement les overlays d'alerte déclenchés du graphique
+  const syncOverlaysOnChart = useCallback((listToRender) => {
+    const chart = chartRef?.current;
+    if (!chart) return;
+    try {
+      chart.removeOverlay({ groupId: 'alerts' });
+    } catch (_) {}
+    try {
+      chart.removeOverlay({ name: 'priceAlertLine' });
+    } catch (_) {}
+
+    const activeList = (listToRender || []).filter((a) => a && !a.triggered && a.status !== 'triggered' && !triggeredIdsRef.current.has(String(a.id)));
+    activeList.forEach((alert) => {
+      try {
+        const resolvedType = detectSlTpContext(
+          chart,
+          alert.targetPrice,
+          optionsRef.current?.positions,
+          optionsRef.current?.orders,
+          alert.note,
+          alert.levelType,
+          symbol
+        );
+        chart.createOverlay({
+          name: 'priceAlertLine',
+          id: `alert_${alert.id}`,
+          groupId: 'alerts',
+          points: [{ value: Number(alert.targetPrice) }],
+          extendData: {
+            id: alert.id,
+            note: alert.note || '',
+            levelType: resolvedType,
+            triggered: false,
+          },
+          onPressedMoveEnd: ({ overlay }) => {
+            const newPrice = Number(overlay?.points?.[0]?.value);
+            if (Number.isFinite(newPrice) && newPrice > 0) {
+              const newLevelType = detectSlTpContext(
+                chart,
+                newPrice,
+                optionsRef.current?.positions,
+                optionsRef.current?.orders,
+                alert.note,
+                null,
+                symbol
+              );
+              setAlerts((prev) =>
+                prev.map((item) =>
+                  String(item.id) === String(alert.id)
+                    ? { ...item, targetPrice: newPrice, levelType: newLevelType }
+                    : item
+                )
+              );
+            }
+            return true;
+          },
+          onRightClick: () => {
+            removeAlert(alert.id);
+            return true;
+          },
+        });
+      } catch (_) {}
+    });
+  }, [chartRef, symbol]);
 
   // Charger depuis le backend dès que connecté ou sur changement d'appareil / symbole
   useEffect(() => {
@@ -4893,64 +5252,113 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     if (!activeToken || !symbol || symbol === 'DEFAULT') return;
 
     let mounted = true;
+    // Chargement initial : uniquement les alertes actives (les alertes déclenchées ne reviennent plus)
     demoApi.alerts(symbol).then((remoteAlerts) => {
       if (!mounted || !Array.isArray(remoteAlerts)) return;
+      const activeRemote = remoteAlerts.filter((a) => a && !a.triggered && a.status !== 'triggered' && !triggeredIdsRef.current.has(String(a.id)));
       setAlerts((local) => {
         const map = new Map();
-        // Les alertes distantes du compte sur le serveur font autorité absolue pour synchroniser les appareils
-        remoteAlerts.forEach((a) => map.set(String(a.id), a));
-        // Conserver les alertes locales temporaires créées il y a quelques secondes
+        activeRemote.forEach((a) => map.set(String(a.id), a));
         local.forEach((a) => {
-          if (String(a.id).includes('_') && !map.has(String(a.id))) {
+          if (a && !a.triggered && a.status !== 'triggered' && String(a.id).includes('_') && !map.has(String(a.id)) && !triggeredIdsRef.current.has(String(a.id))) {
             map.set(String(a.id), a);
           }
         });
-        return Array.from(map.values());
+        const next = Array.from(map.values());
+        alertsRef.current = next;
+        return next;
       });
     }).catch((err) => {
       console.warn('Sync alerte backend get:', err?.message || err);
     });
 
-    return () => { mounted = false; };
-  }, [symbol, token]);
+    // Surveillance périodique pour détecter si le serveur (alertWatcher) a déclenché une alerte
+    const pollInterval = setInterval(() => {
+      if (!mounted) return;
+      demoApi.alerts(symbol, { include_recent_triggered: '1' }).then((remoteList) => {
+        if (!mounted || !Array.isArray(remoteList)) return;
+        const serverTriggered = [];
+        remoteList.forEach((rAlert) => {
+          if (rAlert && (rAlert.triggered || rAlert.status === 'triggered')) {
+            const idStr = String(rAlert.id);
+            const wasActiveLocally = alertsRef.current.some((localA) => String(localA.id) === idStr);
+            if (wasActiveLocally && !triggeredIdsRef.current.has(idStr)) {
+              triggeredIdsRef.current.add(idStr);
+              const resolvedType = detectSlTpContext(
+                chartRef?.current,
+                rAlert.targetPrice,
+                optionsRef.current?.positions,
+                optionsRef.current?.orders,
+                rAlert.note,
+                rAlert.levelType,
+                symbol
+              );
+              serverTriggered.push({ ...rAlert, levelType: resolvedType });
+            }
+            demoApi.deleteAlert(rAlert.id).catch(() => {});
+          }
+        });
 
-  // Sauvegarder dans le localStorage
+        const activeRemote = remoteList.filter((a) => a && !a.triggered && a.status !== 'triggered' && !triggeredIdsRef.current.has(String(a.id)));
+        setAlerts((local) => {
+          const map = new Map();
+          activeRemote.forEach((a) => map.set(String(a.id), a));
+          local.forEach((a) => {
+            if (a && !a.triggered && a.status !== 'triggered' && String(a.id).includes('_') && !map.has(String(a.id)) && !triggeredIdsRef.current.has(String(a.id))) {
+              map.set(String(a.id), a);
+            }
+          });
+          const next = Array.from(map.values());
+          alertsRef.current = next;
+          return next;
+        });
+
+        if (serverTriggered.length > 0) {
+          playAlertSound();
+          if (typeof optionsRef.current?.onServerAlertTriggered === 'function') {
+            serverTriggered.forEach((al) => optionsRef.current.onServerAlertTriggered(al));
+          }
+        }
+      }).catch(() => {});
+    }, 6000);
+
+    return () => {
+      mounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [symbol, token, chartRef]);
+
+  // Sauvegarder uniquement les alertes actives dans le localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(alerts));
+      const activeOnly = alerts.filter((a) => a && !a.triggered && a.status !== 'triggered');
+      localStorage.setItem(storageKey, JSON.stringify(activeOnly));
     } catch (_) {}
   }, [alerts, storageKey]);
 
   // Synchroniser les overlays priceAlertLine sur KlineCharts
   useEffect(() => {
-    const chart = chartRef?.current;
-    if (!chart) return;
-
-    try {
-      chart.removeOverlay({ name: 'priceAlertLine' });
-    } catch (_) {}
-
-    alerts.forEach((alert) => {
-      try {
-        chart.createOverlay({
-          name: 'priceAlertLine',
-          id: `alert_${alert.id}`,
-          groupId: 'alerts',
-          points: [{ value: alert.targetPrice }],
-          extendData: {
-            id: alert.id,
-            note: alert.note || '',
-            triggered: alert.triggered,
-          },
-        });
-      } catch (_) {}
-    });
-  }, [alerts, chartRef]);
+    syncOverlaysOnChart(alerts);
+  }, [alerts, syncOverlaysOnChart]);
 
   // Ajouter une alerte
-  const addAlert = useCallback(({ targetPrice, condition = 'crossing', triggerFrequency = 'once', expiresAt = null, note = '', notifyEmail = true }) => {
+  const addAlert = useCallback(({ targetPrice, condition = 'crossing', levelType = null, triggerFrequency = 'once', expiresAt = null, note = '', notifyEmail = true }) => {
     const numPrice = parseFloat(targetPrice);
     if (!numPrice || isNaN(numPrice)) return null;
+
+    const chart = chartRef?.current;
+    const resolvedLevelType = detectSlTpContext(
+      chart,
+      numPrice,
+      optionsRef.current?.positions,
+      optionsRef.current?.orders,
+      note,
+      levelType,
+      symbol
+    );
+
+    const defaultNote = (note || '').trim() || (resolvedLevelType === 'sl' ? 'Stop Loss (SL)' : resolvedLevelType === 'tp' ? 'Take Profit (TP)' : '');
+    const refPrice = lastCheckedPriceRef.current ?? getChartLatestPrice(symbol) ?? null;
 
     const tempId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newAlert = {
@@ -4958,15 +5366,20 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
       symbol,
       targetPrice: numPrice,
       condition,
-      triggerFrequency: triggerFrequency || 'once',
+      levelType: resolvedLevelType,
+      triggerFrequency: 'once',
       expiresAt: expiresAt || null,
-      note: (note || '').trim(),
+      note: defaultNote,
       notifyEmail: notifyEmail !== false,
+      createdPrice: refPrice,
       triggered: false,
+      status: 'active',
       createdAt: new Date().toISOString(),
     };
 
-    setAlerts((prev) => [newAlert, ...prev]);
+    const nextList = [newAlert, ...alertsRef.current.filter((a) => !a.triggered && a.status !== 'triggered')];
+    alertsRef.current = nextList;
+    setAlerts(nextList);
 
     // Synchronisation backend (pour surveillance serveur + synchronisation multi-appareils + notification email)
     const activeToken = token || getAuthToken();
@@ -4975,28 +5388,31 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
         symbol,
         target_price: numPrice,
         condition,
-        trigger_frequency: triggerFrequency || 'once',
+        level_type: resolvedLevelType,
+        trigger_frequency: 'once',
         expires_at: expiresAt,
-        note: (note || '').trim(),
+        note: defaultNote,
         notify_email: notifyEmail !== false,
-        created_price: lastCheckedPriceRef.current || null,
+        created_price: refPrice,
       }).then((saved) => {
         if (saved && saved.id) {
-          let wasAlreadyTriggeredLocally = false;
-          let localTriggeredPrice = numPrice;
-          setAlerts((prev) => prev.map((a) => {
-            if (a.id === tempId) {
-              if (a.triggered) {
-                wasAlreadyTriggeredLocally = true;
-                localTriggeredPrice = a.triggeredPrice || numPrice;
-              }
-              return { ...a, ...saved, triggered: a.triggered || saved.triggered };
+          if (triggeredIdsRef.current.has(tempId)) {
+            // Déjà déclenchée localement pendant la requête réseau : déclencher l'email et supprimer côté serveur
+            triggeredIdsRef.current.add(String(saved.id));
+            if (demoApi.triggerAlert) {
+              demoApi.triggerAlert(saved.id, { triggered_price: numPrice, level_type: resolvedLevelType }).catch(() => {});
+            } else {
+              demoApi.deleteAlert(saved.id).catch(() => {});
             }
-            return a;
-          }));
-          if (wasAlreadyTriggeredLocally && demoApi.triggerAlert) {
-            demoApi.triggerAlert(saved.id, { triggered_price: localTriggeredPrice }).catch(() => {});
+            return;
           }
+          setAlerts((prev) => {
+            const updated = prev
+              .filter((a) => !a.triggered && a.status !== 'triggered' && !triggeredIdsRef.current.has(String(a.id)))
+              .map((a) => (a.id === tempId ? { ...a, ...saved, levelType: resolvedLevelType, triggered: false, status: 'active' } : a));
+            alertsRef.current = updated;
+            return updated;
+          });
         }
       }).catch((err) => {
         console.warn('Sync alerte backend:', err.message);
@@ -5004,13 +5420,18 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     }
 
     return newAlert;
-  }, [symbol, token]);
+  }, [chartRef, symbol, token]);
 
   // Supprimer une alerte
   const removeAlert = useCallback((id) => {
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    const idStr = String(id);
+    triggeredIdsRef.current.add(idStr);
+    const next = alertsRef.current.filter((a) => String(a.id) !== idStr);
+    alertsRef.current = next;
+    setAlerts(next);
+
     const activeToken = token || getAuthToken();
-    if (activeToken && id && !String(id).includes('_')) {
+    if (activeToken && id && !idStr.includes('_')) {
       demoApi.deleteAlert(id).catch(() => {});
     }
     const chart = chartRef?.current;
@@ -5018,23 +5439,22 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
       try {
         chart.removeOverlay({ id: `alert_${id}` });
       } catch (_) {}
+      syncOverlaysOnChart(next);
     }
-  }, [chartRef, token]);
+  }, [chartRef, syncOverlaysOnChart, token]);
 
   // Réinitialiser / basculer le statut d'une alerte
   const toggleAlert = useCallback((id) => {
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, triggered: !a.triggered } : a))
-    );
-    const activeToken = token || getAuthToken();
-    if (activeToken && id && !String(id).includes('_')) {
-      demoApi.toggleAlert(id).catch(() => {});
-    }
-  }, [token]);
+    removeAlert(id);
+  }, [removeAlert]);
 
   // Supprimer toutes les alertes
   const clearAlerts = useCallback(() => {
+    alertsRef.current = [];
     setAlerts([]);
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (_) {}
     const activeToken = token || getAuthToken();
     if (activeToken) {
       demoApi.clearAlerts(symbol).catch(() => {});
@@ -5042,10 +5462,13 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     const chart = chartRef?.current;
     if (chart) {
       try {
+        chart.removeOverlay({ groupId: 'alerts' });
+      } catch (_) {}
+      try {
         chart.removeOverlay({ name: 'priceAlertLine' });
       } catch (_) {}
     }
-  }, [chartRef, symbol, token]);
+  }, [chartRef, storageKey, symbol, token]);
 
   // Vérifier les alertes en temps réel sur un tick / prix direct (Trading Démo)
   const checkLivePrice = useCallback((currentPrice) => {
@@ -5053,104 +5476,208 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     const prev = lastCheckedPriceRef.current;
     lastCheckedPriceRef.current = currentPrice;
 
-    if (prev === null) return [];
+    const currentAlerts = alertsRef.current;
+    if (!currentAlerts || currentAlerts.length === 0) return [];
 
     const triggeredList = [];
+    const remainingAlerts = [];
+    const chart = chartRef?.current;
 
-    setAlerts((prevAlerts) =>
-      prevAlerts.map((alert) => {
-        if (alert.triggered) return alert;
+    for (const alert of currentAlerts) {
+      if (!alert || alert.triggered || alert.status === 'triggered' || triggeredIdsRef.current.has(String(alert.id))) {
+        continue;
+      }
 
-        let isHit = false;
-        const tp = alert.targetPrice;
+      const tp = Number(alert.targetPrice);
+      if (!Number.isFinite(tp) || tp <= 0) {
+        remainingAlerts.push(alert);
+        continue;
+      }
 
-        if (alert.condition === 'above') {
-          isHit = currentPrice >= tp && prev < tp;
-        } else if (alert.condition === 'below') {
-          isHit = currentPrice <= tp && prev > tp;
-        } else {
-          // 'crossing'
-          isHit =
-            (prev <= tp && currentPrice >= tp) ||
-            (prev >= tp && currentPrice <= tp);
-        }
+      const refPrice = prev ?? (alert.createdPrice != null ? Number(alert.createdPrice) : null);
+      if (refPrice == null) {
+        remainingAlerts.push({ ...alert, createdPrice: currentPrice });
+        continue;
+      }
 
-        if (isHit) {
-          triggeredList.push(alert);
-          return { ...alert, triggered: true, triggeredPrice: currentPrice, triggeredAt: new Date().toISOString() };
-        }
-        return alert;
-      })
-    );
+      let isHit = false;
+      if (alert.condition === 'above') {
+        isHit = currentPrice >= tp && (refPrice <= tp || (alert.createdPrice != null && Number(alert.createdPrice) <= tp));
+      } else if (alert.condition === 'below') {
+        isHit = currentPrice <= tp && (refPrice >= tp || (alert.createdPrice != null && Number(alert.createdPrice) >= tp));
+      } else {
+        // 'crossing'
+        const crossedFromPrev = (refPrice <= tp && currentPrice >= tp) || (refPrice >= tp && currentPrice <= tp);
+        const crossedFromCreated = alert.createdPrice != null && (
+          (Number(alert.createdPrice) <= tp && currentPrice >= tp) ||
+          (Number(alert.createdPrice) >= tp && currentPrice <= tp)
+        );
+        const exactTouch = Math.abs(currentPrice - tp) <= Math.abs(tp) * 0.00005;
+        isHit = crossedFromPrev || crossedFromCreated || exactTouch;
+      }
+
+      if (isHit) {
+        const idStr = String(alert.id);
+        triggeredIdsRef.current.add(idStr);
+        const resolvedLevelType = detectSlTpContext(
+          chart,
+          tp,
+          optionsRef.current?.positions,
+          optionsRef.current?.orders,
+          alert.note,
+          alert.levelType,
+          symbol
+        );
+        triggeredList.push({
+          ...alert,
+          levelType: resolvedLevelType,
+          triggered: true,
+          triggeredPrice: currentPrice,
+          triggeredAt: new Date().toISOString(),
+        });
+      } else {
+        remainingAlerts.push(alert);
+      }
+    }
 
     if (triggeredList.length > 0) {
+      // 1. Retirer immédiatement l'alerte de l'état, du localStorage et du graphique
+      alertsRef.current = remainingAlerts;
+      setAlerts(remainingAlerts);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(remainingAlerts));
+      } catch (_) {}
+
+      if (chart) {
+        triggeredList.forEach((al) => {
+          try { chart.removeOverlay({ id: `alert_${al.id}` }); } catch (_) {}
+        });
+        syncOverlaysOnChart(remainingAlerts);
+      }
+
+      // 2. Son d'alerte
       playAlertSound();
+
+      // 3. Notification serveur (envoi email + suppression définitive en base)
       const activeToken = token || getAuthToken();
       if (activeToken && demoApi.triggerAlert) {
         triggeredList.forEach((al) => {
           if (al.id && !String(al.id).includes('_')) {
-            demoApi.triggerAlert(al.id, { triggered_price: currentPrice }).catch(() => {});
+            demoApi.triggerAlert(al.id, {
+              triggered_price: currentPrice,
+              level_type: al.levelType || 'price',
+            }).catch(() => {});
           }
         });
       }
     }
 
     return triggeredList;
-  }, [token]);
+  }, [chartRef, storageKey, symbol, syncOverlaysOnChart, token]);
 
   // Vérifier les alertes sur une bougie de Replay (Backtesting)
   const checkCandle = useCallback((candle, prevClose) => {
     if (!candle) return [];
+    const currentAlerts = alertsRef.current;
+    if (!currentAlerts || currentAlerts.length === 0) return [];
+
     const triggeredList = [];
+    const remainingAlerts = [];
     const high = candle.high ?? candle.close;
     const low = candle.low ?? candle.close;
     const close = candle.close;
+    const chart = chartRef?.current;
 
-    setAlerts((prevAlerts) =>
-      prevAlerts.map((alert) => {
-        if (alert.triggered) return alert;
+    for (const alert of currentAlerts) {
+      if (!alert || alert.triggered || alert.status === 'triggered' || triggeredIdsRef.current.has(String(alert.id))) {
+        continue;
+      }
 
-        let isHit = false;
-        const tp = alert.targetPrice;
+      const tp = Number(alert.targetPrice);
+      if (!Number.isFinite(tp) || tp <= 0) {
+        remainingAlerts.push(alert);
+        continue;
+      }
 
-        if (alert.condition === 'above') {
-          isHit = high >= tp;
-        } else if (alert.condition === 'below') {
-          isHit = low <= tp;
-        } else {
-          // crossing: la bougie touche ou traverse le niveau cible
-          isHit =
-            (low <= tp && high >= tp) ||
-            (prevClose !== undefined &&
-              ((prevClose <= tp && close >= tp) || (prevClose >= tp && close <= tp)));
-        }
+      let isHit = false;
+      if (alert.condition === 'above') {
+        isHit = high >= tp;
+      } else if (alert.condition === 'below') {
+        isHit = low <= tp;
+      } else {
+        isHit =
+          (low <= tp && high >= tp) ||
+          (prevClose !== undefined &&
+            ((prevClose <= tp && close >= tp) || (prevClose >= tp && close <= tp)));
+      }
 
-        if (isHit) {
-          triggeredList.push(alert);
-          return { ...alert, triggered: true, triggeredPrice: close, triggeredAt: new Date().toISOString() };
-        }
-        return alert;
-      })
-    );
+      if (isHit) {
+        const idStr = String(alert.id);
+        triggeredIdsRef.current.add(idStr);
+        const resolvedLevelType = detectSlTpContext(
+          chart,
+          tp,
+          optionsRef.current?.positions,
+          optionsRef.current?.orders,
+          alert.note,
+          alert.levelType,
+          symbol
+        );
+        triggeredList.push({
+          ...alert,
+          levelType: resolvedLevelType,
+          triggered: true,
+          triggeredPrice: close,
+          triggeredAt: new Date().toISOString(),
+        });
+      } else {
+        remainingAlerts.push(alert);
+      }
+    }
 
     if (triggeredList.length > 0) {
+      // 1. Retirer immédiatement l'alerte de l'état, du localStorage et du graphique
+      alertsRef.current = remainingAlerts;
+      setAlerts(remainingAlerts);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(remainingAlerts));
+      } catch (_) {}
+
+      if (chart) {
+        triggeredList.forEach((al) => {
+          try { chart.removeOverlay({ id: `alert_${al.id}` }); } catch (_) {}
+        });
+        syncOverlaysOnChart(remainingAlerts);
+      }
+
+      // 2. Son d'alerte
       playAlertSound();
+
+      // 3. Notification serveur (envoi email + suppression définitive en base)
       const activeToken = token || getAuthToken();
       if (activeToken && demoApi.triggerAlert) {
         triggeredList.forEach((al) => {
           if (al.id && !String(al.id).includes('_')) {
-            demoApi.triggerAlert(al.id, { triggered_price: close }).catch(() => {});
+            demoApi.triggerAlert(al.id, {
+              triggered_price: close,
+              level_type: al.levelType || 'price',
+            }).catch(() => {});
           }
         });
       }
     }
 
     return triggeredList;
-  }, [token]);
+  }, [chartRef, storageKey, symbol, syncOverlaysOnChart, token]);
 
-  return {
-    alerts,
-    activeCount: alerts.filter((a) => !a.triggered).length,
+  const activeAlerts = useMemo(
+    () => alerts.filter((a) => a && !a.triggered && a.status !== 'triggered'),
+    [alerts]
+  );
+
+  const apiObj = useMemo(() => ({
+    alerts: activeAlerts,
+    activeCount: activeAlerts.length,
     addAlert,
     createAlert: async (data) => addAlert(data),
     removeAlert,
@@ -5158,7 +5685,18 @@ export function usePriceAlerts(symbol = 'DEFAULT', chartRef) {
     clearAlerts,
     checkLivePrice,
     checkCandle,
-  };
+    chartRef,
+    getChartSlTpLevels: () => extractChartSlTpLevels(chartRef?.current, optionsRef.current?.positions, optionsRef.current?.orders, symbol),
+    detectLevelType: (price, note, explicit) => detectSlTpContext(chartRef?.current, price, optionsRef.current?.positions, optionsRef.current?.orders, note, explicit, symbol),
+  }), [activeAlerts, addAlert, removeAlert, toggleAlert, clearAlerts, checkLivePrice, checkCandle, chartRef, symbol]);
+
+  useEffect(() => {
+    if (chartRef?.current) {
+      chartRef.current._lfxAlertsManager = apiObj;
+    }
+  }, [chartRef, apiObj]);
+
+  return apiObj;
 }
 
 
@@ -5169,12 +5707,12 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
   const [open, setOpen] = useState(false);
   const [targetPrice, setTargetPrice] = useState('');
   const [condition, setCondition] = useState('crossing');
-  const [triggerFrequency, setTriggerFrequency] = useState('once'); // 'once' | 'every_time'
+  const [levelType, setLevelType] = useState('price'); // 'price' | 'sl' | 'tp'
   const [expiresAt, setExpiresAt] = useState('');
   const [note, setNote] = useState('');
   const [notifyEmail, setNotifyEmail] = useState(true);
 
-  const { alerts, activeCount, addAlert, removeAlert, toggleAlert, clearAlerts } = alertsManager;
+  const { alerts, activeCount, addAlert, removeAlert, clearAlerts } = alertsManager;
 
   useEffect(() => {
     if (open && currentPrice && !targetPrice) {
@@ -5182,20 +5720,43 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
     }
   }, [open, currentPrice, targetPrice]);
 
+  // Détection automatique SL/TP quand le prix ou la note change
+  const detectedType = useMemo(() => {
+    if (levelType === 'sl' || levelType === 'tp') return levelType;
+    if (alertsManager?.detectLevelType && targetPrice) {
+      return alertsManager.detectLevelType(targetPrice, note, null);
+    }
+    return 'price';
+  }, [alertsManager, levelType, targetPrice, note]);
+
+  const handleSelectLevelType = (type) => {
+    setLevelType(type);
+    if ((type === 'sl' || type === 'tp') && alertsManager?.getChartSlTpLevels) {
+      const { slLevels, tpLevels } = alertsManager.getChartSlTpLevels();
+      if (type === 'sl' && slLevels.length > 0) {
+        setTargetPrice(String(slLevels[slLevels.length - 1]));
+      } else if (type === 'tp' && tpLevels.length > 0) {
+        setTargetPrice(String(tpLevels[tpLevels.length - 1]));
+      }
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!targetPrice) return;
+    const effectiveType = levelType !== 'price' ? levelType : detectedType;
     const added = addAlert({
       targetPrice,
       condition,
-      triggerFrequency,
+      levelType: effectiveType,
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-      note,
+      note: note || (effectiveType === 'sl' ? 'Stop Loss (SL)' : effectiveType === 'tp' ? 'Take Profit (TP)' : ''),
       notifyEmail,
     });
     if (added) {
       setTargetPrice('');
       setNote('');
+      setLevelType('price');
       setExpiresAt('');
     }
   };
@@ -5256,6 +5817,48 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
             {isEnglish ? 'New Alert' : 'Nouvelle Alerte'}
           </div>
 
+          {/* Type de cible : Prix standard | Stop Loss (SL) | Take Profit (TP) */}
+          <div>
+            <label className="block text-[11px] text-slate-400 mb-1">
+              {isEnglish ? 'Alert Target Level' : "Cible de l'alerte"}
+            </label>
+            <div className="grid grid-cols-3 gap-1">
+              <button
+                type="button"
+                onClick={() => handleSelectLevelType('price')}
+                className={`py-1 px-1.5 rounded text-[11px] font-semibold border transition-colors ${
+                  (levelType === 'price' && detectedType === 'price')
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {isEnglish ? '🔔 Price' : '🔔 Prix'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectLevelType('sl')}
+                className={`py-1 px-1.5 rounded text-[11px] font-semibold border transition-colors ${
+                  (levelType === 'sl' || detectedType === 'sl')
+                    ? 'bg-red-500/25 border-red-500 text-red-300'
+                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-red-300'
+                }`}
+              >
+                🛑 Stop Loss
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectLevelType('tp')}
+                className={`py-1 px-1.5 rounded text-[11px] font-semibold border transition-colors ${
+                  (levelType === 'tp' || detectedType === 'tp')
+                    ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300'
+                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-emerald-300'
+                }`}
+              >
+                🎯 Take Profit
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[11px] text-slate-400 mb-0.5">
@@ -5288,35 +5891,6 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
             </div>
           </div>
 
-          {/* Trigger Frequency & Expiration (TradingView style) */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-[11px] text-slate-400 mb-0.5">
-                {isEnglish ? 'Trigger Frequency' : 'Déclenchement'}
-              </label>
-              <select
-                value={triggerFrequency}
-                onChange={(e) => setTriggerFrequency(e.target.value)}
-                className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
-              >
-                <option value="once">{isEnglish ? 'Only Once' : 'Seulement une fois'}</option>
-                <option value="every_time">{isEnglish ? 'Every Time' : 'À chaque fois'}</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] text-slate-400 mb-0.5">
-                {isEnglish ? 'Expiration (optional)' : 'Expiration (optionnel)'}
-              </label>
-              <input
-                type="datetime-local"
-                value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-                className="w-full px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-amber-400 text-[11px]"
-              />
-            </div>
-          </div>
-
           <div>
             <label className="block text-[11px] text-slate-400 mb-0.5">
               {isEnglish ? 'Message / Note (optional)' : 'Message / Note (optionnel)'}
@@ -5325,7 +5899,7 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={isEnglish ? 'e.g. Resistance breakout, Target level' : 'ex: Cassure résistance, Niveau clé'}
+              placeholder={isEnglish ? 'e.g. Stop Loss, Take Profit, Key level' : 'ex: Stop Loss, Take Profit, Niveau clé'}
               className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
             />
           </div>
@@ -5352,10 +5926,10 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
           </Button>
         </form>
 
-        {/* Liste des alertes */}
+        {/* Liste des alertes actives uniquement */}
         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
           <div className="flex items-center justify-between text-[11px] text-slate-400 uppercase font-semibold">
-            <span>{isEnglish ? 'Configured Alerts' : 'Alertes actives'} ({alerts.length})</span>
+            <span>{isEnglish ? 'Active Alerts' : 'Alertes actives'} ({alerts.length})</span>
             {alerts.length > 0 && (
               <button
                 type="button"
@@ -5369,41 +5943,39 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
 
           {alerts.length === 0 ? (
             <div className="text-center py-4 text-slate-500 text-xs italic">
-              {isEnglish ? 'No alert set for this symbol.' : 'Aucune alerte configurée pour cet instrument.'}
+              {isEnglish ? 'No active alert on this chart.' : 'Aucune alerte active sur ce graphique.'}
             </div>
           ) : (
             alerts.map((a) => (
               <div
                 key={a.id}
-                className={`flex items-center justify-between p-2 rounded border ${
-                  a.triggered
-                    ? 'bg-slate-950/40 border-slate-800 text-slate-500'
-                    : 'bg-slate-950/80 border-slate-700/80 text-slate-200'
-                }`}
+                className="flex items-center justify-between p-2 rounded border bg-slate-950/80 border-slate-700/80 text-slate-200"
               >
                 <div className="flex items-center gap-2 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => toggleAlert(a.id)}
-                    title={a.triggered ? (isEnglish ? 'Re-arm alert' : 'Réactiver') : (isEnglish ? 'Mark as triggered' : 'Désactiver')}
-                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      a.triggered ? 'bg-slate-600' : 'bg-amber-400 animate-pulse'
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 animate-pulse ${
+                      a.levelType === 'sl' ? 'bg-red-500' : a.levelType === 'tp' ? 'bg-emerald-500' : 'bg-amber-400'
                     }`}
                   />
                   <div className="truncate">
                     <div className="font-mono font-bold text-xs flex items-center gap-1.5">
                       <span>{a.targetPrice}</span>
+                      {a.levelType === 'sl' && (
+                        <span className="text-[10px] font-bold text-red-300 px-1 py-0.2 bg-red-500/20 rounded">
+                          🛑 SL
+                        </span>
+                      )}
+                      {a.levelType === 'tp' && (
+                        <span className="text-[10px] font-bold text-emerald-300 px-1 py-0.2 bg-emerald-500/20 rounded">
+                          🎯 TP
+                        </span>
+                      )}
                       <span className="text-[10px] font-normal text-amber-400/90 px-1 py-0.2 bg-amber-500/10 rounded">
                         {a.condition === 'above' ? '≥' : a.condition === 'below' ? '≤' : '✕'}
                       </span>
                       {a.notifyEmail && (
                         <span title={isEnglish ? 'Email notification enabled' : 'Notification email activée'} className="text-amber-400">
                           <Mail className="w-3 h-3 inline-block" />
-                        </span>
-                      )}
-                      {a.triggered && (
-                        <span className="text-[9px] font-semibold text-slate-400 bg-slate-800 px-1 rounded">
-                          {isEnglish ? 'TRIGGERED' : 'DÉCLENCHÉE'}
                         </span>
                       )}
                     </div>
@@ -5429,7 +6001,7 @@ export function ChartAlertsMenu({ alertsManager, currentPrice, symbol = 'Instrum
 }
 
 /**
- * Boîte de dialogue modale de création d'alerte (déclenchée par clic droit TradingView).
+ * Boîte de dialogue modale de création d'alerte (déclenchée par clic sur '+' ou clic droit TradingView).
  */
 export function CreatePriceAlertDialog({
   open,
@@ -5443,7 +6015,7 @@ export function CreatePriceAlertDialog({
   isEnglish = false,
 }) {
   const [condition, setCondition] = useState('crossing');
-  const [triggerFrequency, setTriggerFrequency] = useState('once');
+  const [levelType, setLevelType] = useState('price'); // 'price' | 'sl' | 'tp'
   const [expiresAt, setExpiresAt] = useState('');
   const [note, setNote] = useState('');
   const [notifyEmail, setNotifyEmail] = useState(true);
@@ -5453,25 +6025,60 @@ export function CreatePriceAlertDialog({
 
   useEffect(() => {
     if (open) {
-      if (effectivePrice != null && effectivePrice !== '') {
-        setPriceInput(String(effectivePrice));
-      } else if (currentPrice != null && currentPrice !== '') {
-        setPriceInput(String(currentPrice));
+      const initP = (effectivePrice != null && effectivePrice !== '')
+        ? String(effectivePrice)
+        : (currentPrice != null && currentPrice !== '' ? String(currentPrice) : '');
+      setPriceInput(initP);
+      // Auto-détecter si le clic a été fait sur un Stop Loss ou un Take Profit du graphique
+      if (alertsManager?.detectLevelType && initP) {
+        const autoType = alertsManager.detectLevelType(initP, '', null);
+        setLevelType(autoType);
+        if (autoType === 'sl') setNote('Stop Loss (SL)');
+        else if (autoType === 'tp') setNote('Take Profit (TP)');
+        else setNote('');
+      } else {
+        setLevelType('price');
+        setNote('');
       }
     }
-  }, [open, effectivePrice, currentPrice]);
+  }, [open, effectivePrice, currentPrice, alertsManager]);
 
   if (!open) return null;
+
+  const detectedType = levelType !== 'price'
+    ? levelType
+    : (alertsManager?.detectLevelType && priceInput ? alertsManager.detectLevelType(priceInput, note, null) : 'price');
+
+  const handleSelectLevelType = (type) => {
+    setLevelType(type);
+    if (type === 'sl') {
+      if (!note || note === 'Take Profit (TP)') setNote('Stop Loss (SL)');
+      if (alertsManager?.getChartSlTpLevels) {
+        const { slLevels } = alertsManager.getChartSlTpLevels();
+        if (slLevels.length > 0) setPriceInput(String(slLevels[slLevels.length - 1]));
+      }
+    } else if (type === 'tp') {
+      if (!note || note === 'Stop Loss (SL)') setNote('Take Profit (TP)');
+      if (alertsManager?.getChartSlTpLevels) {
+        const { tpLevels } = alertsManager.getChartSlTpLevels();
+        if (tpLevels.length > 0) setPriceInput(String(tpLevels[tpLevels.length - 1]));
+      }
+    } else {
+      if (note === 'Stop Loss (SL)' || note === 'Take Profit (TP)') setNote('');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!priceInput) return;
+    const finalType = levelType !== 'price' ? levelType : detectedType;
     const alertData = {
       targetPrice: priceInput,
       condition,
-      triggerFrequency,
+      levelType: finalType,
+      triggerFrequency: 'once',
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-      note,
+      note: note || (finalType === 'sl' ? 'Stop Loss (SL)' : finalType === 'tp' ? 'Take Profit (TP)' : ''),
       notifyEmail,
     };
     try {
@@ -5491,12 +6098,22 @@ export function CreatePriceAlertDialog({
       <div className="relative w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 text-slate-100 shadow-2xl p-5">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
-              <Clock className="h-5 w-5" />
+            <div className={`p-1.5 rounded-lg ${
+              detectedType === 'sl'
+                ? 'bg-red-500/15 text-red-400'
+                : detectedType === 'tp'
+                ? 'bg-emerald-500/15 text-emerald-400'
+                : 'bg-amber-500/10 text-amber-400'
+            }`}>
+              <BellRing className="h-5 w-5" />
             </div>
             <div>
               <h3 className="font-semibold text-base text-slate-100">
-                {isEnglish ? `Add Alert on ${symbol}` : `Ajouter une alerte sur ${symbol}`}
+                {detectedType === 'sl'
+                  ? (isEnglish ? `Stop Loss Alert on ${symbol}` : `Alerte Stop Loss sur ${symbol}`)
+                  : detectedType === 'tp'
+                  ? (isEnglish ? `Take Profit Alert on ${symbol}` : `Alerte Take Profit sur ${symbol}`)
+                  : (isEnglish ? `Add Alert on ${symbol}` : `Ajouter une alerte sur ${symbol}`)}
               </h3>
               <p className="text-xs text-slate-400">
                 {isEnglish ? `Target price: ${priceInput}` : `Prix cible : ${priceInput}`}
@@ -5509,6 +6126,48 @@ export function CreatePriceAlertDialog({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+          {/* Cible de l'alerte : Prix | Stop Loss (SL) | Take Profit (TP) */}
+          <div>
+            <label className="block text-[11px] font-medium text-slate-300 mb-1">
+              {isEnglish ? 'Alert Type / Level' : "Niveau ciblé par l'alerte"}
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => handleSelectLevelType('price')}
+                className={`py-1.5 px-2 rounded-lg font-semibold border transition-colors ${
+                  detectedType === 'price'
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                    : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {isEnglish ? '🔔 Price' : '🔔 Prix'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectLevelType('sl')}
+                className={`py-1.5 px-2 rounded-lg font-semibold border transition-colors ${
+                  detectedType === 'sl'
+                    ? 'bg-red-500/25 border-red-500 text-red-300'
+                    : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-red-300'
+                }`}
+              >
+                🛑 Stop Loss (SL)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectLevelType('tp')}
+                className={`py-1.5 px-2 rounded-lg font-semibold border transition-colors ${
+                  detectedType === 'tp'
+                    ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300'
+                    : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-emerald-300'
+                }`}
+              >
+                🎯 Take Profit (TP)
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-medium text-slate-300 mb-1">
@@ -5540,34 +6199,6 @@ export function CreatePriceAlertDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                {isEnglish ? 'Trigger Frequency' : 'Déclenchement'}
-              </label>
-              <select
-                value={triggerFrequency}
-                onChange={(e) => setTriggerFrequency(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
-              >
-                <option value="once">{isEnglish ? 'Only Once' : 'Seulement une fois'}</option>
-                <option value="every_time">{isEnglish ? 'Every Time' : 'À chaque fois'}</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                {isEnglish ? 'Expiration (optional)' : 'Expiration (optionnel)'}
-              </label>
-              <input
-                type="datetime-local"
-                value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
-                className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-amber-400 text-xs"
-              />
-            </div>
-          </div>
-
           <div>
             <label className="block text-[11px] font-medium text-slate-300 mb-1">
               {isEnglish ? 'Message / Note (optional)' : 'Message / Note (optionnel)'}
@@ -5576,7 +6207,7 @@ export function CreatePriceAlertDialog({
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={isEnglish ? 'e.g. Resistance reached, Buy signal' : 'ex: Résistance atteinte, Signal clé'}
+              placeholder={isEnglish ? 'e.g. Stop Loss, Take Profit, Key signal' : 'ex: Stop Loss, Take Profit, Signal clé'}
               className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
             />
           </div>
@@ -5617,12 +6248,16 @@ export function CreatePriceAlertDialog({
 /**
  * Menu contextuel TradingView au clic droit sur le graphique.
  */
-export function ChartContextMenu({ menu, onClose, onAddAlert, isEnglish = false }) {
+export function ChartContextMenu({ menu, onClose, onAddAlert, alertsManager, isEnglish = false }) {
   if (!menu || !menu.visible) return null;
+
+  const detectedType = alertsManager?.detectLevelType && menu.price != null
+    ? alertsManager.detectLevelType(menu.price, '', null)
+    : 'price';
 
   return (
     <div
-      className="fixed z-[110] min-w-[210px] rounded-lg border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl p-1 backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-[110] min-w-[220px] rounded-lg border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl p-1 backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-100"
       style={{ top: `${menu.y}px`, left: `${menu.x}px` }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -5633,10 +6268,16 @@ export function ChartContextMenu({ menu, onClose, onAddAlert, isEnglish = false 
         }}
         className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium hover:bg-amber-500/15 hover:text-amber-300 text-left transition-colors cursor-pointer group"
       >
-        <Clock className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+        <BellRing className={`w-4 h-4 group-hover:scale-110 transition-transform ${
+          detectedType === 'sl' ? 'text-red-400' : detectedType === 'tp' ? 'text-emerald-400' : 'text-amber-400'
+        }`} />
         <div className="flex flex-col">
           <span className="font-semibold">
-            {isEnglish ? 'Add alert on' : 'Ajouter une alerte sur'} {menu.symbol || ''}
+            {detectedType === 'sl'
+              ? (isEnglish ? `Add Stop Loss (SL) alert on ${menu.symbol || ''}` : `Ajouter une alerte Stop Loss (SL) sur ${menu.symbol || ''}`)
+              : detectedType === 'tp'
+              ? (isEnglish ? `Add Take Profit (TP) alert on ${menu.symbol || ''}` : `Ajouter une alerte Take Profit (TP) sur ${menu.symbol || ''}`)
+              : (isEnglish ? `Add alert on ${menu.symbol || ''}` : `Ajouter une alerte sur ${menu.symbol || ''}`)}
           </span>
           <span className="text-[11px] text-slate-400 font-mono">
             @ {menu.formattedPrice || menu.price}

@@ -16,6 +16,7 @@ import {
   useChartOverlayManager, SelectedOverlayBar, CandleCountdownBadge,
   ChartErrorBoundary, usePriceAlerts, ChartAlertsMenu,
   CreatePriceAlertDialog, ChartContextMenu, setChartLatestPrice,
+  formatAlertNotificationMessage,
 } from '../backtest/chartShared';
 import { demoApi, DEMO_TIMEFRAMES, generateClientFallbackCandles } from '../../lib/demoApi';
 import { useLanguageStore } from '../../store/languageStore';
@@ -23,7 +24,7 @@ import { useRealtimeQuote } from '../../hooks/useMarketSocket';
 
 const RELOAD_MS = 20000;
 
-export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimeframe, liveQuote }) {
+export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimeframe, liveQuote, positions = [], orders = [] }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const timerRef = useRef(null);
@@ -57,7 +58,13 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
 
   const { language } = useLanguageStore();
   const isEnglish = language === 'en';
-  const alertsManager = usePriceAlerts(symbol, chartRef);
+  const alertsManager = usePriceAlerts(symbol, chartRef, {
+    positions,
+    orders,
+    onServerAlertTriggered: (al) => {
+      toast.warning(formatAlertNotificationMessage(al, symbolName || symbol, isEnglish), { duration: 8000 });
+    },
+  });
 
   const {
     styles: chartColors,
@@ -68,7 +75,87 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     setOpen: setStyleModalOpen,
   } = useChartStyles(chartRef);
 
-  const overlayManager = useChartOverlayManager(chartRef, containerRef, { symbol });
+  const overlayManager = useChartOverlayManager(chartRef, containerRef, { symbol, alertsManager });
+
+  // Synchronisation des lignes d'Entrée, Stop Loss (SL) et Take Profit (TP) des positions et ordres démo actifs
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !symbol) return;
+    try {
+      chart.removeOverlay({ groupId: 'order_levels' });
+      const cleanSym = String(symbol).replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase();
+      const matchSymbol = (item) => {
+        if (!item?.symbol) return false;
+        return String(item.symbol).replace(/^frx/i, '').replace(/[\/\s_-]/g, '').toUpperCase() === cleanSym;
+      };
+
+      (Array.isArray(positions) ? positions : []).filter(matchSymbol).forEach((pos) => {
+        const entry = Number(pos.entry_price ?? pos.entryPrice);
+        const sl = Number(pos.stop_loss ?? pos.sl);
+        const tp = Number(pos.take_profit ?? pos.tp);
+        if (Number.isFinite(entry) && entry > 0) {
+          chart.createOverlay({
+            name: 'backtestEntryLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: entry }],
+            extendData: { digits },
+          });
+        }
+        if (Number.isFinite(sl) && sl > 0) {
+          chart.createOverlay({
+            name: 'backtestSlLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: sl }],
+            extendData: { digits },
+          });
+        }
+        if (Number.isFinite(tp) && tp > 0) {
+          chart.createOverlay({
+            name: 'backtestTpLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: tp }],
+            extendData: { digits },
+          });
+        }
+      });
+
+      (Array.isArray(orders) ? orders : []).filter(matchSymbol).forEach((ord) => {
+        const entry = Number(ord.price ?? ord.entry_price);
+        const sl = Number(ord.stop_loss ?? ord.sl);
+        const tp = Number(ord.take_profit ?? ord.tp);
+        if (Number.isFinite(entry) && entry > 0) {
+          chart.createOverlay({
+            name: 'backtestEntryLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: entry }],
+            extendData: { digits },
+          });
+        }
+        if (Number.isFinite(sl) && sl > 0) {
+          chart.createOverlay({
+            name: 'backtestSlLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: sl }],
+            extendData: { digits },
+          });
+        }
+        if (Number.isFinite(tp) && tp > 0) {
+          chart.createOverlay({
+            name: 'backtestTpLine',
+            groupId: 'order_levels',
+            lock: true,
+            points: [{ value: tp }],
+            extendData: { digits },
+          });
+        }
+      });
+    } catch (_) {}
+  }, [positions, orders, symbol, digits]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -389,10 +476,8 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
     if (triggered && triggered.length > 0) {
       triggered.forEach((alert) => {
         toast.warning(
-          isEnglish
-            ? `🔔 ALERT: ${symbolName || symbol} reached ${alert.targetPrice}${alert.note ? ` (${alert.note})` : ''}!`
-            : `🔔 ALERTE : ${symbolName || symbol} a atteint ${alert.targetPrice}${alert.note ? ` (${alert.note})` : ''} !`,
-          { duration: 7000 }
+          formatAlertNotificationMessage(alert, symbolName || symbol, isEnglish),
+          { duration: 8000 }
         );
       });
     }
@@ -653,6 +738,7 @@ export default function DemoChart({ symbol, symbolName, timeframe, onSelectTimef
             menu={contextMenu}
             onClose={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
             onAddAlert={(price) => handleAddAlert(price)}
+            alertsManager={alertsManager}
             isEnglish={isEnglish}
           />
 
