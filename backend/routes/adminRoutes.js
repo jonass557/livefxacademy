@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { User, Trainer, Prospect, TrainerStrategy } = require('../models');
+const { User, Trainer, Prospect, TrainerStrategy, ConsultationSheet } = require('../models');
 const { authenticateToken, requireRole } = require('../middleware/authMiddleware');
 
 // Middleware: Admin only
@@ -160,18 +160,40 @@ router.get('/trainers/:id', adminOnly, async (req, res) => {
 router.patch('/trainers/:id/verify', adminOnly, async (req, res) => {
   try {
     const { id } = req.params;
-    const { is_verified } = req.body;
+    const is_verified = Boolean(req.body.is_verified);
     
-    let trainerProfile = await Trainer.findOne({ user_id: id });
+    let targetUserId = id;
+    const userDoc = await User.findById(id).catch(() => null);
+    if (!userDoc) {
+      const existingTrainerById = await Trainer.findById(id).catch(() => null);
+      if (existingTrainerById && existingTrainerById.user_id) {
+        targetUserId = existingTrainerById.user_id;
+      }
+    }
+
+    let trainerProfile = await Trainer.findOne({ user_id: targetUserId });
     
     if (!trainerProfile) {
-      trainerProfile = await Trainer.create({ user_id: id, is_verified });
+      trainerProfile = await Trainer.create({ user_id: targetUserId, is_verified });
     } else {
       trainerProfile.is_verified = is_verified;
       await trainerProfile.save();
     }
+
+    if (ConsultationSheet) {
+      const latestSheet = await ConsultationSheet.findOne({ trainer_id: targetUserId }).sort({ created_at: -1 });
+      if (latestSheet) {
+        latestSheet.status = is_verified ? 'approved' : 'pending';
+        latestSheet.reviewed_by = req.user.id;
+        latestSheet.reviewed_at = new Date();
+        await latestSheet.save();
+      }
+    }
     
-    res.json({ message: is_verified ? 'Formateur approuvé' : 'Formateur rejeté' });
+    res.json({
+      message: is_verified ? 'Formateur activé et approuvé avec succès' : 'Validation du formateur retirée',
+      is_verified
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Erreur serveur' });

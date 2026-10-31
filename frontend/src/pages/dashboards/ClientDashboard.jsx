@@ -108,6 +108,7 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
   const [vacationPrograms, setVacationPrograms] = useState([]);
   const [services, setServices] = useState([]);
   const [partnerBrokers, setPartnerBrokers] = useState([]);
+  const [whatsappUrl, setWhatsappUrl] = useState('https://wa.me/237699000000');
   const [selectedService, setSelectedService] = useState(null);
 
   // Referral state
@@ -181,16 +182,22 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [videosRes, vacationRes, servicesRes, meRes] = await Promise.all([
+        const [videosRes, vacationRes, servicesRes, brandingRes, meRes] = await Promise.all([
           api.get('/announcements').catch(() => ({ data: [] })),
           api.get('/vacation-programs').catch(() => ({ data: [] })),
           api.get('/services').catch(() => ({ data: [] })),
-        api.get('/branding').catch(() => ({ data: null })),
+          api.get('/branding').catch(() => ({ data: null })),
           api.get('/auth/me').catch(() => ({ data: null })),
         ]);
         setVideos(Array.isArray(videosRes.data) ? videosRes.data : []);
         setVacationPrograms(Array.isArray(vacationRes.data) ? vacationRes.data : []);
         setServices(Array.isArray(servicesRes.data) ? servicesRes.data : []);
+        if (Array.isArray(brandingRes.data?.brokers)) {
+          setPartnerBrokers(brandingRes.data.brokers);
+        }
+        if (brandingRes.data?.whatsapp_url) {
+          setWhatsappUrl(brandingRes.data.whatsapp_url);
+        }
         if (meRes.data) {
           setUserProfile(meRes.data);
         }
@@ -913,7 +920,7 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
             </div>
             <h3 className="text-xl font-bold">{t('client.whatsapp')}</h3>
             <p className="text-muted-foreground">{isEn ? 'Contact us directly' : 'Contactez-nous directement'}</p>
-            <a href="https://wa.me/237699000000" target="_blank" rel="noopener noreferrer" className="block">
+            <a href={whatsappUrl || 'https://wa.me/237699000000'} target="_blank" rel="noopener noreferrer" className="block">
               <Button className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white">
                 {isEn ? 'Open WhatsApp' : 'Ouvrir WhatsApp'} <ExternalLink className="h-4 w-4" />
               </Button>

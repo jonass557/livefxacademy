@@ -35,6 +35,7 @@ exports.getBranding = async (req, res) => {
     const data = branding || {
       navbar_logo_url: '',
       chart_logo_url: '',
+      whatsapp_url: 'https://wa.me/237699000000',
       referral_percentage: 10,
       active_payment_gateway: 'ikeepay',
       sebpay_enabled: false,
@@ -49,9 +50,11 @@ exports.getBranding = async (req, res) => {
     const activeGateway = data.active_payment_gateway || (data.sebpay_enabled ? 'sebpay' : 'ikeepay');
     const ikeepayEnabled = activeGateway === 'ikeepay';
     const sebpayEnabled = activeGateway === 'sebpay';
+    const brokersList = Array.isArray(data.brokers) ? data.brokers : [];
 
     res.json({
       ...data,
+      whatsapp_url: data.whatsapp_url !== undefined ? data.whatsapp_url : 'https://wa.me/237699000000',
       active_payment_gateway: activeGateway,
       ikeepay_enabled: ikeepayEnabled,
       sebpay_enabled: sebpayEnabled,
@@ -63,7 +66,8 @@ exports.getBranding = async (req, res) => {
       has_ikeepay_keys: hasIkeepay,
       ikeepay_public_key: data.ikeepay_public_key || process.env.IKEEPAY_PUBLIC_KEY || '',
       ikeepay_secret_key: isAdmin ? (data.ikeepay_secret_key || '') : (data.ikeepay_secret_key ? '••••••••' : ''),
-      brokers: Array.isArray(data.brokers) ? data.brokers : [],
+      brokers: brokersList,
+      partner_brokers: brokersList,
       referral_percentage: Number(data.referral_percentage || 10)
     });
   } catch (err) {
@@ -76,6 +80,7 @@ exports.updateSettings = async (req, res) => {
   try {
     const {
       gemini_api_key,
+      whatsapp_url,
       active_payment_gateway,
       sebpay_enabled,
       ikeepay_enabled,
@@ -92,6 +97,20 @@ exports.updateSettings = async (req, res) => {
 
     if (gemini_api_key !== undefined && !String(gemini_api_key).includes('••')) {
       updateData.gemini_api_key = String(gemini_api_key || '').trim();
+    }
+
+    if (whatsapp_url !== undefined) {
+      const rawWa = String(whatsapp_url || '').trim();
+      if (!rawWa) {
+        updateData.whatsapp_url = '';
+      } else if (/^https?:\/\//i.test(rawWa)) {
+        updateData.whatsapp_url = rawWa;
+      } else if (/^(wa\.me|chat\.whatsapp\.com|api\.whatsapp\.com)\//i.test(rawWa)) {
+        updateData.whatsapp_url = `https://${rawWa}`;
+      } else {
+        const digits = rawWa.replace(/[^\d]/g, '');
+        updateData.whatsapp_url = digits ? `https://wa.me/${digits}` : rawWa;
+      }
     }
 
     // Bascule mutuellement exclusive entre SEBPAY et iKeePay

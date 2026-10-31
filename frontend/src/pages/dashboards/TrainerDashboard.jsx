@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { useAuthStore } from '../../store/authStore';
 import { toast } from 'sonner';
-import api from '../../lib/api';
+import api, { API_URL } from '../../lib/api';
 import Backtesting from '../Backtesting';
 import BacktestHistory from '../../components/backtest/BacktestHistory';
 import EconomicCalendar from '../EconomicCalendar';
@@ -37,7 +37,9 @@ import {
   Share2,
   LineChart,
   Link as LinkIcon,
-  MessageSquare
+  MessageSquare,
+  Sparkles,
+  Facebook
 } from 'lucide-react';
 
 const TrainerDashboard = () => {
@@ -48,8 +50,18 @@ const TrainerDashboard = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuthStore();
   const [referralStats, setReferralStats] = useState(null);
+  const [partnerBrokers, setPartnerBrokers] = useState([]);
+  const [whatsappUrl, setWhatsappUrl] = useState('https://wa.me/237699000000');
+  const [services, setServices] = useState([]);
   useEffect(() => {
     api.get('/referrals/my-stats').then((r) => setReferralStats(r.data)).catch(() => {});
+    api.get('/branding').then((r) => {
+      if (Array.isArray(r.data?.brokers)) setPartnerBrokers(r.data.brokers);
+      if (r.data?.whatsapp_url) setWhatsappUrl(r.data.whatsapp_url);
+    }).catch(() => {});
+    api.get('/services').then((r) => {
+      if (Array.isArray(r.data)) setServices(r.data);
+    }).catch(() => {});
   }, []);
 
   // Increment refresh key when section changes to force data reload
@@ -169,6 +181,142 @@ const TrainerDashboard = () => {
               {activeSection === 'backtesting' && <Backtesting key={`backtesting-${refreshKey}`} />}
               {activeSection === 'backtest-history' && <BacktestHistory key={`backtest-history-${refreshKey}`} />}
               {activeSection === 'referral' && <ReferralDashboard onNavigateToContact={() => handleSectionChange('contact')} />}
+              {activeSection === 'services' && (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Briefcase className="h-6 w-6 text-primary" /> Services de l'Académie
+                  </h2>
+                  {services.length > 0 ? (
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                      {services.map((srv) => (
+                        <Card key={srv.id || srv._id} className="hover:shadow-lg transition-all">
+                          <CardContent className="p-6 space-y-3">
+                            <h3 className="text-xl font-bold">{srv.title || srv.name}</h3>
+                            <p className="text-sm text-muted-foreground">{srv.description}</p>
+                            {srv.details && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{srv.details}</p>}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="p-8 text-center text-muted-foreground">
+                        Aucun service actif pour le moment.
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+              {activeSection === 'broker' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold flex items-center gap-2">
+                      <LinkIcon className="h-6 w-6 text-primary" /> Brokers Partenaires
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Retrouvez ci-dessous les brokers partenaires officiels de l'académie.
+                    </p>
+                  </div>
+                  {partnerBrokers.length > 0 ? (
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                      {partnerBrokers.map((brk) => {
+                        const logoSrc = brk.logo_url ? (brk.logo_url.startsWith('http') ? brk.logo_url : `${API_URL}${brk.logo_url}`) : '';
+                        return (
+                          <Card key={brk.id || brk.name} className="overflow-hidden border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-xl flex flex-col justify-between bg-card">
+                            <CardContent className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                  <div className="h-16 w-16 rounded-2xl border bg-muted/40 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                                    {logoSrc ? (
+                                      <img src={logoSrc} alt={brk.name} className="h-full w-full object-contain p-1.5" />
+                                    ) : (
+                                      <LinkIcon className="h-8 w-8 text-blue-500" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 mb-1">
+                                      <CheckCircle className="h-3 w-3" /> Broker Partenaire
+                                    </span>
+                                    <h3 className="text-xl font-extrabold truncate">{brk.name}</h3>
+                                  </div>
+                                </div>
+                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                  {brk.description || 'Plateforme de trading régulée avec spreads compétitifs, exécution rapide et dépôts/retraits instantanés.'}
+                                </p>
+                              </div>
+                              <div className="pt-4 border-t">
+                                <a href={brk.url} target="_blank" rel="noopener noreferrer" className="block w-full">
+                                  <Button className="w-full gap-2 font-bold shadow-md">
+                                    <span>Ouvrir un Compte</span>
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Button>
+                                </a>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="p-8 text-center text-muted-foreground">
+                        Aucun lien broker configuré par l'administrateur pour le moment.
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+              {activeSection === 'contact' && (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <MessageSquare className="h-6 w-6 text-primary" /> Contactez l'Administration LiveFX
+                  </h2>
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    <Card className="hover:shadow-lg transition-shadow">
+                      <CardContent className="pt-6 text-center space-y-4">
+                        <div className="inline-flex p-4 rounded-full bg-green-500/10">
+                          <Phone className="h-10 w-10 text-green-500" />
+                        </div>
+                        <h3 className="text-xl font-bold">WhatsApp</h3>
+                        <p className="text-muted-foreground">Contactez l'équipe directement sur WhatsApp</p>
+                        <a href={whatsappUrl || 'https://wa.me/237699000000'} target="_blank" rel="noopener noreferrer" className="block">
+                          <Button className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white">
+                            Ouvrir WhatsApp <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        </a>
+                      </CardContent>
+                    </Card>
+                    <Card className="hover:shadow-lg transition-shadow">
+                      <CardContent className="pt-6 text-center space-y-4">
+                        <div className="inline-flex p-4 rounded-full bg-blue-500/10">
+                          <Send className="h-10 w-10 text-blue-500" />
+                        </div>
+                        <h3 className="text-xl font-bold">Telegram</h3>
+                        <p className="text-muted-foreground">Rejoignez notre canal officiel</p>
+                        <a href="https://t.me/livefxtrading" target="_blank" rel="noopener noreferrer" className="block">
+                          <Button className="w-full gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+                            Ouvrir Telegram <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        </a>
+                      </CardContent>
+                    </Card>
+                    <Card className="hover:shadow-lg transition-shadow">
+                      <CardContent className="pt-6 text-center space-y-4">
+                        <div className="inline-flex p-4 rounded-full bg-primary/10">
+                          <Mail className="h-10 w-10 text-primary" />
+                        </div>
+                        <h3 className="text-xl font-bold">Email</h3>
+                        <p className="text-muted-foreground">contact@livefx-trading.com</p>
+                        <a href="mailto:contact@livefx-trading.com" className="block">
+                          <Button variant="outline" className="w-full gap-2">
+                            Envoyer un Email <Mail className="h-4 w-4" />
+                          </Button>
+                        </a>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

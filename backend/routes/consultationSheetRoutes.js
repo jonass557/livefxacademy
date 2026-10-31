@@ -33,7 +33,7 @@ router.get('/my-sheet', authenticateToken, async (req, res) => {
       .sort({ created_at: -1 });
     
     res.json({
-      sheet: { ...sheet.toObject(), trainer_name: user.full_name, trainer_email: user.email },
+      sheet: { ...sheet.toObject(), id: sheet._id, trainer_name: user.full_name, trainer_email: user.email },
       strategies
     });
   } catch (err) {
@@ -308,6 +308,7 @@ router.get('/admin/:id', adminOnly, async (req, res) => {
     res.json({
       sheet: {
         ...sheet.toObject(),
+        id: sheet._id,
         trainer_name: user?.full_name,
         trainer_email: user?.email,
         trainer_phone: user?.phone,
@@ -344,17 +345,20 @@ router.patch('/admin/:id/review', adminOnly, async (req, res) => {
     const { status, admin_notes } = req.body;
     const adminId = req.user.id;
     
-    if (!['submitted', 'reviewed', 'approved', 'rejected'].includes(status)) {
+    if (!['pending', 'submitted', 'reviewed', 'approved', 'rejected'].includes(status)) {
       return res.status(400).json({ message: 'Statut invalide' });
     }
     
-    const sheet = await ConsultationSheet.findById(id);
+    let sheet = await ConsultationSheet.findById(id).catch(() => null);
+    if (!sheet) {
+      sheet = await ConsultationSheet.findOne({ trainer_id: id }).sort({ created_at: -1 }).catch(() => null);
+    }
     if (!sheet) {
       return res.status(404).json({ message: 'Fiche de consultation non trouvée' });
     }
     
     sheet.status = status;
-    if (admin_notes) sheet.admin_notes = admin_notes;
+    if (admin_notes !== undefined) sheet.admin_notes = admin_notes;
     sheet.reviewed_by = adminId;
     sheet.reviewed_at = new Date();
     await sheet.save();
@@ -364,6 +368,12 @@ router.patch('/admin/:id/review', adminOnly, async (req, res) => {
       await Trainer.findOneAndUpdate(
         { user_id: sheet.trainer_id },
         { is_verified: true },
+        { upsert: true }
+      );
+    } else if (status === 'rejected') {
+      await Trainer.findOneAndUpdate(
+        { user_id: sheet.trainer_id },
+        { is_verified: false },
         { upsert: true }
       );
     }

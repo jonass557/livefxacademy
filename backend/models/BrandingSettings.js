@@ -14,6 +14,7 @@ const brandingSettingsSchema = new mongoose.Schema({
   navbar_logo_public_id: { type: String, default: '' },
   chart_logo_url: { type: String, default: '' },
   chart_logo_public_id: { type: String, default: '' },
+  whatsapp_url: { type: String, default: 'https://wa.me/237699000000' },
   gemini_api_key: { type: String, default: '' },
   active_payment_gateway: { type: String, enum: ['sebpay', 'ikeepay'], default: 'ikeepay' },
   sebpay_enabled: { type: Boolean, default: false },

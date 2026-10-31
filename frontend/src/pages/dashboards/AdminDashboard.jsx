@@ -38,6 +38,7 @@ const AdminDashboard = () => {
   const [brokerLogoFile, setBrokerLogoFile] = useState(null);
   const [editingBrokerId, setEditingBrokerId] = useState(null);
   const [savingBroker, setSavingBroker] = useState(false);
+  const [whatsappUrlInput, setWhatsappUrlInput] = useState('https://wa.me/237699000000');
   const [referralPercentageInput, setReferralPercentageInput] = useState(10);
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -173,6 +174,7 @@ const AdminDashboard = () => {
       });
       setActiveGatewayInput(gw);
       setBrokersList(Array.isArray(res.data?.brokers) ? res.data.brokers : []);
+      if (res.data?.whatsapp_url !== undefined) setWhatsappUrlInput(res.data.whatsapp_url || '');
       setGeminiApiKeyInput(res.data?.gemini_api_key && !res.data.gemini_api_key.includes('••') ? res.data.gemini_api_key : '');
       setSebpayPublicKeyInput(res.data?.sebpay_public_key || '');
       setSebpaySecretKeyInput(res.data?.sebpay_secret_key && !res.data.sebpay_secret_key.includes('••') ? res.data.sebpay_secret_key : '');
@@ -569,15 +571,25 @@ const AdminDashboard = () => {
   };
 
   const handleVerifyTrainer = async (id, isVerified) => {
+    const targetId = id;
+    if (!targetId) {
+      toast.error("Identifiant du formateur introuvable");
+      return;
+    }
     try {
-      await api.patch(`/admin/trainers/${id}/verify`, { is_verified: isVerified });
+      await api.patch(`/admin/trainers/${targetId}/verify`, { is_verified: isVerified });
+      toast.success(isVerified ? 'Formateur activé et validé avec succès !' : 'Validation du formateur retirée');
       fetchTrainers();
       fetchTrainerStats();
-      if (trainerDetails?.trainer?.id === id) {
-        fetchTrainerDetails(id);
+      fetchConsultationSheets();
+      fetchConsultationStats();
+      fetchUsers();
+      fetchUsersStats();
+      if (trainerDetails?.trainer?.id === targetId || trainerDetails?.trainer?._id === targetId) {
+        fetchTrainerDetails(targetId);
       }
     } catch (err) {
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(err.response?.data?.message || 'Erreur lors de la mise à jour du formateur');
     }
   };
 
@@ -627,20 +639,29 @@ const AdminDashboard = () => {
   };
 
   const handleReviewSheet = async (id, status) => {
+    const targetId = id || sheetDetails?.sheet?.id || sheetDetails?.sheet?._id || selectedSheet?.id || selectedSheet?._id;
+    if (!targetId) {
+      toast.error("Identifiant de la fiche introuvable");
+      return;
+    }
     try {
-      await api.patch(`/consultation-sheets/admin/${id}/review`, { 
+      await api.patch(`/consultation-sheets/admin/${targetId}/review`, { 
         status, 
         admin_notes: adminNotes 
       });
       fetchConsultationSheets();
       fetchConsultationStats();
-      if (sheetDetails?.sheet?.id === id) {
-        fetchSheetDetails(id);
+      fetchTrainers();
+      fetchTrainerStats();
+      fetchUsers();
+      fetchUsersStats();
+      if (sheetDetails?.sheet) {
+        fetchSheetDetails(targetId);
       }
-      toast.success(status === 'approved' ? 'Fiche approuvée avec succès !' : 
+      toast.success(status === 'approved' ? 'Demande formateur activée et fiche approuvée avec succès !' : 
             status === 'rejected' ? 'Fiche rejetée' : 'Statut mis à jour');
     } catch (err) {
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(err.response?.data?.message || 'Erreur lors de la mise à jour de la fiche');
     }
   };
 
@@ -1402,7 +1423,14 @@ const AdminDashboard = () => {
                     
                     <div className="flex flex-col gap-2">
                       {prospect.status === 'new' && (
-                        <>
+                        <div className="flex flex-wrap gap-2">
+                          <Button 
+                            size="sm" 
+                            className="bg-green-600 hover:bg-green-700 text-white gap-1"
+                            onClick={() => handleUpdateProspect(prospect.id || prospect._id, 'converted')}
+                          >
+                            <CheckCircle className="h-4 w-4" /> Activer
+                          </Button>
                           <Button 
                             size="sm" 
                             onClick={() => setSelectedProspect(prospect)}
@@ -1410,7 +1438,7 @@ const AdminDashboard = () => {
                           >
                             <MessageSquare className="h-4 w-4 mr-1" /> Traiter
                           </Button>
-                        </>
+                        </div>
                       )}
                       {prospect.status === 'contacted' && (
                         <div className="flex gap-2">
@@ -1529,13 +1557,22 @@ const AdminDashboard = () => {
                   
                   <div className="flex flex-col gap-2">
                     {prospect.status === 'new' && (
-                      <Button 
-                        size="sm" 
-                        onClick={() => setSelectedProspect(prospect)}
-                        variant={selectedProspect?.id === prospect.id ? 'default' : 'outline'}
-                      >
-                        <MessageSquare className="h-4 w-4 mr-1" /> {t('prospects.process')}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button 
+                          size="sm" 
+                          className="bg-green-600 hover:bg-green-700 text-white gap-1"
+                          onClick={() => handleUpdateProspect(prospect.id || prospect._id, 'converted')}
+                        >
+                          <CheckCircle className="h-4 w-4" /> Activer
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          onClick={() => setSelectedProspect(prospect)}
+                          variant={selectedProspect?.id === prospect.id ? 'default' : 'outline'}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-1" /> {t('prospects.process')}
+                        </Button>
+                      </div>
                     )}
                     {prospect.status === 'contacted' && (
                       <div className="flex gap-2">
@@ -1956,6 +1993,59 @@ const AdminDashboard = () => {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Configuration du Bouton WhatsApp (Bas de page & Dashboards) */}
+        <Card className="border-2 border-emerald-500/40 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-emerald-600" /> Configuration du Bouton WhatsApp (Bas de page & Dashboards)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Insérez votre lien WhatsApp (ex: <code className="px-1.5 py-0.5 rounded bg-muted text-xs">https://wa.me/22997000000</code> ou <code className="px-1.5 py-0.5 rounded bg-muted text-xs">https://chat.whatsapp.com/...</code>) ou directement votre numéro avec indicatif pays. Ce bouton s'affichera en bas de chaque page de la plateforme ainsi que dans tous les dashboards Élèves et Formateurs.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 max-w-2xl">
+              <Input
+                type="text"
+                placeholder="Ex: https://wa.me/22997000000 ou +22997000000"
+                value={whatsappUrlInput}
+                onChange={(e) => setWhatsappUrlInput(e.target.value)}
+                className="flex-1 font-mono text-sm"
+              />
+              <Button
+                type="button"
+                disabled={savingSettings}
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={async () => {
+                  setSavingSettings(true);
+                  try {
+                    const res = await api.patch('/branding/admin/settings', { whatsapp_url: whatsappUrlInput });
+                    if (res.data?.whatsapp_url !== undefined) setWhatsappUrlInput(res.data.whatsapp_url);
+                    window.dispatchEvent(new CustomEvent('branding-updated'));
+                    toast.success('Lien du bouton WhatsApp enregistré avec succès !');
+                    fetchBranding();
+                  } catch (err) {
+                    toast.error(err.response?.data?.message || "Erreur lors de l'enregistrement du lien WhatsApp");
+                  } finally {
+                    setSavingSettings(false);
+                  }
+                }}
+              >
+                {savingSettings ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                <span>Enregistrer le lien WhatsApp</span>
+              </Button>
+            </div>
+            {whatsappUrlInput && (
+              <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium">
+                <span>Lien actif :</span>
+                <a href={whatsappUrlInput.startsWith('http') ? whatsappUrlInput : `https://wa.me/${whatsappUrlInput.replace(/[^\d]/g, '')}`} target="_blank" rel="noopener noreferrer" className="underline font-mono">
+                  {whatsappUrlInput}
+                </a>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -2401,25 +2491,25 @@ const AdminDashboard = () => {
                         {!trainer.is_verified ? (
                           <Button 
                             size="sm" 
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => handleVerifyTrainer(trainer.id, true)}
+                            className="bg-green-600 hover:bg-green-700 text-white gap-1.5 font-semibold"
+                            onClick={() => handleVerifyTrainer(trainer.id || trainer._id, true)}
                           >
-                            <UserCheck className="h-4 w-4" />
+                            <UserCheck className="h-4 w-4" /> Activer
                           </Button>
                         ) : (
                           <Button 
                             size="sm" 
                             variant="outline"
-                            className="text-yellow-600 hover:bg-yellow-50"
-                            onClick={() => handleVerifyTrainer(trainer.id, false)}
+                            className="text-yellow-600 hover:bg-yellow-50 gap-1"
+                            onClick={() => handleVerifyTrainer(trainer.id || trainer._id, false)}
                           >
-                            <UserX className="h-4 w-4" />
+                            <UserX className="h-4 w-4" /> Désactiver
                           </Button>
                         )}
                         <Button 
                           size="sm" 
                           variant="destructive"
-                          onClick={() => handleDeleteTrainer(trainer.id)}
+                          onClick={() => handleDeleteTrainer(trainer.id || trainer._id)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -2794,27 +2884,29 @@ const AdminDashboard = () => {
                         variant="outline"
                         onClick={() => {
                           setSelectedSheet(sheet);
-                          fetchSheetDetails(sheet.id);
+                          fetchSheetDetails(sheet.id || sheet._id);
                         }}
                       >
                         <Eye className="h-4 w-4 mr-1" /> Voir la fiche
                       </Button>
-                      {(sheet.status === 'submitted' || sheet.status === 'pending') && (
+                      {sheet.status !== 'approved' && (
                         <div className="flex gap-2">
                           <Button 
                             size="sm" 
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => handleReviewSheet(sheet.id, 'approved')}
+                            className="bg-green-600 hover:bg-green-700 text-white gap-1.5 font-semibold"
+                            onClick={() => handleReviewSheet(sheet.id || sheet._id, 'approved')}
                           >
-                            <CheckCircle className="h-4 w-4" />
+                            <CheckCircle className="h-4 w-4" /> Activer
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="destructive"
-                            onClick={() => handleReviewSheet(sheet.id, 'rejected')}
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
+                          {sheet.status !== 'rejected' && (
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => handleReviewSheet(sheet.id || sheet._id, 'rejected')}
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3124,26 +3216,26 @@ const AdminDashboard = () => {
                 <div className="flex gap-4 pt-4 border-t">
                   {sheetDetails.sheet.status !== 'approved' && (
                     <Button 
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      onClick={() => handleReviewSheet(sheetDetails.sheet.id, 'approved')}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold"
+                      onClick={() => handleReviewSheet(sheetDetails.sheet.id || sheetDetails.sheet._id || selectedSheet?.id || selectedSheet?._id, 'approved')}
                     >
-                      <CheckCircle className="h-4 w-4 mr-2" /> Approuver cette fiche
+                      <CheckCircle className="h-4 w-4 mr-2" /> Activer & Approuver cette fiche
                     </Button>
                   )}
                   {sheetDetails.sheet.status !== 'rejected' && (
                     <Button 
                       variant="destructive" 
                       className="flex-1"
-                      onClick={() => handleReviewSheet(sheetDetails.sheet.id, 'rejected')}
+                      onClick={() => handleReviewSheet(sheetDetails.sheet.id || sheetDetails.sheet._id || selectedSheet?.id || selectedSheet?._id, 'rejected')}
                     >
                       <XCircle className="h-4 w-4 mr-2" /> Rejeter
                     </Button>
                   )}
-                  {sheetDetails.sheet.status === 'submitted' && (
+                  {(sheetDetails.sheet.status === 'submitted' || sheetDetails.sheet.status === 'pending') && (
                     <Button 
                       variant="outline" 
                       className="flex-1"
-                      onClick={() => handleReviewSheet(sheetDetails.sheet.id, 'reviewed')}
+                      onClick={() => handleReviewSheet(sheetDetails.sheet.id || sheetDetails.sheet._id || selectedSheet?.id || selectedSheet?._id, 'reviewed')}
                     >
                       <AlertCircle className="h-4 w-4 mr-2" /> Marquer en révision
                     </Button>
@@ -3292,6 +3384,27 @@ const AdminDashboard = () => {
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 justify-end">
+                      {u.role === 'trainer' && !u.is_verified && (
+                        <Button
+                          size="sm"
+                          className="text-xs gap-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold"
+                          onClick={() => handleVerifyTrainer(u.id || u._id, true)}
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                          Activer Formateur
+                        </Button>
+                      )}
+                      {u.role === 'trainer' && u.is_verified && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs gap-1 text-yellow-600 border-yellow-500/30 hover:bg-yellow-50"
+                          onClick={() => handleVerifyTrainer(u.id || u._id, false)}
+                        >
+                          <UserX className="h-3.5 w-3.5" />
+                          Désactiver
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"

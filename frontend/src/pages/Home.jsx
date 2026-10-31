@@ -22,6 +22,7 @@ const getMediaUrl = (url) => {
   if (url.startsWith('http')) return url;
   return `${API_URL}${url}`;
 };
+const formatMediaUrl = getMediaUrl;
 
 const isImageFile = (post) => {
   if (post.media_type === 'image') return true;
@@ -48,6 +49,7 @@ const Home = () => {
   const [posts, setPosts] = useState([]);
   const [vacationPrograms, setVacationPrograms] = useState([]);
   const [partnerBrokers, setPartnerBrokers] = useState([]);
+  const [whatsappUrl, setWhatsappUrl] = useState('https://wa.me/237699000000');
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -81,6 +83,7 @@ const Home = () => {
       setVacationPrograms(vacationRes.data || []);
       setPlans(plansRes.data || []);
       if (Array.isArray(brandingRes?.data?.brokers)) setPartnerBrokers(brandingRes.data.brokers);
+      if (brandingRes?.data?.whatsapp_url) setWhatsappUrl(brandingRes.data.whatsapp_url);
     } catch (err) {
       console.error('Erreur lors du chargement des données', err);
     } finally {
@@ -542,7 +545,7 @@ const Home = () => {
                 <p className="text-xs text-muted-foreground">{isEn ? 'Fast and direct assistance' : 'Assistance rapide et directe'}</p>
               </div>
               <a
-                href="https://wa.me/237699000000"
+                href={whatsappUrl || 'https://wa.me/237699000000'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block"
