@@ -86,6 +86,31 @@ const Register = () => {
             : null;
           setSelectedPlan(found || list[0]);
         }
+        // Si retour depuis une session Checkout hébergée SEBPAY (?checkout_session_id=...)
+        const checkoutSessionId = searchParams.get('checkout_session_id');
+        if (checkoutSessionId) {
+          api.get(`/subscriptions/public/status/${encodeURIComponent(checkoutSessionId)}`)
+            .then((stRes) => {
+              if (!active) return;
+              if (stRes.data?.status === 'completed' || stRes.data?.is_paid) {
+                const ref = stRes.data?.reference || checkoutSessionId;
+                setPaidReference(ref);
+                setPaymentResult(stRes.data);
+                toast.success(
+                  isEn
+                    ? 'SEBPAY Checkout payment confirmed! Complete your registration below.'
+                    : 'Paiement SEBPAY Checkout confirmé ! Vous pouvez maintenant compléter votre inscription ci-dessous.'
+                );
+              } else {
+                setPaymentResult({
+                  reference: stRes.data?.reference || checkoutSessionId,
+                  status: stRes.data?.status || 'pending',
+                  message: isEn ? 'Verifying your SEBPAY Checkout session...' : 'Vérification de votre session SEBPAY Checkout en cours...',
+                });
+              }
+            })
+            .catch(() => {});
+        }
       })
       .finally(() => {
         if (active) setLoadingPlans(false);
@@ -225,7 +250,42 @@ const Register = () => {
     }
   };
 
-  // Lancer le paiement SEBPAY
+  // Lancer le Checkout hébergé SEBPAY (POST /api/v1/checkout/sessions — L'intégration recommandée dans /fr/docs/checkout)
+  const handleStartSebpayHostedCheckout = async () => {
+    if (!selectedPlan) {
+      toast.warning(isEn ? 'Please select a subscription plan first.' : 'Veuillez d’abord sélectionner un plan de souscription.');
+      return;
+    }
+    setSubmittingPayment(true);
+    try {
+      const res = await api.post('/subscriptions/public/pay', {
+        gateway: 'sebpay',
+        mode: 'checkout_session',
+        plan_id: selectedPlan.id || selectedPlan._id,
+        plan_name: selectedPlan.name,
+        phone: payForm.phone || undefined,
+        country: payForm.country || 'BJ',
+        referral_code: referralCode ? referralCode.trim() : undefined,
+        return_url: window.location.origin + '/register',
+      });
+      setPaymentResult(res.data);
+      const checkoutUrl = res.data?.checkout_url || res.data?.provider_link;
+      if (checkoutUrl) {
+        window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
+        toast.info(
+          isEn
+            ? 'SEBPAY Checkout opened! Complete your payment on SEBPAY, then click Verify.'
+            : 'Guichet SEBPAY Checkout ouvert ! Validez le paiement sur la page SEBPAY, puis cliquez sur Vérifier.'
+        );
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || (isEn ? 'Unable to open SEBPAY Checkout' : "Impossible d'ouvrir le guichet SEBPAY Checkout"));
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
+  // Lancer le paiement SEBPAY (POST /api/v1/collections)
   const handlePaySelectedPlanSebpay = async (e) => {
     e.preventDefault();
     if (!selectedPlan) {
@@ -684,10 +744,18 @@ const Register = () => {
                         </label>
                         <Input
                           type="text"
+                          required={payForm.operator === 'orange' && ['CI', 'SN', 'BF'].includes(payForm.country)}
                           placeholder={isEn ? 'Leave empty for MTN/Moov' : 'Laisser vide pour MTN / Moov'}
                           value={payForm.otp_code}
                           onChange={(e) => setPayForm({ ...payForm, otp_code: e.target.value })}
                         />
+                        {payForm.operator === 'orange' && ['CI', 'SN', 'BF'].includes(payForm.country) && (
+                          <p className="text-[11px] font-medium text-amber-600 mt-1">
+                            {payForm.country === 'CI' && '📱 Composez *144*4*4# sur votre téléphone pour recevoir votre code OTP Orange.'}
+                            {payForm.country === 'SN' && '📱 Composez #144#391# sur votre téléphone pour recevoir votre code OTP Orange.'}
+                            {payForm.country === 'BF' && '📱 Composez *144*4*6# sur votre téléphone pour recevoir votre code OTP Orange.'}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -704,6 +772,19 @@ const Register = () => {
                             : (isEn
                                 ? `Pay ${Number(selectedPlan.price_xaf).toLocaleString()} XAF & Unlock Registration`
                                 : `Payer ${Number(selectedPlan.price_xaf).toLocaleString()} XAF et débloquer l'inscription`)}
+                        </span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={submittingPayment}
+                        onClick={handleStartSebpayHostedCheckout}
+                        className="gap-2 font-bold h-11 border border-primary/30"
+                      >
+                        <CreditCard className="h-4 w-4 text-primary" />
+                        <span>
+                          {isEn ? 'Pay via SEBPAY Hosted Checkout' : 'Guichet sécurisé SEBPAY Checkout'}
                         </span>
                       </Button>
 

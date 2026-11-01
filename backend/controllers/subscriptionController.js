@@ -1,9 +1,101 @@
 const crypto = require('crypto');
 const { SubscriptionPlan, PaymentTransaction, User, BrandingSettings } = require('../models');
 
-const SEBPAY_API_URL = 'https://newapi.sebpay.bj/api/v1';
+const SEBPAY_LIVE_API_URL = 'https://newapi.sebpay.bj/api/v1';
+const SEBPAY_SANDBOX_API_URL = 'https://api.sandbox.sebpay.bj/api/v1';
 const IKEEPAY_API_URL = 'https://api.ikeepay.com';
 const IKEEPAY_INLINE_URL = 'https://ikeepay.com/checkout/v1/inline';
+
+// Sélectionne automatiquement le serveur Live ou Sandbox selon le préfixe des clés API (doc: /fr/docs/concepts & /fr/docs/auth)
+function resolveSebpayBaseUrl(publicKey, secretKey) {
+  const pk = String(publicKey || '').trim();
+  const sk = String(secretKey || '').trim();
+  if (pk.startsWith('pk_test_') || sk.startsWith('sk_test_')) {
+    return SEBPAY_SANDBOX_API_URL;
+  }
+  return process.env.SEBPAY_API_URL || SEBPAY_LIVE_API_URL;
+}
+
+// Exécute un appel HTTP vers SEBPAY et bascule automatiquement sur errors.api_url en cas de 401 WRONG_ENVIRONMENT
+async function sebpayFetch(endpointPath, options = {}, publicKey = '', secretKey = '') {
+  const baseUrl = resolveSebpayBaseUrl(publicKey, secretKey).replace(/\/+$/, '');
+  const cleanPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
+  const headers = {
+    'X-Public-Key': String(publicKey || '').trim(),
+    'X-Secret-Key': String(secretKey || '').trim(),
+    'Accept': 'application/json',
+    ...(options.headers || {}),
+  };
+  const fetchOpts = { ...options, headers };
+
+  let res = await fetch(`${baseUrl}${cleanPath}`, fetchOpts);
+  let resData = await res.json().catch(() => ({}));
+
+  // Si SEBPAY répond 401 WRONG_ENVIRONMENT avec errors.api_url, relancer automatiquement sur le bon serveur
+  const errCode = resData?.errors?.code || resData?.code || '';
+  const redirectApiUrl = resData?.errors?.api_url || resData?.api_url;
+  if (res.status === 401 && errCode === 'WRONG_ENVIRONMENT' && redirectApiUrl) {
+    const altBase = String(redirectApiUrl).replace(/\/+$/, '');
+    res = await fetch(`${altBase}${cleanPath}`, fetchOpts);
+    resData = await res.json().catch(() => ({}));
+  }
+
+  return { res, resData };
+}
+
+// Traduit les codes d'erreur officiels SEBPAY v2 (errors.code — doc: /fr/docs/status-codes)
+function formatSebpayErrorMessage(resStatus, resData, { usedOperator = '', usedPhone = '', amount = 0, serverIp = '57.129.148.42' } = {}) {
+  const errCode = String(resData?.errors?.code || resData?.code || resData?.error_code || resData?.data?.code || '').toUpperCase();
+  const rawMessage = String(resData?.message || resData?.data?.message || '').trim();
+  const minAmount = resData?.errors?.min_amount;
+  const minCurrency = resData?.errors?.currency || 'XOF';
+
+  if (
+    errCode === 'IP_NOT_ALLOWED' ||
+    errCode === 'IP_PENDING_APPROVAL' ||
+    errCode === 'IP_REJECTED' ||
+    errCode === 'IP_DISABLED' ||
+    /adresse ip|ip.*autoris|whitelist/i.test(rawMessage)
+  ) {
+    if (errCode === 'IP_PENDING_APPROVAL') {
+      return `L'adresse IP du serveur (${serverIp}) a bien été déclarée sur SEBPAY mais est encore en attente de validation (IP_PENDING_APPROVAL).`;
+    }
+    return `L'adresse IP du serveur (${serverIp}) n'est pas autorisée sur cette clé API SEBPAY (${errCode || '403'}). Ajoutez ${serverIp} dans votre tableau de bord SEBPAY (new.sebpay.bj > API développeur > Adresses IP autorisées).`;
+  }
+
+  switch (errCode) {
+    case 'WRONG_ENVIRONMENT':
+      return `Les clés API SEBPAY appartiennent à un autre environnement (Sandbox vs Live). Vérifiez que vous utilisez bien vos clés pk_live_ / sk_live_ ou pk_test_ / sk_test_.`;
+    case 'ACCOUNT_SUSPENDED':
+      return `Le compte marchand SEBPAY est temporairement suspendu. Veuillez contacter le support SEBPAY.`;
+    case 'OTP_REQUIRED':
+      return `Cet opérateur Mobile Money exige un code de confirmation OTP. Composez le code USSD de votre opérateur sur votre téléphone et saisissez le code OTP reçu.`;
+    case 'AMOUNT_TOO_LOW':
+      return minAmount
+        ? `Le montant (${Number(amount).toLocaleString()} XOF) est inférieur au minimum autorisé par SEBPAY pour ce pays (${minAmount} ${minCurrency}).`
+        : `Le montant du plan est inférieur au minimum autorisé par l'opérateur Mobile Money.`;
+    case 'MONTHLY_LIMIT_REACHED':
+      return `La limite mensuelle de réception du compte marchand SEBPAY est atteinte. Veuillez contacter le support SEBPAY.`;
+    case 'EXTERNAL_REFERENCE_CONFLICT':
+    case 'REQUEST_IN_PROGRESS':
+      return `Une demande de paiement identique est déjà en cours de traitement. Veuillez patienter quelques secondes puis réessayer.`;
+    case 'RATE_LIMITED':
+      return `Trop de tentatives rapprochées (RATE_LIMITED). Veuillez patienter quelques secondes avant de réessayer.`;
+    case 'FEATURE_DISABLED':
+    case 'COUNTRY_UNAVAILABLE':
+    case 'OPERATOR_MAINTENANCE':
+    case 'AGGREGATOR_MAINTENANCE':
+    case 'ACCOUNT_PAYIN_DISABLED':
+      return `L'opérateur Mobile Money (${usedOperator.toUpperCase() || 'sélectionné'}) ou le service dans ce pays est temporairement en maintenance (${errCode}). Essayez un autre opérateur ou le guichet Checkout SEBPAY.`;
+    case 'PAYMENT_DECLINED':
+      return `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez que : 1) Votre numéro (${usedPhone}) correspond bien à l'opérateur ${usedOperator.toUpperCase()}, 2) Votre compte Mobile Money est actif avec un solde suffisant (${Number(amount).toLocaleString()} XOF), ou utilisez le bouton « Guichet sécurisé SEBPAY Checkout ».`;
+    default:
+      if (/operator declined|check the phone number/i.test(rawMessage)) {
+        return `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez votre numéro et l'opérateur choisi (ou utilisez le bouton « Guichet sécurisé SEBPAY Checkout »), puis réessayez.`;
+      }
+      return rawMessage || `Le paiement n'a pas pu être initié (HTTP ${resStatus}). Vérifiez votre numéro et l'opérateur choisi.`;
+  }
+}
 
 // Indicatifs téléphoniques internationaux par code ISO pays (format SEBPAY sans +)
 const COUNTRY_DIAL_CODES = {
@@ -21,43 +113,43 @@ const COUNTRY_DIAL_CODES = {
   CD: '243',
 };
 
-// Opérateurs par défaut par pays (fallback si GET /operators indisponible)
+// Opérateurs par défaut par pays (fallback si GET /operators indisponible, incluant otp_required et ussd_code selon /fr/docs/otp)
 const DEFAULT_OPERATORS_BY_COUNTRY = {
   BJ: [
-    { code: 'mtn', slug: 'mtn-bj', name: 'MTN Mobile Money (Bénin)', otp_required: false },
-    { code: 'moov', slug: 'moov-bj', name: 'Moov Money (Bénin)', otp_required: false },
-    { code: 'celtiis', slug: 'celtiis-bj', name: 'Celtiis Cash (Bénin)', otp_required: false },
+    { code: 'mtn', slug: 'mtn-bj', name: 'MTN Mobile Money (Bénin)', otp_required: false, ussd_code: null },
+    { code: 'moov', slug: 'moov-bj', name: 'Moov Money (Bénin)', otp_required: false, ussd_code: null },
+    { code: 'celtiis', slug: 'celtiis-bj', name: 'Celtiis Cash (Bénin)', otp_required: false, ussd_code: null },
   ],
   CI: [
-    { code: 'mtn', slug: 'mtn-ci', name: 'MTN MoMo (Côte d\'Ivoire)', otp_required: false },
-    { code: 'moov', slug: 'moov-ci', name: 'Moov Money (Côte d\'Ivoire)', otp_required: false },
-    { code: 'orange', slug: 'orange-ci', name: 'Orange Money (Côte d\'Ivoire)', otp_required: true },
-    { code: 'wave', slug: 'wave-ci', name: 'Wave (Côte d\'Ivoire)', otp_required: false },
+    { code: 'mtn', slug: 'mtn-ci', name: 'MTN MoMo (Côte d\'Ivoire)', otp_required: false, ussd_code: null },
+    { code: 'moov', slug: 'moov-ci', name: 'Moov Money (Côte d\'Ivoire)', otp_required: false, ussd_code: null },
+    { code: 'orange', slug: 'orange-ci', name: 'Orange Money (Côte d\'Ivoire)', otp_required: true, ussd_code: '*144*4*4#' },
+    { code: 'wave', slug: 'wave-ci', name: 'Wave (Côte d\'Ivoire)', otp_required: false, ussd_code: null },
   ],
   TG: [
-    { code: 'tmoney', slug: 'tmoney-tg', name: 'TMoney / Yas (Togo)', otp_required: false },
-    { code: 'moov', slug: 'moov-tg', name: 'Moov Money (Togo)', otp_required: false },
+    { code: 'tmoney', slug: 'tmoney-tg', name: 'TMoney / Yas (Togo)', otp_required: false, ussd_code: null },
+    { code: 'moov', slug: 'moov-tg', name: 'Moov Money (Togo)', otp_required: false, ussd_code: null },
   ],
   SN: [
-    { code: 'wave', slug: 'wave-sn', name: 'Wave (Sénégal)', otp_required: false },
-    { code: 'orange', slug: 'orange-sn', name: 'Orange Money (Sénégal)', otp_required: true },
-    { code: 'free', slug: 'free-sn', name: 'Free Money / Yas (Sénégal)', otp_required: false },
+    { code: 'wave', slug: 'wave-sn', name: 'Wave (Sénégal)', otp_required: false, ussd_code: null },
+    { code: 'orange', slug: 'orange-sn', name: 'Orange Money (Sénégal)', otp_required: true, ussd_code: '#144#391#' },
+    { code: 'free', slug: 'free-sn', name: 'Free Money / Yas (Sénégal)', otp_required: false, ussd_code: null },
   ],
   BF: [
-    { code: 'orange', slug: 'orange-bf', name: 'Orange Money (Burkina Faso)', otp_required: true },
-    { code: 'moov', slug: 'moov-bf', name: 'Moov Money (Burkina Faso)', otp_required: false },
+    { code: 'orange', slug: 'orange-bf', name: 'Orange Money (Burkina Faso)', otp_required: true, ussd_code: '*144*4*6#' },
+    { code: 'moov', slug: 'moov-bf', name: 'Moov Money (Burkina Faso)', otp_required: false, ussd_code: null },
   ],
   CM: [
-    { code: 'mtn', slug: 'mtn-cm', name: 'MTN Mobile Money (Cameroun)', otp_required: false },
-    { code: 'orange', slug: 'orange-cm', name: 'Orange Money (Cameroun)', otp_required: false },
+    { code: 'mtn', slug: 'mtn-cm', name: 'MTN Mobile Money (Cameroun)', otp_required: false, ussd_code: null },
+    { code: 'orange', slug: 'orange-cm', name: 'Orange Money (Cameroun)', otp_required: false, ussd_code: null },
   ],
   ML: [
-    { code: 'orange', slug: 'orange-ml', name: 'Orange Money (Mali)', otp_required: false },
-    { code: 'moov', slug: 'moov-ml', name: 'Moov Money (Mali)', otp_required: false },
+    { code: 'orange', slug: 'orange-ml', name: 'Orange Money (Mali)', otp_required: false, ussd_code: null },
+    { code: 'moov', slug: 'moov-ml', name: 'Moov Money (Mali)', otp_required: false, ussd_code: null },
   ],
   NE: [
-    { code: 'airtel', slug: 'airtel-ne', name: 'Airtel Money (Niger)', otp_required: false },
-    { code: 'moov', slug: 'moov-ne', name: 'Moov Money (Niger)', otp_required: false },
+    { code: 'airtel', slug: 'airtel-ne', name: 'Airtel Money (Niger)', otp_required: false, ussd_code: null },
+    { code: 'moov', slug: 'moov-ne', name: 'Moov Money (Niger)', otp_required: false, ussd_code: null },
   ],
 };
 
@@ -211,6 +303,7 @@ async function executeSebpayCollectionWithRetry({
   sebpaySecretKey,
   amount,
   callbackUrl,
+  returnUrl,
   customerName,
   customerEmail,
   otp_code,
@@ -242,22 +335,24 @@ async function executeSebpayCollectionWithRetry({
       customer_name: customerName || 'Membre LiveFX',
       customer_email: customerEmail || undefined,
     };
+    if (returnUrl && String(returnUrl).trim()) {
+      payload.return_url = String(returnUrl).trim();
+    }
     if (otp_code && String(otp_code).trim()) {
       payload.otp_code = String(otp_code).trim();
     }
 
-    const sebResponse = await fetch(`${SEBPAY_API_URL}/collections`, {
-      method: 'POST',
-      headers: {
-        'X-Public-Key': sebpayPublicKey,
-        'X-Secret-Key': sebpaySecretKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+    const { res: sebResponse, resData } = await sebpayFetch(
+      '/collections',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    });
+      sebpayPublicKey,
+      sebpaySecretKey
+    );
 
-    const resData = await sebResponse.json().catch(() => ({}));
     lastResStatus = sebResponse.status;
     lastResData = resData;
     lastAttempt = { ...candidate, external_reference: externalRef };
@@ -275,11 +370,34 @@ async function executeSebpayCollectionWithRetry({
       };
     }
 
+    const errCode = String(resData?.errors?.code || resData?.code || resData?.error_code || '').toUpperCase();
     const rawMsg = String(resData?.message || resData?.data?.message || '');
-    const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawMsg);
-    const isOtpRequired = sebResponse.status === 422 && /otp/i.test(rawMsg + String(resData?.code || ''));
-    // Si l'erreur est un blocage IP ou une demande de code OTP, inutile de réessayer un autre format de numéro
-    if (isIpBlocked || isOtpRequired) {
+    const isNonRetryable =
+      sebResponse.status === 401 ||
+      sebResponse.status === 403 ||
+      sebResponse.status === 429 ||
+      sebResponse.status === 503 ||
+      [
+        'WRONG_ENVIRONMENT',
+        'ACCOUNT_SUSPENDED',
+        'IP_NOT_ALLOWED',
+        'IP_PENDING_APPROVAL',
+        'IP_REJECTED',
+        'IP_DISABLED',
+        'OTP_REQUIRED',
+        'AMOUNT_TOO_LOW',
+        'MONTHLY_LIMIT_REACHED',
+        'RATE_LIMITED',
+        'FEATURE_DISABLED',
+        'COUNTRY_UNAVAILABLE',
+        'OPERATOR_MAINTENANCE',
+        'AGGREGATOR_MAINTENANCE',
+        'ACCOUNT_PAYIN_DISABLED',
+      ].includes(errCode) ||
+      /adresse ip|ip.*autoris|whitelist/i.test(rawMsg) ||
+      (sebResponse.status === 422 && /otp/i.test(rawMsg + errCode));
+
+    if (isNonRetryable) {
       break;
     }
   }
@@ -293,6 +411,50 @@ async function executeSebpayCollectionWithRetry({
     usedOperator: lastAttempt.operator,
     usedCountry: lastAttempt.country,
     externalReference: lastAttempt.external_reference || `${refPrefix}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+  };
+}
+
+// Crée une session de Checkout hébergé SEBPAY (POST /api/v1/checkout/sessions — L'intégration recommandée dans /fr/docs/checkout)
+async function createSebpayCheckoutSession({
+  sebpayPublicKey,
+  sebpaySecretKey,
+  amount,
+  redirectUrl,
+  callbackUrl,
+  externalReference,
+  customerName,
+  customerEmail,
+  customerPhone,
+  metadata = {},
+}) {
+  const payload = {
+    amount: Math.round(Number(amount)),
+    currency: 'XOF',
+    redirect_url: redirectUrl,
+    external_reference: externalReference,
+    callback_url: callbackUrl,
+    customer_name: customerName || undefined,
+    customer_email: customerEmail || undefined,
+    customer_phone: customerPhone || undefined,
+    metadata,
+  };
+
+  const { res, resData } = await sebpayFetch(
+    '/checkout/sessions',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    sebpayPublicKey,
+    sebpaySecretKey
+  );
+
+  return {
+    ok: res.ok && resData.success !== false,
+    status: res.status,
+    resData,
+    dataPayload: resData.data || resData,
   };
 }
 
@@ -517,32 +679,35 @@ exports.testSebpayConnection = async (req, res) => {
       });
     }
 
-    const sebRes = await fetch(`${SEBPAY_API_URL}/operators`, {
-      method: 'GET',
-      headers: {
-        'X-Public-Key': sebpayPublicKey,
-        'X-Secret-Key': sebpaySecretKey,
-        'Accept': 'application/json',
-      },
-    });
-    const json = await sebRes.json().catch(() => ({}));
+    const { res: sebRes, resData: json } = await sebpayFetch(
+      '/operators',
+      { method: 'GET' },
+      sebpayPublicKey,
+      sebpaySecretKey
+    );
+
     if (sebRes.ok && json.success !== false) {
+      const envType = sebpayPublicKey.startsWith('pk_test_') ? 'Sandbox' : 'Live Production';
       return res.json({
         ok: true,
+        environment: envType,
         server_ip: serverIp,
-        message: `Connexion SEBPAY réussie ! L'adresse IP du serveur (${serverIp}) et vos clés API sont bien autorisées.`
+        message: `Connexion SEBPAY (${envType}) réussie ! L'adresse IP du serveur (${serverIp}) et vos clés API sont bien autorisées.`
       });
     }
 
+    const errCode = String(json?.errors?.code || json?.code || '').toUpperCase();
     const rawMsg = json?.message || `Erreur HTTP ${sebRes.status}`;
-    const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawMsg);
+    const isIpBlocked =
+      ['IP_NOT_ALLOWED', 'IP_PENDING_APPROVAL', 'IP_REJECTED', 'IP_DISABLED'].includes(errCode) ||
+      /adresse ip|ip.*autoris|whitelist/i.test(rawMsg);
+
     return res.status(200).json({
       ok: false,
+      code: errCode,
       is_ip_blocked: isIpBlocked,
       server_ip: serverIp,
-      message: isIpBlocked
-        ? `SEBPAY bloque l'adresse IP du serveur (${serverIp}). Allez dans votre compte SEBPAY (new.sebpay.bj > Clés API) et ajoutez l'adresse IP ${serverIp} dans les adresses IP autorisées (ou laissez la liste d'IP vide).`
-        : rawMsg
+      message: formatSebpayErrorMessage(sebRes.status, json, { serverIp }),
     });
   } catch (err) {
     console.error('testSebpayConnection error:', err);
@@ -550,7 +715,80 @@ exports.testSebpayConnection = async (req, res) => {
   }
 };
 
-// Récupérer la liste des opérateurs Mobile Money supportés par SEBPAY (GET /api/v1/operators)
+// Récupérer la liste des pays supportés par SEBPAY (GET /api/v1/countries — doc: /fr/docs/countries)
+exports.getSebpayCountries = async (req, res) => {
+  const defaultCountries = [
+    { country_code: 'BJ', country_name: 'Bénin', prefix: '229', currency: { code: 'XOF' } },
+    { country_code: 'CI', country_name: "Côte d'Ivoire", prefix: '225', currency: { code: 'XOF' } },
+    { country_code: 'TG', country_name: 'Togo', prefix: '228', currency: { code: 'XOF' } },
+    { country_code: 'SN', country_name: 'Sénégal', prefix: '221', currency: { code: 'XOF' } },
+    { country_code: 'BF', country_name: 'Burkina Faso', prefix: '226', currency: { code: 'XOF' } },
+    { country_code: 'CM', country_name: 'Cameroun', prefix: '237', currency: { code: 'XAF' } },
+    { country_code: 'ML', country_name: 'Mali', prefix: '223', currency: { code: 'XOF' } },
+    { country_code: 'NE', country_name: 'Niger', prefix: '227', currency: { code: 'XOF' } },
+  ];
+  try {
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+    if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
+      const { res: sebRes, resData: json } = await sebpayFetch(
+        '/countries',
+        { method: 'GET' },
+        sebpayPublicKey,
+        sebpaySecretKey
+      ).catch(() => ({ res: null, resData: null }));
+
+      if (sebRes && sebRes.ok) {
+        const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : null);
+        if (list && list.length > 0) {
+          return res.json(list);
+        }
+      }
+    }
+    return res.json(defaultCountries);
+  } catch (err) {
+    console.error('getSebpayCountries error:', err);
+    return res.json(defaultCountries);
+  }
+};
+
+// Calculer les frais SEBPAY en temps réel (GET /api/v1/c/calculate-fee — doc: /fr/docs/tarifs)
+exports.calculateSebpayFee = async (req, res) => {
+  try {
+    const amount = Number(req.query.amount) || 0;
+    const sourceCountry = String(req.query.source_country || req.query.country || 'bj').trim().toLowerCase();
+    const txType = String(req.query.transaction_type || 'collection').trim().toLowerCase();
+
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+    const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+    const query = new URLSearchParams({
+      amount: String(amount),
+      source_country: sourceCountry,
+      transaction_type: txType,
+    });
+
+    const { res: sebRes, resData } = await sebpayFetch(
+      `/c/calculate-fee?${query.toString()}`,
+      { method: 'GET' },
+      sebpayPublicKey,
+      sebpaySecretKey
+    );
+
+    if (sebRes && sebRes.ok) {
+      return res.json(resData?.data || resData);
+    }
+    return res.status(sebRes?.status || 400).json(resData || { message: 'Impossible de calculer les frais' });
+  } catch (err) {
+    console.error('calculateSebpayFee error:', err);
+    res.status(500).json({ message: 'Erreur lors du calcul des frais' });
+  }
+};
+
+// Récupérer la liste des opérateurs Mobile Money supportés par SEBPAY (GET /api/v1/operators — doc: /fr/docs/operators & /fr/docs/otp)
 exports.getSebpayOperators = async (req, res) => {
   try {
     const country = String(req.query.country || '').trim().toUpperCase();
@@ -559,20 +797,15 @@ exports.getSebpayOperators = async (req, res) => {
     const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
 
     if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
-      const url = country
-        ? `${SEBPAY_API_URL}/operators?country=${encodeURIComponent(country)}`
-        : `${SEBPAY_API_URL}/operators`;
-      const sebRes = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'X-Public-Key': sebpayPublicKey,
-          'X-Secret-Key': sebpaySecretKey,
-          'Accept': 'application/json',
-        },
-      }).catch(() => null);
+      const endpoint = country ? `/operators?country=${encodeURIComponent(country)}` : '/operators';
+      const { res: sebRes, resData: json } = await sebpayFetch(
+        endpoint,
+        { method: 'GET' },
+        sebpayPublicKey,
+        sebpaySecretKey
+      ).catch(() => ({ res: null, resData: null }));
 
       if (sebRes && sebRes.ok) {
-        const json = await sebRes.json().catch(() => null);
         const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : null);
         if (list && list.length > 0) {
           return res.json(list);
@@ -590,7 +823,7 @@ exports.getSebpayOperators = async (req, res) => {
   }
 };
 
-// Initier un paiement Mobile Money SEBPAY (POST https://newapi.sebpay.bj/api/v1/collections)
+// Initier un paiement Mobile Money SEBPAY (POST /api/v1/collections ou POST /api/v1/checkout/sessions)
 exports.initiateMobilePayment = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -603,6 +836,7 @@ exports.initiateMobilePayment = async (req, res) => {
     const rawOperator = String(req.body.operator || req.body.provider || 'mtn').trim();
     const rawCountry = String(req.body.country || 'BJ').trim().toUpperCase();
     const otp_code = req.body.otp_code || req.body.otpCode || req.body.otp;
+    const paymentMode = String(req.body.mode || 'collection').trim().toLowerCase();
 
     // Résolution robuste du plan (par ID, par nom, ou fallback si 1 seul plan actif existe)
     let plan = null;
@@ -621,12 +855,6 @@ exports.initiateMobilePayment = async (req, res) => {
 
     if (!plan || !plan.is_active) {
       return res.status(404).json({ message: 'Plan de souscription indisponible ou introuvable' });
-    }
-
-    if (!rawPhone || !rawOperator || !rawCountry) {
-      return res.status(400).json({
-        message: 'Veuillez renseigner votre numéro de téléphone Mobile Money, l\'opérateur et le pays.'
-      });
     }
 
     // Récupérer les clés API SEBPAY configurées par l'administrateur
@@ -655,6 +883,77 @@ exports.initiateMobilePayment = async (req, res) => {
       }
     }
 
+    const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
+    const frontendBase = (process.env.FRONTEND_URL || 'https://livefx-trading.com').replace(/\/+$/, '');
+    const returnUrl = req.body.return_url || req.body.redirect_url || `${frontendBase}/dashboard`;
+
+    // Mode Checkout Hébergé SEBPAY (POST /api/v1/checkout/sessions — L'intégration recommandée dans /fr/docs/checkout)
+    if (paymentMode === 'checkout_session' || paymentMode === 'hosted') {
+      const externalRef = `CHK-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const sessionAttempt = await createSebpayCheckoutSession({
+        sebpayPublicKey,
+        sebpaySecretKey,
+        amount: Math.round(Number(plan.price_xaf)),
+        redirectUrl: returnUrl,
+        callbackUrl,
+        externalReference: externalRef,
+        customerName: user.full_name || 'Membre LiveFX',
+        customerEmail: user.email || undefined,
+        customerPhone: rawPhone ? normalizeSebpayPhone(rawPhone, rawCountry) : undefined,
+        metadata: { user_id: String(user._id), plan_id: String(plan._id) },
+      });
+
+      const sessionData = sessionAttempt.dataPayload;
+      const transaction = await PaymentTransaction.create({
+        user_id: user._id,
+        plan_id: plan._id,
+        amount: Math.round(Number(plan.price_xaf)),
+        currency: 'XOF',
+        phone: rawPhone || 'SEBPAY-CHECKOUT',
+        operator: 'sebpay_checkout',
+        country: rawCountry || 'BJ',
+        external_reference: externalRef,
+        transaction_id: sessionData?.id || '',
+        provider_link: sessionData?.checkout_url || '',
+        status: sessionAttempt.ok ? 'pending' : 'failed',
+        sebpay_response: sessionAttempt.resData,
+        referrer_id: referrerId,
+        referral_commission_amount: referralCommission,
+        referral_percentage: referralPct,
+      });
+
+      if (!sessionAttempt.ok) {
+        const srvIp = await detectServerPublicIp();
+        return res.status(400).json({
+          success: false,
+          code: sessionAttempt.resData?.errors?.code || '',
+          message: formatSebpayErrorMessage(sessionAttempt.status, sessionAttempt.resData, {
+            amount: plan.price_xaf,
+            serverIp: srvIp,
+          }),
+        });
+      }
+
+      return res.json({
+        success: true,
+        mode: 'checkout_session',
+        checkout_session_id: sessionData?.id,
+        checkout_url: sessionData?.checkout_url,
+        provider_link: sessionData?.checkout_url,
+        payment_url: sessionData?.checkout_url,
+        external_reference: externalRef,
+        transaction_id: transaction.transaction_id,
+        status: 'pending',
+        message: 'Redirection vers la page de paiement sécurisée SEBPAY...',
+      });
+    }
+
+    if (!rawPhone || !rawOperator || !rawCountry) {
+      return res.status(400).json({
+        message: 'Veuillez renseigner votre numéro de téléphone Mobile Money, l\'opérateur et le pays.'
+      });
+    }
+
     const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
     if (!cleanPhone || cleanPhone.length < 8) {
       return res.status(400).json({
@@ -662,14 +961,13 @@ exports.initiateMobilePayment = async (req, res) => {
       });
     }
 
-    const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
-
     try {
       const attempt = await executeSebpayCollectionWithRetry({
         sebpayPublicKey,
         sebpaySecretKey,
         amount: Math.round(Number(plan.price_xaf)),
         callbackUrl,
+        returnUrl,
         customerName: user.full_name || 'Membre LiveFX',
         customerEmail: user.email || undefined,
         otp_code,
@@ -697,31 +995,25 @@ exports.initiateMobilePayment = async (req, res) => {
       });
 
       if (!attempt.ok) {
-        const errCode = resData?.code || resData?.error_code || dataPayload?.code || '';
+        const errCode = String(resData?.errors?.code || resData?.code || resData?.error_code || dataPayload?.code || '').toUpperCase();
         const rawSebMessage = resData?.message || dataPayload?.message || '';
-        const isOtpRequired = attempt.status === 422 && String(errCode + rawSebMessage).toUpperCase().includes('OTP');
-        const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawSebMessage);
-        const isOperatorDeclined = /operator declined|check the phone number/i.test(rawSebMessage);
+        const isOtpRequired = attempt.status === 422 && (errCode === 'OTP_REQUIRED' || String(errCode + rawSebMessage).toUpperCase().includes('OTP'));
         transaction.status = 'failed';
         transaction.sebpay_response = resData;
         await transaction.save();
 
-        let finalMessage = rawSebMessage;
-        if (isIpBlocked) {
-          const srvIp = await detectServerPublicIp();
-          finalMessage = `Cette adresse IP (${srvIp}) n'est pas encore autorisée sur votre clé API SEBPAY. Dans votre tableau de bord SEBPAY (new.sebpay.bj > Clés API), ajoutez l'adresse IP du serveur : ${srvIp} dans les « Adresses IP autorisées » (ou laissez le champ IP vide).`;
-        } else if (isOperatorDeclined) {
-          finalMessage = `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez que : 1) Ce numéro possède bien un compte Mobile Money actif chez ${usedOperator.toUpperCase()}, 2) Votre solde est suffisant (${Math.round(Number(plan.price_xaf)).toLocaleString()} XOF), puis cliquez à nouveau sur Payer.`;
-        } else if (!finalMessage) {
-          finalMessage = isOtpRequired
-            ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
-            : `Le paiement a été refusé par l'opérateur (HTTP ${attempt.status}). Vérifiez votre numéro et l'opérateur choisi.`;
-        }
+        const srvIp = await detectServerPublicIp();
+        const finalMessage = formatSebpayErrorMessage(attempt.status, resData, {
+          usedOperator,
+          usedPhone,
+          amount: plan.price_xaf,
+          serverIp: srvIp,
+        });
 
         return res.status(isOtpRequired ? 422 : 400).json({
           success: false,
           otp_required: isOtpRequired,
-          server_ip: cachedServerIp,
+          server_ip: srvIp,
           code: errCode,
           message: finalMessage
         });
@@ -762,46 +1054,99 @@ exports.initiateMobilePayment = async (req, res) => {
   }
 };
 
+// Vérifie une transaction ou session Checkout directement auprès de l'API SEBPAY (doc: /fr/docs/collections & /fr/docs/checkout)
+async function verifySebpayTransactionRemote(transaction, branding) {
+  const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
+  const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+  if (!sebpayPublicKey || !sebpaySecretKey || sebpaySecretKey.includes('••')) {
+    return null;
+  }
+
+  const lookupId = transaction.transaction_id || transaction.external_reference;
+  const isCheckoutSession = transaction.operator === 'sebpay_checkout' || String(transaction.external_reference || '').startsWith('CHK-');
+  const endpoint = isCheckoutSession
+    ? `/checkout/sessions/${encodeURIComponent(lookupId)}`
+    : `/collections/${encodeURIComponent(lookupId)}`;
+
+  const { res, resData } = await sebpayFetch(
+    endpoint,
+    { method: 'GET' },
+    sebpayPublicKey,
+    sebpaySecretKey
+  ).catch(() => ({ res: null, resData: null }));
+
+  if (!res || !res.ok) return null;
+  const dataPayload = resData?.data || resData;
+  const txStatus = String(dataPayload?.transaction_status || dataPayload?.status || '').toLowerCase();
+  const sessionStatus = String(dataPayload?.status || '').toLowerCase();
+
+  let normalizedStatus = 'pending';
+  if (txStatus === 'approved' || sessionStatus === 'completed' || txStatus === 'completed' || txStatus === 'success') {
+    normalizedStatus = 'completed';
+  } else if (txStatus === 'rejected' || sessionStatus === 'expired' || txStatus === 'failed') {
+    normalizedStatus = 'failed';
+  }
+
+  return {
+    normalizedStatus,
+    resData,
+    dataPayload,
+  };
+}
+
 // Webhook SEBPAY (POST /api/subscriptions/webhook/sebpay) — Documentation: https://new.sebpay.bj/fr/docs/webhooks
 exports.sebpayWebhook = async (req, res) => {
   try {
     const eventData = req.body || {};
     const ref = eventData.external_reference || eventData.data?.external_reference;
     const txId = eventData.transaction_id || eventData.data?.transaction_id;
+    const checkoutSessionId = eventData.checkout_session_id || eventData.data?.checkout_session_id;
     const status = String(eventData.status || eventData.data?.status || '').toLowerCase();
 
-    if (!ref && !txId) {
-      return res.status(400).json({ message: 'Missing external_reference or transaction_id' });
+    if (!ref && !txId && !checkoutSessionId) {
+      return res.status(400).json({ message: 'Missing external_reference, transaction_id or checkout_session_id' });
     }
 
-    const query = ref ? { external_reference: ref } : { transaction_id: txId };
-    const transaction = await PaymentTransaction.findOne(query).populate('plan_id');
+    const orConditions = [];
+    if (ref) orConditions.push({ external_reference: ref });
+    if (txId) orConditions.push({ transaction_id: txId });
+    if (checkoutSessionId) orConditions.push({ transaction_id: checkoutSessionId });
+
+    const transaction = await PaymentTransaction.findOne({ $or: orConditions }).populate('plan_id');
     if (!transaction) {
       return res.status(404).json({ message: 'Transaction not found' });
     }
 
-    // Vérification optionnelle de la signature HMAC X-SebPay-Signature si clé secrète présente
-    const signature = req.headers['x-sebpay-signature'];
-    if (signature && req.rawBody) {
-      const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
-      const secret = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
-      if (secret && !secret.includes('••')) {
-        const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
-        if (signature !== expected) {
-          console.warn('[SEBPAY Webhook] Signature mismatch');
-        }
+    const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
+    const secret = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
+
+    // Vérification HMAC-SHA256 à temps constant sur les octets bruts (req.rawBody) selon /fr/docs/webhooks
+    const signature = String(req.headers['x-sebpay-signature'] || '').trim();
+    if (signature && req.rawBody && secret && !secret.includes('••')) {
+      const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
+      const sigBuf = Buffer.from(signature, 'utf8');
+      const expBuf = Buffer.from(expected, 'utf8');
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        console.warn('[SEBPAY Webhook] Invalid HMAC signature rejected');
+        return res.status(401).json({ message: 'Invalid webhook signature' });
       }
     }
 
-    // Dans la doc SEBPAY v1, les statuts finaux sont 'approved' ou 'rejected'
-    if (status === 'approved' || status === 'completed' || status === 'success' || status === 'paid') {
+    // Bonne pratique SEBPAY (/fr/docs/webhooks) : confirmer avec l'API avant de livrer
+    let finalStatus = status;
+    const remoteCheck = await verifySebpayTransactionRemote(transaction, branding).catch(() => null);
+    if (remoteCheck && remoteCheck.normalizedStatus !== 'pending') {
+      finalStatus = remoteCheck.normalizedStatus === 'completed' ? 'approved' : 'rejected';
+    }
+
+    if (finalStatus === 'approved' || finalStatus === 'completed' || finalStatus === 'success' || finalStatus === 'paid') {
       const wasCompleted = transaction.status === 'completed';
       transaction.status = 'completed';
       if (txId && !transaction.transaction_id) transaction.transaction_id = txId;
       if (!wasCompleted) {
         await activateUserSubscriptionFromTransaction(transaction, transaction.plan_id);
       }
-    } else if (status === 'rejected' || status === 'failed' || status === 'cancelled' || status === 'expired') {
+    } else if (finalStatus === 'rejected' || finalStatus === 'failed' || finalStatus === 'cancelled' || finalStatus === 'expired') {
       if (transaction.status !== 'completed') {
         transaction.status = 'failed';
       }
@@ -817,49 +1162,33 @@ exports.sebpayWebhook = async (req, res) => {
   }
 };
 
-// Vérifier le statut d'une transaction (avec revérification directe GET /api/v1/collections/{reference} chez SEBPAY si en attente)
+// Vérifier le statut d'une transaction (avec revérification directe GET /collections ou GET /checkout/sessions chez SEBPAY si en attente)
 exports.checkPaymentStatus = async (req, res) => {
   try {
     const { reference } = req.params;
-    const transaction = await PaymentTransaction.findOne({ external_reference: reference })
-      .populate('plan_id', 'name price_xaf duration_days');
+    const transaction = await PaymentTransaction.findOne({
+      $or: [
+        { external_reference: reference },
+        { transaction_id: reference },
+      ],
+    }).populate('plan_id', 'name price_xaf duration_days');
 
     if (!transaction) return res.status(404).json({ message: 'Transaction non trouvée' });
 
-    // Si la transaction est toujours 'pending', interroger GET /api/v1/collections/{id_or_reference}
-    // Comme indiqué dans la doc SEBPAY : "Si elle est en attente, Sebpay revérifie son statut auprès de l'opérateur."
     if (transaction.status === 'pending') {
       try {
         const branding = await BrandingSettings.findOne().sort({ updated_at: -1 }).lean();
-        const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
-        const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
-
-        if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
-          const lookupId = transaction.transaction_id || transaction.external_reference;
-          const sebRes = await fetch(`${SEBPAY_API_URL}/collections/${encodeURIComponent(lookupId)}`, {
-            method: 'GET',
-            headers: {
-              'X-Public-Key': sebpayPublicKey,
-              'X-Secret-Key': sebpaySecretKey,
-              'Accept': 'application/json',
-            },
-          }).catch(() => null);
-
-          if (sebRes && sebRes.ok) {
-            const sebJson = await sebRes.json().catch(() => ({}));
-            const sebData = sebJson.data || sebJson;
-            const liveStatus = String(sebData.status || '').toLowerCase();
-
-            if (liveStatus === 'approved' || liveStatus === 'completed' || liveStatus === 'success') {
-              transaction.status = 'completed';
-              transaction.sebpay_response = sebJson;
-              await transaction.save();
-              await activateUserSubscriptionFromTransaction(transaction, transaction.plan_id);
-            } else if (liveStatus === 'rejected' || liveStatus === 'failed') {
-              transaction.status = 'failed';
-              transaction.sebpay_response = sebJson;
-              await transaction.save();
-            }
+        const remoteCheck = await verifySebpayTransactionRemote(transaction, branding);
+        if (remoteCheck) {
+          if (remoteCheck.normalizedStatus === 'completed') {
+            transaction.status = 'completed';
+            transaction.sebpay_response = remoteCheck.resData;
+            await transaction.save();
+            await activateUserSubscriptionFromTransaction(transaction, transaction.plan_id);
+          } else if (remoteCheck.normalizedStatus === 'failed') {
+            transaction.status = 'failed';
+            transaction.sebpay_response = remoteCheck.resData;
+            await transaction.save();
           }
         }
       } catch (pollErr) {
@@ -1167,18 +1496,85 @@ exports.initiatePublicMobilePayment = async (req, res) => {
     }
 
     // ==================== CAS 2 : PASSERELLE SEBPAY ====================
-    if (!rawPhone || !rawOperator || !rawCountry) {
-      return res.status(400).json({
-        message: "Veuillez renseigner votre numéro de téléphone Mobile Money, l'opérateur et le pays."
-      });
-    }
-
     const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
     const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
 
     if (!sebpayPublicKey || !sebpaySecretKey || sebpaySecretKey.includes('••')) {
       return res.status(400).json({
         message: "Le système de paiement Mobile Money SEBPAY n'est pas encore configuré par l'administrateur (clés API SEBPAY manquantes)."
+      });
+    }
+
+    const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
+    const frontendBase = (process.env.FRONTEND_URL || 'https://livefx-trading.com').replace(/\/+$/, '');
+    const returnUrl = req.body.return_url || req.body.redirect_url || `${frontendBase}/register`;
+    const paymentMode = String(req.body.mode || 'collection').trim().toLowerCase();
+
+    // Option Checkout Hébergé SEBPAY (POST /api/v1/checkout/sessions — L'intégration recommandée dans /fr/docs/checkout)
+    if (paymentMode === 'checkout_session' || paymentMode === 'hosted') {
+      const externalRef = `CHK-PRE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const sessionAttempt = await createSebpayCheckoutSession({
+        sebpayPublicKey,
+        sebpaySecretKey,
+        amount: Math.round(Number(plan.price_xaf)),
+        redirectUrl: returnUrl,
+        callbackUrl,
+        externalReference: externalRef,
+        customerName: req.body.customer_name || 'Nouveau Membre LiveFX',
+        customerEmail: req.body.customer_email || undefined,
+        customerPhone: rawPhone ? normalizeSebpayPhone(rawPhone, rawCountry) : undefined,
+        metadata: { plan_id: String(plan._id), pre_registration: true },
+      });
+
+      const sessionData = sessionAttempt.dataPayload;
+      const transaction = await PaymentTransaction.create({
+        user_id: null,
+        plan_id: plan._id,
+        amount: Math.round(Number(plan.price_xaf)),
+        currency: 'XOF',
+        phone: rawPhone || 'SEBPAY-CHECKOUT',
+        operator: 'sebpay_checkout',
+        country: rawCountry || 'BJ',
+        external_reference: externalRef,
+        transaction_id: sessionData?.id || '',
+        provider_link: sessionData?.checkout_url || '',
+        status: sessionAttempt.ok ? 'pending' : 'failed',
+        sebpay_response: sessionAttempt.resData,
+        referrer_id: referrerId,
+        referral_commission_amount: referralCommission,
+        referral_percentage: referralPct,
+      });
+
+      if (!sessionAttempt.ok) {
+        const srvIp = await detectServerPublicIp();
+        return res.status(400).json({
+          success: false,
+          code: sessionAttempt.resData?.errors?.code || '',
+          message: formatSebpayErrorMessage(sessionAttempt.status, sessionAttempt.resData, {
+            amount: plan.price_xaf,
+            serverIp: srvIp,
+          }),
+        });
+      }
+
+      return res.json({
+        success: true,
+        gateway: 'sebpay',
+        mode: 'checkout_session',
+        checkout_session_id: sessionData?.id,
+        checkout_url: sessionData?.checkout_url,
+        provider_link: sessionData?.checkout_url,
+        reference: externalRef,
+        transaction_id: transaction.transaction_id,
+        status: 'pending',
+        plan: serializePlan(plan),
+        message: 'Ouverture du guichet de paiement sécurisé SEBPAY Checkout...',
+      });
+    }
+
+    if (!rawPhone || !rawOperator || !rawCountry) {
+      return res.status(400).json({
+        message: "Veuillez renseigner votre numéro de téléphone Mobile Money, l'opérateur et le pays."
       });
     }
 
@@ -1189,13 +1585,12 @@ exports.initiatePublicMobilePayment = async (req, res) => {
       });
     }
 
-    const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
-
     const attempt = await executeSebpayCollectionWithRetry({
       sebpayPublicKey,
       sebpaySecretKey,
       amount: Math.round(Number(plan.price_xaf)),
       callbackUrl,
+      returnUrl,
       customerName: req.body.customer_name || 'Nouveau Membre LiveFX',
       customerEmail: req.body.customer_email || undefined,
       otp_code,
@@ -1223,26 +1618,20 @@ exports.initiatePublicMobilePayment = async (req, res) => {
     });
 
     if (!attempt.ok) {
-      const errCode = resData?.code || resData?.error_code || dataPayload?.code || '';
+      const errCode = String(resData?.errors?.code || resData?.code || resData?.error_code || dataPayload?.code || '').toUpperCase();
       const rawSebMessage = resData?.message || dataPayload?.message || '';
-      const isOtpRequired = attempt.status === 422 && String(errCode + rawSebMessage).toUpperCase().includes('OTP');
-      const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawSebMessage);
-      const isOperatorDeclined = /operator declined|check the phone number/i.test(rawSebMessage);
+      const isOtpRequired = attempt.status === 422 && (errCode === 'OTP_REQUIRED' || String(errCode + rawSebMessage).toUpperCase().includes('OTP'));
       transaction.status = 'failed';
       transaction.sebpay_response = resData;
       await transaction.save();
 
-      let finalMessage = rawSebMessage;
-      if (isIpBlocked) {
-        const srvIp = await detectServerPublicIp();
-        finalMessage = `Cette adresse IP (${srvIp}) n'est pas encore autorisée sur la clé API SEBPAY. L'administrateur doit autoriser l'IP ${srvIp} (ou laisser la liste d'IP vide) dans son compte SEBPAY.`;
-      } else if (isOperatorDeclined) {
-        finalMessage = `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez que : 1) Ce numéro possède bien un compte Mobile Money actif chez ${usedOperator.toUpperCase()}, 2) Votre solde est suffisant (${Math.round(Number(plan.price_xaf)).toLocaleString()} XOF), puis cliquez à nouveau sur Payer.`;
-      } else if (!finalMessage) {
-        finalMessage = isOtpRequired
-          ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
-          : `Le paiement a été refusé par l'opérateur (HTTP ${attempt.status}). Vérifiez votre numéro et l'opérateur choisi.`;
-      }
+      const srvIp = await detectServerPublicIp();
+      const finalMessage = formatSebpayErrorMessage(attempt.status, resData, {
+        usedOperator,
+        usedPhone,
+        amount: plan.price_xaf,
+        serverIp: srvIp,
+      });
 
       return res.status(isOtpRequired ? 422 : 400).json({
         success: false,
@@ -1496,34 +1885,16 @@ exports.checkPublicPaymentStatus = async (req, res) => {
           }
         }
       } else {
-        const sebpayPublicKey = (branding?.sebpay_public_key || process.env.SEBPAY_PUBLIC_KEY || '').trim();
-        const sebpaySecretKey = (branding?.sebpay_secret_key || process.env.SEBPAY_SECRET_KEY || '').trim();
-
-        if (sebpayPublicKey && sebpaySecretKey && !sebpaySecretKey.includes('••')) {
-          const lookupId = transaction.transaction_id || transaction.external_reference;
-          const sebRes = await fetch(`${SEBPAY_API_URL}/collections/${encodeURIComponent(lookupId)}`, {
-            method: 'GET',
-            headers: {
-              'X-Public-Key': sebpayPublicKey,
-              'X-Secret-Key': sebpaySecretKey,
-              'Accept': 'application/json',
-            },
-          }).catch(() => null);
-
-          if (sebRes && sebRes.ok) {
-            const resJson = await sebRes.json().catch(() => ({}));
-            const dataPayload = resJson.data || resJson;
-            const remoteStatus = String(dataPayload?.status || '').toLowerCase();
-
-            if (remoteStatus === 'approved' || remoteStatus === 'completed' || remoteStatus === 'success') {
-              transaction.status = 'completed';
-              transaction.sebpay_response = resJson;
-              await transaction.save();
-            } else if (remoteStatus === 'rejected' || remoteStatus === 'failed' || remoteStatus === 'cancelled') {
-              transaction.status = 'failed';
-              transaction.sebpay_response = resJson;
-              await transaction.save();
-            }
+        const remoteCheck = await verifySebpayTransactionRemote(transaction, branding);
+        if (remoteCheck) {
+          if (remoteCheck.normalizedStatus === 'completed') {
+            transaction.status = 'completed';
+            transaction.sebpay_response = remoteCheck.resData;
+            await transaction.save();
+          } else if (remoteCheck.normalizedStatus === 'failed') {
+            transaction.status = 'failed';
+            transaction.sebpay_response = remoteCheck.resData;
+            await transaction.save();
           }
         }
       }

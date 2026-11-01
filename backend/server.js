@@ -85,7 +85,14 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 app.use(morgan('dev'));
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({
+  limit: '25mb',
+  verify: (req, _res, buf) => {
+    if (buf && buf.length) {
+      req.rawBody = buf;
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // S'assurer que MongoDB est connecté avant de traiter une requête API si la connexion initiale avait pris du retard

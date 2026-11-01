@@ -6,7 +6,9 @@ const { authenticateToken, requireRole } = require('../middleware/authMiddleware
 // Plans publics & Configuration passerelle (SEBPAY / iKeePay)
 router.get('/plans', subscriptionController.getActivePlans);
 router.get('/payment-config', subscriptionController.getPaymentGatewayConfig);
+router.get('/countries', subscriptionController.getSebpayCountries);
 router.get('/operators', subscriptionController.getSebpayOperators);
+router.get('/calculate-fee', subscriptionController.calculateSebpayFee);
 router.post('/public/pay', subscriptionController.initiatePublicMobilePayment);
 router.post('/public/confirm-ikeepay', subscriptionController.confirmIkeepayPayment);
 router.post('/public/start-trial', subscriptionController.startPublicTrial);
