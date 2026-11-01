@@ -1634,15 +1634,21 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
                     <label className="text-xs font-semibold block mb-1">{isEn ? 'Country' : 'Pays'}</label>
                     <select
                       value={payForm.country}
-                      onChange={(e) => setPayForm({ ...payForm, country: e.target.value })}
+                      onChange={(e) => {
+                        const nextCountry = e.target.value;
+                        const nextOp = nextCountry === 'CM' ? 'mtn' : payForm.operator;
+                        setPayForm({ ...payForm, country: nextCountry, operator: nextOp });
+                      }}
                       className="w-full border rounded-lg p-2.5 bg-background text-sm"
                     >
-                      <option value="BJ">Bénin (BJ)</option>
-                      <option value="CI">Côte d'Ivoire (CI)</option>
-                      <option value="TG">Togo (TG)</option>
-                      <option value="SN">Sénégal (SN)</option>
-                      <option value="CM">Cameroun (CM)</option>
-                      <option value="BF">Burkina Faso (BF)</option>
+                      <option value="BJ">Bénin (+229)</option>
+                      <option value="CM">Cameroun (+237)</option>
+                      <option value="CI">Côte d'Ivoire (+225)</option>
+                      <option value="TG">Togo (+228)</option>
+                      <option value="SN">Sénégal (+221)</option>
+                      <option value="BF">Burkina Faso (+226)</option>
+                      <option value="CG">Congo (+242)</option>
+                      <option value="GA">Gabon (+241)</option>
                     </select>
                   </div>
 
@@ -1653,11 +1659,12 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
                       onChange={(e) => setPayForm({ ...payForm, operator: e.target.value })}
                       className="w-full border rounded-lg p-2.5 bg-background text-sm"
                     >
-                      <option value="mtn">MTN Mobile Money</option>
+                      <option value="mtn">MTN Mobile Money (MoMo)</option>
                       <option value="moov">Moov Money</option>
                       <option value="orange">Orange Money</option>
                       <option value="wave">Wave</option>
                       <option value="celtiis">Celtiis</option>
+                      <option value="airtel">Airtel Money</option>
                     </select>
                   </div>
 
@@ -1665,7 +1672,7 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
                     <label className="text-xs font-semibold block mb-1">{isEn ? 'Phone Number' : 'Numéro de Téléphone'}</label>
                     <Input
                       required
-                      placeholder="Ex: 0197000000 ou 97000000"
+                      placeholder={payForm.country === 'CM' ? 'Ex: 680404921 ou 237680404921' : 'Ex: 0197000000 ou 97000000'}
                       value={payForm.phone}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -1676,11 +1683,13 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
 
                         const dialMap = [
                           { p: '229', c: 'BJ' },
+                          { p: '237', c: 'CM' },
                           { p: '225', c: 'CI' },
                           { p: '228', c: 'TG' },
                           { p: '221', c: 'SN' },
                           { p: '226', c: 'BF' },
-                          { p: '237', c: 'CM' },
+                          { p: '242', c: 'CG' },
+                          { p: '241', c: 'GA' },
                         ];
                         for (const item of dialMap) {
                           if (digits.startsWith(item.p) && digits.length >= item.p.length + 7) {
@@ -1689,7 +1698,9 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
                           }
                         }
 
-                        if (nextCountry === 'BJ') {
+                        if (nextCountry === 'CM') {
+                          nextOperator = 'mtn';
+                        } else if (nextCountry === 'BJ') {
                           let local = digits.startsWith('229') ? digits.slice(3) : digits;
                           if (local.startsWith('01') && local.length >= 4) local = local.slice(2);
                           const p2 = local.slice(0, 2);

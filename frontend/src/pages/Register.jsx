@@ -650,14 +650,20 @@ const Register = () => {
                         <select
                           className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
                           value={payForm.country}
-                          onChange={(e) => setPayForm({ ...payForm, country: e.target.value })}
+                          onChange={(e) => {
+                            const nextCountry = e.target.value;
+                            const nextOp = nextCountry === 'CM' ? 'mtn' : payForm.operator;
+                            setPayForm({ ...payForm, country: nextCountry, operator: nextOp });
+                          }}
                         >
                           <option value="BJ">🇧🇯 Bénin (+229)</option>
+                          <option value="CM">🇨🇲 Cameroun (+237)</option>
                           <option value="CI">🇨🇮 Côte d'Ivoire (+225)</option>
                           <option value="TG">🇹🇬 Togo (+228)</option>
                           <option value="SN">🇸🇳 Sénégal (+221)</option>
                           <option value="BF">🇧🇫 Burkina Faso (+226)</option>
-                          <option value="CM">🇨🇲 Cameroun (+237)</option>
+                          <option value="CG">🇨🇬 Congo (+242)</option>
+                          <option value="GA">🇬🇦 Gabon (+241)</option>
                           <option value="ML">🇲🇱 Mali (+223)</option>
                           <option value="NE">🇳🇪 Niger (+227)</option>
                         </select>
@@ -677,6 +683,7 @@ const Register = () => {
                           <option value="wave">Wave</option>
                           <option value="tmoney">T-Money / Yas (Togo)</option>
                           <option value="free">Free Money (Sénégal)</option>
+                          <option value="airtel">Airtel Money</option>
                         </select>
                       </div>
                     </div>
@@ -689,7 +696,7 @@ const Register = () => {
                         <Input
                           type="tel"
                           required
-                          placeholder="Ex: 0197000000 ou 97000000"
+                          placeholder={payForm.country === 'CM' ? 'Ex: 680404921 ou 237680404921' : 'Ex: 0197000000 ou 97000000'}
                           value={payForm.phone}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -700,11 +707,13 @@ const Register = () => {
 
                             const dialMap = [
                               { p: '229', c: 'BJ' },
+                              { p: '237', c: 'CM' },
                               { p: '225', c: 'CI' },
                               { p: '228', c: 'TG' },
                               { p: '221', c: 'SN' },
                               { p: '226', c: 'BF' },
-                              { p: '237', c: 'CM' },
+                              { p: '242', c: 'CG' },
+                              { p: '241', c: 'GA' },
                               { p: '223', c: 'ML' },
                               { p: '227', c: 'NE' },
                             ];
@@ -715,7 +724,9 @@ const Register = () => {
                               }
                             }
 
-                            if (nextCountry === 'BJ') {
+                            if (nextCountry === 'CM') {
+                              nextOperator = 'mtn';
+                            } else if (nextCountry === 'BJ') {
                               let local = digits.startsWith('229') ? digits.slice(3) : digits;
                               if (local.startsWith('01') && local.length >= 4) local = local.slice(2);
                               const p2 = local.slice(0, 2);
@@ -732,9 +743,9 @@ const Register = () => {
                           }}
                         />
                         <p className="text-[11px] text-muted-foreground mt-1">
-                          {isEn
-                            ? 'Operator is auto-detected. Format: 0197XXXXXX or 97XXXXXX.'
-                            : 'L’opérateur est détecté automatiquement (format 0197XXXXXX ou 97XXXXXX accepté).'}
+                          {payForm.country === 'CM'
+                            ? (isEn ? 'Cameroon (+237): MTN Mobile Money (e.g. 680404921 or 237680404921).' : 'Cameroun (+237) : MTN Mobile Money (ex: 680404921 ou 237680404921).')
+                            : (isEn ? 'Operator is auto-detected. Format: 0197XXXXXX or 97XXXXXX.' : 'L’opérateur est détecté automatiquement (format 0197XXXXXX ou 97XXXXXX accepté).')}
                         </p>
                       </div>
 

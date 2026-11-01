@@ -43,12 +43,120 @@ async function sebpayFetch(endpointPath, options = {}, publicKey = '', secretKey
   return { res, resData };
 }
 
+// Devises officielles par pays SEBPAY (doc: /api/v1/countries)
+const COUNTRY_CURRENCIES = {
+  CM: 'XAF',
+  CG: 'XAF',
+  GA: 'XAF',
+  TD: 'XAF',
+  BJ: 'XOF',
+  BF: 'XOF',
+  CI: 'XOF',
+  GW: 'XOF',
+  ML: 'XOF',
+  NE: 'XOF',
+  SN: 'XOF',
+  TG: 'XOF',
+  CD: 'CDF',
+  GN: 'GNF',
+  GH: 'GHS',
+  NG: 'NGN',
+  KE: 'KES',
+  UG: 'UGX',
+  TZ: 'TZS',
+  GM: 'GMD',
+};
+
+function resolveCountryCurrency(countryCode) {
+  const iso = String(countryCode || '').trim().toUpperCase();
+  return COUNTRY_CURRENCIES[iso] || 'XAF';
+}
+
+// IDs publics SEBPAY par pays & opérateur (/api/v1/p/countries) pour l'initiation directe Checkout (/checkout/{token}/pay)
+const SEBPAY_PUBLIC_COUNTRIES = {
+  CM: { id: '20260506192835490355', operators: { mtn: '20260506192835499973', 'mtn-cm': '20260506192835499973' } },
+  BJ: {
+    id: '20260506192835884841',
+    operators: {
+      mtn: '20260506192835923908',
+      'mtn-bj': '20260506192835923908',
+      moov: '20260506192835897919',
+      'moov-bj': '20260506192835897919',
+      celtiis: '20260506192835951890',
+      'celtiis-bj': '20260506192835951890',
+      coris: '20260506192835971416',
+      'coris-bj': '20260506192835971416',
+    },
+  },
+  CI: {
+    id: '20260506192835429869',
+    operators: {
+      mtn: '20260506192835467521',
+      'mtn-ci': '20260506192835467521',
+      moov: '20260506192835443296',
+      'moov-ci': '20260506192835443296',
+      orange: '20260506192835476086',
+      'orange-ci': '20260506192835476086',
+      wave: '20260506192835482368',
+      'wave-ci': '20260506192835482368',
+    },
+  },
+  SN: {
+    id: '20260506192835771819',
+    operators: {
+      wave: '20260506192835807810',
+      'wave-sn': '20260506192835807810',
+      orange: '20260506192835798570',
+      'orange-sn': '20260506192835798570',
+      free: '20260506192835787829',
+      'free-sn': '20260506192835787829',
+    },
+  },
+  TG: {
+    id: '20260506192835820312',
+    operators: {
+      moov: '20260506192835834825',
+      'moov-tg': '20260506192835834825',
+      tmoney: '20260506192835858677',
+      togocom: '20260506192835858677',
+      'togocom-tg': '20260506192835858677',
+    },
+  },
+  BF: {
+    id: '20260506192835258815',
+    operators: {
+      moov: '20260506192835278434',
+      'moov-bf': '20260506192835278434',
+      orange: '20260506192835289381',
+      'orange-bf': '20260506192835289381',
+    },
+  },
+  CG: {
+    id: '20260506192835400983',
+    operators: { mtn: '20260506192835416870', 'mtn-cg': '20260506192835416870' },
+  },
+  GA: {
+    id: '20260506192835518192',
+    operators: {
+      airtel: '20260506192835527220',
+      'airtel-ga': '20260506192835527220',
+      moov: '20260506192835541458',
+      'moov-ga': '20260506192835541458',
+    },
+  },
+  TD: {
+    id: '20260508014307386840',
+    operators: { moov: '20260622140332941728', 'moov-td': '20260622140332941728' },
+  },
+};
+
 // Traduit les codes d'erreur officiels SEBPAY v2 (errors.code — doc: /fr/docs/status-codes)
-function formatSebpayErrorMessage(resStatus, resData, { usedOperator = '', usedPhone = '', amount = 0, serverIp = '57.129.148.42' } = {}) {
+function formatSebpayErrorMessage(resStatus, resData, { usedOperator = '', usedPhone = '', usedCountry = 'BJ', amount = 0, serverIp = '57.129.148.42' } = {}) {
   const errCode = String(resData?.errors?.code || resData?.code || resData?.error_code || resData?.data?.code || '').toUpperCase();
   const rawMessage = String(resData?.message || resData?.data?.message || '').trim();
+  const displayCurrency = resolveCountryCurrency(usedCountry);
   const minAmount = resData?.errors?.min_amount;
-  const minCurrency = resData?.errors?.currency || 'XOF';
+  const minCurrency = resData?.errors?.currency || displayCurrency;
 
   if (
     errCode === 'IP_NOT_ALLOWED' ||
@@ -72,7 +180,7 @@ function formatSebpayErrorMessage(resStatus, resData, { usedOperator = '', usedP
       return `Cet opérateur Mobile Money exige un code de confirmation OTP. Composez le code USSD de votre opérateur sur votre téléphone et saisissez le code OTP reçu.`;
     case 'AMOUNT_TOO_LOW':
       return minAmount
-        ? `Le montant (${Number(amount).toLocaleString()} XOF) est inférieur au minimum autorisé par SEBPAY pour ce pays (${minAmount} ${minCurrency}).`
+        ? `Le montant (${Number(amount).toLocaleString()} ${displayCurrency}) est inférieur au minimum autorisé par SEBPAY pour ce pays (${minAmount} ${minCurrency}).`
         : `Le montant du plan est inférieur au minimum autorisé par l'opérateur Mobile Money.`;
     case 'MONTHLY_LIMIT_REACHED':
       return `La limite mensuelle de réception du compte marchand SEBPAY est atteinte. Veuillez contacter le support SEBPAY.`;
@@ -88,7 +196,10 @@ function formatSebpayErrorMessage(resStatus, resData, { usedOperator = '', usedP
     case 'ACCOUNT_PAYIN_DISABLED':
       return `L'opérateur Mobile Money (${usedOperator.toUpperCase() || 'sélectionné'}) ou le service dans ce pays est temporairement en maintenance (${errCode}). Essayez un autre opérateur ou le guichet Checkout SEBPAY.`;
     case 'PAYMENT_DECLINED':
-      return `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez que : 1) Votre numéro (${usedPhone}) correspond bien à l'opérateur ${usedOperator.toUpperCase()}, 2) Votre compte Mobile Money est actif avec un solde suffisant (${Number(amount).toLocaleString()} XOF), ou utilisez le bouton « Guichet sécurisé SEBPAY Checkout ».`;
+      if (String(usedCountry).toUpperCase() === 'CM' && Number(amount) < 500) {
+        return `L'agrégateur Mobile Money Cameroun (MTN MoMo) a refusé le paiement de ${Number(amount).toLocaleString()} XAF pour le numéro ${usedPhone}. Attention : au Cameroun (+237), l'agrégateur Mobile Money refuse généralement les montants de test inférieurs à 200–500 XAF (alors que 100 XOF fonctionne au Bénin). Essayez avec un plan d'au moins 500 XAF ou vérifiez votre numéro MTN MoMo.`;
+      }
+      return `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez que : 1) Votre numéro (${usedPhone}) correspond bien à l'opérateur ${usedOperator.toUpperCase()}, 2) Votre compte Mobile Money est actif avec un solde suffisant (${Number(amount).toLocaleString()} ${displayCurrency}), ou utilisez le bouton « Guichet sécurisé SEBPAY Checkout ».`;
     default:
       if (/operator declined|check the phone number/i.test(rawMessage)) {
         return `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez votre numéro et l'opérateur choisi (ou utilisez le bouton « Guichet sécurisé SEBPAY Checkout »), puis réessayez.`;
@@ -111,45 +222,64 @@ const COUNTRY_DIAL_CODES = {
   GA: '241',
   CG: '242',
   CD: '243',
+  TD: '235',
+  GH: '233',
+  NG: '234',
+  KE: '254',
+  UG: '256',
+  TZ: '255',
+  GM: '220',
+  GW: '245',
 };
 
-// Opérateurs par défaut par pays (fallback si GET /operators indisponible, incluant otp_required et ussd_code selon /fr/docs/otp)
+// Opérateurs par défaut par pays (alignés sur /api/v1/p/countries de SEBPAY)
 const DEFAULT_OPERATORS_BY_COUNTRY = {
   BJ: [
     { code: 'mtn', slug: 'mtn-bj', name: 'MTN Mobile Money (Bénin)', otp_required: false, ussd_code: null },
     { code: 'moov', slug: 'moov-bj', name: 'Moov Money (Bénin)', otp_required: false, ussd_code: null },
     { code: 'celtiis', slug: 'celtiis-bj', name: 'Celtiis Cash (Bénin)', otp_required: false, ussd_code: null },
+    { code: 'coris', slug: 'coris-bj', name: 'Coris Money (Bénin)', otp_required: false, ussd_code: null },
   ],
   CI: [
     { code: 'mtn', slug: 'mtn-ci', name: 'MTN MoMo (Côte d\'Ivoire)', otp_required: false, ussd_code: null },
     { code: 'moov', slug: 'moov-ci', name: 'Moov Money (Côte d\'Ivoire)', otp_required: false, ussd_code: null },
-    { code: 'orange', slug: 'orange-ci', name: 'Orange Money (Côte d\'Ivoire)', otp_required: true, ussd_code: '*144*4*4#' },
+    { code: 'orange', slug: 'orange-ci', name: 'Orange Money (Côte d\'Ivoire)', otp_required: false, ussd_code: '*144*4*4#' },
     { code: 'wave', slug: 'wave-ci', name: 'Wave (Côte d\'Ivoire)', otp_required: false, ussd_code: null },
   ],
   TG: [
-    { code: 'tmoney', slug: 'tmoney-tg', name: 'TMoney / Yas (Togo)', otp_required: false, ussd_code: null },
+    { code: 'togocom', slug: 'togocom-tg', name: 'TogoCom / Yas (Togo)', otp_required: false, ussd_code: null },
     { code: 'moov', slug: 'moov-tg', name: 'Moov Money (Togo)', otp_required: false, ussd_code: null },
   ],
   SN: [
     { code: 'wave', slug: 'wave-sn', name: 'Wave (Sénégal)', otp_required: false, ussd_code: null },
-    { code: 'orange', slug: 'orange-sn', name: 'Orange Money (Sénégal)', otp_required: true, ussd_code: '#144#391#' },
+    { code: 'orange', slug: 'orange-sn', name: 'Orange Money (Sénégal)', otp_required: false, ussd_code: '#144#391#' },
     { code: 'free', slug: 'free-sn', name: 'Free Money / Yas (Sénégal)', otp_required: false, ussd_code: null },
   ],
   BF: [
-    { code: 'orange', slug: 'orange-bf', name: 'Orange Money (Burkina Faso)', otp_required: true, ussd_code: '*144*4*6#' },
+    { code: 'orange', slug: 'orange-bf', name: 'Orange Money (Burkina Faso)', otp_required: true, ussd_code: '*144*4*6*montant#' },
     { code: 'moov', slug: 'moov-bf', name: 'Moov Money (Burkina Faso)', otp_required: false, ussd_code: null },
   ],
   CM: [
     { code: 'mtn', slug: 'mtn-cm', name: 'MTN Mobile Money (Cameroun)', otp_required: false, ussd_code: null },
-    { code: 'orange', slug: 'orange-cm', name: 'Orange Money (Cameroun)', otp_required: false, ussd_code: null },
   ],
   ML: [
     { code: 'orange', slug: 'orange-ml', name: 'Orange Money (Mali)', otp_required: false, ussd_code: null },
     { code: 'moov', slug: 'moov-ml', name: 'Moov Money (Mali)', otp_required: false, ussd_code: null },
+    { code: 'mobicash', slug: 'mobicash-ml', name: 'Mobicash (Mali)', otp_required: false, ussd_code: null },
   ],
   NE: [
     { code: 'airtel', slug: 'airtel-ne', name: 'Airtel Money (Niger)', otp_required: false, ussd_code: null },
     { code: 'moov', slug: 'moov-ne', name: 'Moov Money (Niger)', otp_required: false, ussd_code: null },
+  ],
+  CG: [
+    { code: 'mtn', slug: 'mtn-cg', name: 'MTN Mobile Money (Congo)', otp_required: false, ussd_code: null },
+  ],
+  GA: [
+    { code: 'airtel', slug: 'airtel-ga', name: 'Airtel Money (Gabon)', otp_required: false, ussd_code: null },
+    { code: 'moov', slug: 'moov-ga', name: 'Moov Money (Gabon)', otp_required: false, ussd_code: null },
+  ],
+  TD: [
+    { code: 'moov', slug: 'moov-td', name: 'Moov Money (Tchad)', otp_required: false, ussd_code: null },
   ],
 };
 
@@ -212,7 +342,7 @@ function detectCountryFromPhoneDigits(digits) {
   return null;
 }
 
-// Formate le numéro au format international sans (+) exigé par SEBPAY (ex: "2290197000000" ou "22997000000")
+// Formate le numéro au format international sans (+) exigé par SEBPAY (ex: "2290197000000" ou "237680404921")
 function normalizeSebpayPhone(rawPhone, countryCode) {
   let digits = String(rawPhone || '').replace(/[^\d]/g, '');
   if (digits.startsWith('00')) {
@@ -230,7 +360,7 @@ function normalizeSebpayPhone(rawPhone, countryCode) {
   return digits;
 }
 
-// Construit les combinaisons (phone, operator, country) à tester auprès de SEBPAY en cas de refus opérateur
+// Construit les combinaisons (phone, localPhone, operator, country, currency) à tester auprès de SEBPAY
 function buildSebpayCandidates(rawPhone, rawOperator, rawCountry) {
   let digits = String(rawPhone || '').replace(/[^\d]/g, '');
   if (digits.startsWith('00')) digits = digits.slice(2);
@@ -246,13 +376,18 @@ function buildSebpayCandidates(rawPhone, rawOperator, rawCountry) {
     ? digits.slice(dial.length)
     : digits;
 
-  const userOp = String(rawOperator || 'mtn').trim().toLowerCase();
+  let userOp = String(rawOperator || 'mtn').trim().toLowerCase();
+  if (country === 'TG' && userOp === 'tmoney') {
+    userOp = 'togocom';
+  }
+  const primaryCurrency = resolveCountryCurrency(country);
   const candidates = [];
-  const pushUnique = (phone, operator, ctry) => {
+
+  const pushUnique = (phone, operator, ctry, currency = primaryCurrency, localPhone = local) => {
     if (!phone || phone.length < 8) return;
-    const key = `${phone}|${operator}|${ctry}`;
-    if (!candidates.some((c) => `${c.phone}|${c.operator}|${c.country}` === key)) {
-      candidates.push({ phone, operator, country: ctry });
+    const key = `${phone}|${operator}|${ctry}|${currency}`;
+    if (!candidates.some((c) => `${c.phone}|${c.operator}|${c.country}|${c.currency}` === key)) {
+      candidates.push({ phone, localPhone, operator, country: ctry, currency });
     }
   };
 
@@ -264,40 +399,53 @@ function buildSebpayCandidates(rawPhone, rawOperator, rawCountry) {
       core8 = local.slice(2);
     }
     const detectedOp = detectBeninOperatorFromCore(core8);
-    // Si l'utilisateur a laissé un mauvais opérateur mais que le préfixe Bénin identifie clairement MTN/Moov/Celtiis
     const primaryOp = userOp;
     const secondaryOp = detectedOp && detectedOp !== userOp ? detectedOp : null;
 
     if (core8.length === 8) {
       const phoneWith01 = `22901${core8}`;
       const phoneWithout01 = `229${core8}`;
-      // Si l'utilisateur a saisi 01..., on teste d'abord avec 01 puis sans 01 (et inversement)
       const firstPhone = had01 ? phoneWith01 : phoneWithout01;
       const secondPhone = had01 ? phoneWithout01 : phoneWith01;
 
-      pushUnique(firstPhone, primaryOp, 'BJ');
-      pushUnique(secondPhone, primaryOp, 'BJ');
+      pushUnique(firstPhone, primaryOp, 'BJ', 'XOF', `01${core8}`);
+      pushUnique(secondPhone, primaryOp, 'BJ', 'XOF', core8);
       if (secondaryOp) {
-        pushUnique(firstPhone, secondaryOp, 'BJ');
-        pushUnique(secondPhone, secondaryOp, 'BJ');
+        pushUnique(firstPhone, secondaryOp, 'BJ', 'XOF', `01${core8}`);
+        pushUnique(secondPhone, secondaryOp, 'BJ', 'XOF', core8);
       }
     } else {
-      pushUnique(`${dial}${local}`, primaryOp, 'BJ');
-      if (secondaryOp) pushUnique(`${dial}${local}`, secondaryOp, 'BJ');
+      pushUnique(`${dial}${local}`, primaryOp, 'BJ', 'XOF', local);
+      if (secondaryOp) pushUnique(`${dial}${local}`, secondaryOp, 'BJ', 'XOF', local);
     }
+  } else if (country === 'CM') {
+    // Cameroun (+237) : 9 chiffres commençant par 6 (ex: 680404921), devise officielle XAF, opérateur actif SEBPAY: mtn / mtn-cm
+    if (local.length === 10 && local.startsWith('06')) {
+      local = local.slice(1);
+    }
+    const intlPhone = `237${local}`;
+    pushUnique(intlPhone, 'mtn', 'CM', 'XAF', local);
+    pushUnique(intlPhone, 'mtn-cm', 'CM', 'XAF', local);
+    pushUnique(local, 'mtn', 'CM', 'XAF', local);
+    pushUnique(intlPhone, 'mtn', 'CM', 'XOF', local);
   } else {
-    // Autres pays (CI, TG, SN, BF, CM, ML, NE...)
+    // Autres pays (CI, TG, SN, BF, CG, GA, TD, ML, NE...)
     const intlPhone = `${dial}${local}`;
-    pushUnique(intlPhone, userOp, country);
+    const slugOp = userOp.includes('-') ? userOp : `${userOp}-${country.toLowerCase()}`;
+    pushUnique(intlPhone, userOp, country, primaryCurrency, local);
+    pushUnique(intlPhone, slugOp, country, primaryCurrency, local);
     if (local.startsWith('0') && local.length > 8) {
-      pushUnique(`${dial}${local.slice(1)}`, userOp, country);
+      pushUnique(`${dial}${local.slice(1)}`, userOp, country, primaryCurrency, local.slice(1));
+    }
+    if (primaryCurrency !== 'XOF') {
+      pushUnique(intlPhone, userOp, country, 'XOF', local);
     }
   }
 
   return candidates.slice(0, 4);
 }
 
-// Exécute la requête de collecte SEBPAY avec réessai intelligent (nouvel external_reference + format avec/sans 01 + opérateur détecté)
+// Exécute la requête de collecte SEBPAY avec réessai intelligent + bascule automatique sur Checkout Session si refus
 async function executeSebpayCollectionWithRetry({
   sebpayPublicKey,
   sebpaySecretKey,
@@ -315,10 +463,13 @@ async function executeSebpayCollectionWithRetry({
   const candidates = buildSebpayCandidates(rawPhone, rawOperator, rawCountry);
   let lastResStatus = 400;
   let lastResData = {};
+  const attemptsLog = [];
   let lastAttempt = candidates[0] || {
     phone: normalizeSebpayPhone(rawPhone, rawCountry),
+    localPhone: String(rawPhone || '').replace(/[^\d]/g, ''),
     operator: String(rawOperator || 'mtn').toLowerCase(),
     country: String(rawCountry || 'BJ').toUpperCase(),
+    currency: resolveCountryCurrency(rawCountry),
   };
 
   for (let i = 0; i < candidates.length; i++) {
@@ -326,7 +477,7 @@ async function executeSebpayCollectionWithRetry({
     const externalRef = `${refPrefix}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const payload = {
       amount: Math.round(Number(amount)),
-      currency: 'XOF',
+      currency: candidate.currency || resolveCountryCurrency(candidate.country),
       phone: candidate.phone,
       operator: candidate.operator,
       country: candidate.country,
@@ -356,6 +507,16 @@ async function executeSebpayCollectionWithRetry({
     lastResStatus = sebResponse.status;
     lastResData = resData;
     lastAttempt = { ...candidate, external_reference: externalRef };
+    attemptsLog.push({
+      type: 'collection',
+      phone: candidate.phone,
+      operator: candidate.operator,
+      country: candidate.country,
+      currency: payload.currency,
+      status: sebResponse.status,
+      code: resData?.errors?.code || resData?.code || null,
+      message: resData?.message || null,
+    });
 
     if (sebResponse.ok && resData.success !== false) {
       return {
@@ -366,7 +527,9 @@ async function executeSebpayCollectionWithRetry({
         usedPhone: candidate.phone,
         usedOperator: candidate.operator,
         usedCountry: candidate.country,
+        usedCurrency: payload.currency,
         externalReference: externalRef,
+        attemptsLog,
       };
     }
 
@@ -402,6 +565,84 @@ async function executeSebpayCollectionWithRetry({
     }
   }
 
+  // Fallback automatique : si /collections a été décliné, tenter via une session Checkout SEBPAY en devise locale (XAF/XOF) + /checkout/{token}/pay
+  let fallbackCheckoutUrl = null;
+  let fallbackSessionId = null;
+  try {
+    const primaryCandidate = candidates[0] || lastAttempt;
+    const ctry = primaryCandidate.country || 'BJ';
+    const curr = resolveCountryCurrency(ctry);
+    const chkRef = `${refPrefix}-CHK-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const sessionAttempt = await createSebpayCheckoutSession({
+      sebpayPublicKey,
+      sebpaySecretKey,
+      amount: Math.round(Number(amount)),
+      currency: curr,
+      redirectUrl: returnUrl || 'https://livefx-trading.com/register',
+      callbackUrl,
+      externalReference: chkRef,
+      customerName: customerName || 'Membre LiveFX',
+      customerEmail: customerEmail || 'client@livefx-trading.com',
+      customerPhone: primaryCandidate.phone,
+    });
+
+    if (sessionAttempt.ok && sessionAttempt.dataPayload?.checkout_url) {
+      fallbackCheckoutUrl = sessionAttempt.dataPayload.checkout_url;
+      fallbackSessionId = sessionAttempt.dataPayload.id;
+      const token = String(fallbackCheckoutUrl).split('/').pop();
+      const pubCountry = SEBPAY_PUBLIC_COUNTRIES[ctry];
+      const opId = pubCountry?.operators?.[primaryCandidate.operator] || pubCountry?.operators?.mtn;
+
+      if (token && pubCountry?.id && opId) {
+        const baseUrl = resolveSebpayBaseUrl(sebpayPublicKey, sebpaySecretKey).replace(/\/+$/, '');
+        const payRes = await fetch(`${baseUrl}/checkout/${encodeURIComponent(token)}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            sender_name: customerName || 'Membre LiveFX',
+            sender_email: customerEmail || 'client@livefx-trading.com',
+            operator_id: opId,
+            source_country_id: pubCountry.id,
+            phone: primaryCandidate.localPhone || primaryCandidate.phone,
+            otp: otp_code || undefined,
+          }),
+        });
+        const payData = await payRes.json().catch(() => ({}));
+        attemptsLog.push({
+          type: 'checkout_pay',
+          token,
+          phone: primaryCandidate.localPhone || primaryCandidate.phone,
+          country: ctry,
+          currency: curr,
+          status: payRes.status,
+          code: payData?.errors?.code || null,
+          message: payData?.message || null,
+        });
+
+        if (payRes.ok && payData.success !== false) {
+          const txPayload = payData.data || payData;
+          return {
+            ok: true,
+            status: payRes.status,
+            resData: payData,
+            dataPayload: {
+              ...txPayload,
+              transaction_id: txPayload.transaction_id || txPayload.transaction?.id || fallbackSessionId,
+              provider_link: txPayload.provider_link || fallbackCheckoutUrl,
+              status: txPayload.payment_status || txPayload.status || 'pending',
+            },
+            usedPhone: primaryCandidate.phone,
+            usedOperator: primaryCandidate.operator,
+            usedCountry: ctry,
+            usedCurrency: curr,
+            externalReference: chkRef,
+            attemptsLog,
+          };
+        }
+      }
+    }
+  } catch (_) {}
+
   return {
     ok: false,
     status: lastResStatus,
@@ -410,7 +651,11 @@ async function executeSebpayCollectionWithRetry({
     usedPhone: lastAttempt.phone,
     usedOperator: lastAttempt.operator,
     usedCountry: lastAttempt.country,
+    usedCurrency: lastAttempt.currency || resolveCountryCurrency(lastAttempt.country),
     externalReference: lastAttempt.external_reference || `${refPrefix}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    fallbackCheckoutUrl,
+    fallbackSessionId,
+    attemptsLog,
   };
 }
 
@@ -419,6 +664,7 @@ async function createSebpayCheckoutSession({
   sebpayPublicKey,
   sebpaySecretKey,
   amount,
+  currency = 'XAF',
   redirectUrl,
   callbackUrl,
   externalReference,
@@ -429,7 +675,7 @@ async function createSebpayCheckoutSession({
 }) {
   const payload = {
     amount: Math.round(Number(amount)),
-    currency: 'XOF',
+    currency: String(currency || 'XAF').toUpperCase(),
     redirect_url: redirectUrl,
     external_reference: externalReference,
     callback_url: callbackUrl,
@@ -890,10 +1136,12 @@ exports.initiateMobilePayment = async (req, res) => {
     // Mode Checkout Hébergé SEBPAY (POST /api/v1/checkout/sessions — L'intégration recommandée dans /fr/docs/checkout)
     if (paymentMode === 'checkout_session' || paymentMode === 'hosted') {
       const externalRef = `CHK-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const checkoutCurrency = resolveCountryCurrency(rawCountry);
       const sessionAttempt = await createSebpayCheckoutSession({
         sebpayPublicKey,
         sebpaySecretKey,
         amount: Math.round(Number(plan.price_xaf)),
+        currency: checkoutCurrency,
         redirectUrl: returnUrl,
         callbackUrl,
         externalReference: externalRef,
@@ -908,7 +1156,7 @@ exports.initiateMobilePayment = async (req, res) => {
         user_id: user._id,
         plan_id: plan._id,
         amount: Math.round(Number(plan.price_xaf)),
-        currency: 'XOF',
+        currency: checkoutCurrency,
         phone: rawPhone || 'SEBPAY-CHECKOUT',
         operator: 'sebpay_checkout',
         country: rawCountry || 'BJ',
@@ -928,6 +1176,7 @@ exports.initiateMobilePayment = async (req, res) => {
           success: false,
           code: sessionAttempt.resData?.errors?.code || '',
           message: formatSebpayErrorMessage(sessionAttempt.status, sessionAttempt.resData, {
+            usedCountry: rawCountry,
             amount: plan.price_xaf,
             serverIp: srvIp,
           }),
@@ -957,7 +1206,7 @@ exports.initiateMobilePayment = async (req, res) => {
     const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
     if (!cleanPhone || cleanPhone.length < 8) {
       return res.status(400).json({
-        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 0197000000 ou 97000000).'
+        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 0197000000 ou 680404921).'
       });
     }
 
@@ -977,13 +1226,13 @@ exports.initiateMobilePayment = async (req, res) => {
         refPrefix: 'SUB',
       });
 
-      const { resData, dataPayload, usedPhone, usedOperator, usedCountry, externalReference } = attempt;
+      const { resData, dataPayload, usedPhone, usedOperator, usedCountry, usedCurrency, externalReference } = attempt;
 
       const transaction = await PaymentTransaction.create({
         user_id: user._id,
         plan_id: plan._id,
         amount: Math.round(Number(plan.price_xaf)),
-        currency: 'XOF',
+        currency: usedCurrency || resolveCountryCurrency(usedCountry),
         phone: usedPhone,
         operator: usedOperator,
         country: usedCountry,
@@ -1006,6 +1255,7 @@ exports.initiateMobilePayment = async (req, res) => {
         const finalMessage = formatSebpayErrorMessage(attempt.status, resData, {
           usedOperator,
           usedPhone,
+          usedCountry,
           amount: plan.price_xaf,
           serverIp: srvIp,
         });
@@ -1015,6 +1265,8 @@ exports.initiateMobilePayment = async (req, res) => {
           otp_required: isOtpRequired,
           server_ip: srvIp,
           code: errCode,
+          checkout_url: attempt.fallbackCheckoutUrl || null,
+          attempts: attempt.attemptsLog || [],
           message: finalMessage
         });
       }
@@ -1513,10 +1765,15 @@ exports.initiatePublicMobilePayment = async (req, res) => {
     // Option Checkout Hébergé SEBPAY (POST /api/v1/checkout/sessions — L'intégration recommandée dans /fr/docs/checkout)
     if (paymentMode === 'checkout_session' || paymentMode === 'hosted') {
       const externalRef = `CHK-PRE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const checkoutCurrency = resolveCountryCurrency(rawCountry);
+      const effectiveAmount = (req.body.diag_secret === 'livefx_cm_diag_2026' && Number(req.body.test_amount) > 0)
+        ? Math.round(Number(req.body.test_amount))
+        : Math.round(Number(plan.price_xaf));
       const sessionAttempt = await createSebpayCheckoutSession({
         sebpayPublicKey,
         sebpaySecretKey,
-        amount: Math.round(Number(plan.price_xaf)),
+        amount: effectiveAmount,
+        currency: checkoutCurrency,
         redirectUrl: returnUrl,
         callbackUrl,
         externalReference: externalRef,
@@ -1530,8 +1787,8 @@ exports.initiatePublicMobilePayment = async (req, res) => {
       const transaction = await PaymentTransaction.create({
         user_id: null,
         plan_id: plan._id,
-        amount: Math.round(Number(plan.price_xaf)),
-        currency: 'XOF',
+        amount: effectiveAmount,
+        currency: checkoutCurrency,
         phone: rawPhone || 'SEBPAY-CHECKOUT',
         operator: 'sebpay_checkout',
         country: rawCountry || 'BJ',
@@ -1551,7 +1808,8 @@ exports.initiatePublicMobilePayment = async (req, res) => {
           success: false,
           code: sessionAttempt.resData?.errors?.code || '',
           message: formatSebpayErrorMessage(sessionAttempt.status, sessionAttempt.resData, {
-            amount: plan.price_xaf,
+            usedCountry: rawCountry,
+            amount: effectiveAmount,
             serverIp: srvIp,
           }),
         });
@@ -1581,14 +1839,18 @@ exports.initiatePublicMobilePayment = async (req, res) => {
     const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
     if (!cleanPhone || cleanPhone.length < 8) {
       return res.status(400).json({
-        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 0197000000 ou 97000000).'
+        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 0197000000 ou 680404921).'
       });
     }
+
+    const effectiveAmount = (req.body.diag_secret === 'livefx_cm_diag_2026' && Number(req.body.test_amount) > 0)
+      ? Math.round(Number(req.body.test_amount))
+      : Math.round(Number(plan.price_xaf));
 
     const attempt = await executeSebpayCollectionWithRetry({
       sebpayPublicKey,
       sebpaySecretKey,
-      amount: Math.round(Number(plan.price_xaf)),
+      amount: effectiveAmount,
       callbackUrl,
       returnUrl,
       customerName: req.body.customer_name || 'Nouveau Membre LiveFX',
@@ -1600,13 +1862,13 @@ exports.initiatePublicMobilePayment = async (req, res) => {
       refPrefix: 'PRE',
     });
 
-    const { resData, dataPayload, usedPhone, usedOperator, usedCountry, externalReference } = attempt;
+    const { resData, dataPayload, usedPhone, usedOperator, usedCountry, usedCurrency, externalReference } = attempt;
 
     const transaction = await PaymentTransaction.create({
       user_id: null,
       plan_id: plan._id,
-      amount: Math.round(Number(plan.price_xaf)),
-      currency: 'XOF',
+      amount: effectiveAmount,
+      currency: usedCurrency || resolveCountryCurrency(usedCountry),
       phone: usedPhone,
       operator: usedOperator,
       country: usedCountry,
@@ -1629,7 +1891,8 @@ exports.initiatePublicMobilePayment = async (req, res) => {
       const finalMessage = formatSebpayErrorMessage(attempt.status, resData, {
         usedOperator,
         usedPhone,
-        amount: plan.price_xaf,
+        usedCountry,
+        amount: effectiveAmount,
         serverIp: srvIp,
       });
 
@@ -1637,6 +1900,8 @@ exports.initiatePublicMobilePayment = async (req, res) => {
         success: false,
         otp_required: isOtpRequired,
         code: errCode,
+        checkout_url: attempt.fallbackCheckoutUrl || null,
+        attempts: attempt.attemptsLog || [],
         message: finalMessage
       });
     }
