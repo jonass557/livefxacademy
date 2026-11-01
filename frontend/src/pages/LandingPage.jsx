@@ -277,15 +277,17 @@ const LandingPage = () => {
               </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
+            <div className={`grid gap-6 md:grid-cols-2 ${plans.length >= 4 ? 'lg:grid-cols-4 max-w-6xl' : 'lg:grid-cols-3 max-w-5xl'} mx-auto`}>
               {plans.map((p) => {
                 const feats = Array.isArray(p.features) ? p.features : [];
+                const d = Number(p.duration_days) || 30;
+                const periodBadge = p.period_label || (d === 30 ? 'Monthly' : d === 90 ? '3 Month' : d === 180 ? '6 Month' : d === 365 ? '01 Year' : `${d} ${language === 'fr' ? 'Jours' : 'Days'}`);
                 return (
                   <Card key={p.id || p._id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/60 transition-all shadow-md hover:shadow-xl bg-card">
                     <div className="p-6 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/15 text-primary">
-                          {p.duration_days} {language === 'fr' ? 'Jours' : 'Days'}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase tracking-wider bg-primary/15 text-primary">
+                          {periodBadge} ({p.duration_days} {language === 'fr' ? 'Jours' : 'Days'})
                         </span>
                         {p.trial_days > 0 && (
                           <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">

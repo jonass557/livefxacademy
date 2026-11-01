@@ -450,11 +450,13 @@ const Register = () => {
 
           <CardContent className="space-y-6">
             {/* Sélection des cartes de plans */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className={`grid gap-4 sm:grid-cols-2 ${plans.length >= 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
               {plans.map((p) => {
                 const pid = p.id || p._id;
                 const isSelected = selectedPlan && String(selectedPlan.id || selectedPlan._id) === String(pid);
                 const feats = Array.isArray(p.features) ? p.features : [];
+                const d = Number(p.duration_days) || 30;
+                const periodBadge = p.period_label || (d === 30 ? 'Monthly' : d === 90 ? '3 Month' : d === 180 ? '6 Month' : d === 365 ? '01 Year' : `${d} ${isEn ? 'Days' : 'Jours'}`);
                 return (
                   <div
                     key={pid}
@@ -471,9 +473,9 @@ const Register = () => {
                     }`}
                   >
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary/15 text-primary">
-                          {p.duration_days} {isEn ? 'Days' : 'Jours'}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-primary/15 text-primary">
+                          {periodBadge} ({p.duration_days}j)
                         </span>
                         {p.trial_days > 0 && (
                           <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
@@ -627,10 +629,53 @@ const Register = () => {
                         <Input
                           type="tel"
                           required
-                          placeholder="Ex: 0197000000 ou 22997000000"
+                          placeholder="Ex: 0197000000 ou 97000000"
                           value={payForm.phone}
-                          onChange={(e) => setPayForm({ ...payForm, phone: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            let digits = val.replace(/\D/g, '');
+                            if (digits.startsWith('00')) digits = digits.slice(2);
+                            let nextCountry = payForm.country;
+                            let nextOperator = payForm.operator;
+
+                            const dialMap = [
+                              { p: '229', c: 'BJ' },
+                              { p: '225', c: 'CI' },
+                              { p: '228', c: 'TG' },
+                              { p: '221', c: 'SN' },
+                              { p: '226', c: 'BF' },
+                              { p: '237', c: 'CM' },
+                              { p: '223', c: 'ML' },
+                              { p: '227', c: 'NE' },
+                            ];
+                            for (const item of dialMap) {
+                              if (digits.startsWith(item.p) && digits.length >= item.p.length + 7) {
+                                nextCountry = item.c;
+                                break;
+                              }
+                            }
+
+                            if (nextCountry === 'BJ') {
+                              let local = digits.startsWith('229') ? digits.slice(3) : digits;
+                              if (local.startsWith('01') && local.length >= 4) local = local.slice(2);
+                              const p2 = local.slice(0, 2);
+                              if (['97', '96', '91', '90', '67', '66', '62', '61', '57', '56', '54', '53', '52', '51'].includes(p2)) {
+                                nextOperator = 'mtn';
+                              } else if (['99', '98', '95', '94', '68', '65', '64', '63', '60', '58', '55'].includes(p2)) {
+                                nextOperator = 'moov';
+                              } else if (['40', '41', '42', '43', '44', '45'].includes(p2)) {
+                                nextOperator = 'celtiis';
+                              }
+                            }
+
+                            setPayForm({ ...payForm, phone: val, country: nextCountry, operator: nextOperator });
+                          }}
                         />
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          {isEn
+                            ? 'Operator is auto-detected. Format: 0197XXXXXX or 97XXXXXX.'
+                            : 'L’opérateur est détecté automatiquement (format 0197XXXXXX ou 97XXXXXX accepté).'}
+                        </p>
                       </div>
 
                       <div>

@@ -1495,15 +1495,17 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
             </p>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className={`grid gap-6 md:grid-cols-2 ${plans.length >= 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
             {plans.map((p) => {
               const features = Array.isArray(p.features) ? p.features : [];
+              const d = Number(p.duration_days) || 30;
+              const periodBadge = p.period_label || (d === 30 ? 'Monthly' : d === 90 ? '3 Month' : d === 180 ? '6 Month' : d === 365 ? '01 Year' : `${d} ${isEn ? 'Days' : 'Jours'}`);
               return (
                 <Card key={p.id || p._id} className="relative overflow-hidden flex flex-col justify-between border-2 hover:border-primary/50 transition-all shadow-sm hover:shadow-md">
                   <CardHeader>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider">
-                        {p.duration_days} {isEn ? 'Days' : 'Jours'}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-primary/10 text-primary uppercase tracking-wider">
+                        {periodBadge} ({p.duration_days} {isEn ? 'Days' : 'Jours'})
                       </span>
                       {p.trial_days > 0 && (
                         <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
@@ -1663,9 +1665,45 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
                     <label className="text-xs font-semibold block mb-1">{isEn ? 'Phone Number' : 'Numéro de Téléphone'}</label>
                     <Input
                       required
-                      placeholder="Ex: 97000000"
+                      placeholder="Ex: 0197000000 ou 97000000"
                       value={payForm.phone}
-                      onChange={(e) => setPayForm({ ...payForm, phone: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        let digits = val.replace(/\D/g, '');
+                        if (digits.startsWith('00')) digits = digits.slice(2);
+                        let nextCountry = payForm.country;
+                        let nextOperator = payForm.operator;
+
+                        const dialMap = [
+                          { p: '229', c: 'BJ' },
+                          { p: '225', c: 'CI' },
+                          { p: '228', c: 'TG' },
+                          { p: '221', c: 'SN' },
+                          { p: '226', c: 'BF' },
+                          { p: '237', c: 'CM' },
+                        ];
+                        for (const item of dialMap) {
+                          if (digits.startsWith(item.p) && digits.length >= item.p.length + 7) {
+                            nextCountry = item.c;
+                            break;
+                          }
+                        }
+
+                        if (nextCountry === 'BJ') {
+                          let local = digits.startsWith('229') ? digits.slice(3) : digits;
+                          if (local.startsWith('01') && local.length >= 4) local = local.slice(2);
+                          const p2 = local.slice(0, 2);
+                          if (['97', '96', '91', '90', '67', '66', '62', '61', '57', '56', '54', '53', '52', '51'].includes(p2)) {
+                            nextOperator = 'mtn';
+                          } else if (['99', '98', '95', '94', '68', '65', '64', '63', '60', '58', '55'].includes(p2)) {
+                            nextOperator = 'moov';
+                          } else if (['40', '41', '42', '43', '44', '45'].includes(p2)) {
+                            nextOperator = 'celtiis';
+                          }
+                        }
+
+                        setPayForm({ ...payForm, phone: val, country: nextCountry, operator: nextOperator });
+                      }}
                     />
                   </div>
 

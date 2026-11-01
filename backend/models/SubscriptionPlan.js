@@ -19,6 +19,11 @@ const subscriptionPlanSchema = new mongoose.Schema({
     type: Number,
     default: 30 // Mensuel par défaut
   },
+  billing_period: {
+    type: String,
+    enum: ['monthly', '3_months', '6_months', '1_year', 'custom'],
+    default: 'monthly'
+  },
   features: [{
     type: String
   }],

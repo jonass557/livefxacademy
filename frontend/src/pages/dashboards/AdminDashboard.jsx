@@ -4968,15 +4968,44 @@ const AdminDashboard = () => {
   // Section: Plans & Souscriptions (Admin)
   const renderAdminSubscriptions = () => {
     const safePlans = Array.isArray(adminPlans) ? adminPlans : [];
+
+    const STANDARD_PLAN_PRESETS = [
+      { key: 'monthly', label: 'Monthly', subtitle: '1 Mois (30 jours)', duration_days: 30, defaultDesc: 'Accès complet à la plateforme pendant 1 mois (Monthly)' },
+      { key: '3_months', label: '3 Month', subtitle: '3 Mois (90 jours)', duration_days: 90, defaultDesc: 'Accès complet à la plateforme pendant 3 mois (3 Month)' },
+      { key: '6_months', label: '6 Month', subtitle: '6 Mois (180 jours)', duration_days: 180, defaultDesc: 'Accès complet à la plateforme pendant 6 mois (6 Month)' },
+      { key: '1_year', label: '01 Year', subtitle: '1 An (365 jours)', duration_days: 365, defaultDesc: 'Accès complet à la plateforme pendant 1 an (01 Year)' },
+    ];
+
+    const getPeriodBadgeLabel = (days) => {
+      const d = Number(days) || 30;
+      if (d === 30 || d === 31) return 'Monthly (30 jours)';
+      if (d >= 88 && d <= 93) return '3 Month (90 jours)';
+      if (d >= 178 && d <= 186) return '6 Month (180 jours)';
+      if (d >= 360 && d <= 366) return '01 Year (365 jours)';
+      return `${d} jours`;
+    };
+
+    const handleTogglePlanActive = async (plan) => {
+      try {
+        await api.put(`/subscriptions/admin/plans/${plan.id || plan._id}`, {
+          is_active: !plan.is_active,
+        });
+        toast.success(!plan.is_active ? 'Plan activé' : 'Plan désactivé');
+        fetchAdminPlans();
+      } catch (err) {
+        toast.error('Erreur lors du changement de statut du plan');
+      }
+    };
+
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold flex items-center gap-2">
-              <CreditCard className="h-6 w-6 text-primary" /> Plans de Souscription Mensuels
+              <CreditCard className="h-6 w-6 text-primary" /> Gestion des Forfaits & Souscriptions (Monthly, 3 Month, 6 Month, 01 Year)
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Créez et configurez les offres de souscription ou offrez 1 mois gratuit à un utilisateur.
+              Ajoutez, modifiez, activez ou supprimez vos forfaits de souscription (Monthly, 3 Month, 6 Month, 01 Year) ou offrez un accès gratuit.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -4991,18 +5020,135 @@ const AdminDashboard = () => {
             <Button
               onClick={() => {
                 setEditingPlan(null);
-                setPlanForm({ name: '', description: '', price_xaf: '', duration_days: 30, features: '', is_active: true });
+                setPlanForm({ name: 'Monthly', description: 'Accès complet à la plateforme pendant 1 mois', price_xaf: '', duration_days: 30, trial_days: 0, features: '', is_active: true });
                 setShowPlanModal(true);
               }}
               className="gap-2"
             >
-              + Nouveau Plan
+              <Plus className="h-4 w-4" /> Ajouter un Plan
             </Button>
             <Button variant="outline" size="sm" onClick={fetchAdminPlans} disabled={loadingAdminPlans}>
               <RefreshCw className={`h-4 w-4 ${loadingAdminPlans ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
+
+        {/* Configuration rapide des 4 forfaits officiels : Monthly, 3 Month, 6 Month, 01 Year */}
+        <Card className="border-2 border-primary/30 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" /> Configuration rapide des 4 Forfaits (Monthly • 3 Month • 6 Month • 01 Year)
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Cliquez sur un forfait ci-dessous pour le créer, modifier son tarif en XAF, ou le supprimer.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {STANDARD_PLAN_PRESETS.map((preset) => {
+                const matchedPlan = safePlans.find((p) => {
+                  const d = Number(p.duration_days);
+                  const n = String(p.name || '').toLowerCase();
+                  if (preset.key === 'monthly') return d === 30 || n === 'monthly' || n === 'monthely';
+                  if (preset.key === '3_months') return d === 90 || n.includes('3 month') || n.includes('3 mois');
+                  if (preset.key === '6_months') return d === 180 || n.includes('6 month') || n.includes('6 mois');
+                  if (preset.key === '1_year') return d === 365 || n.includes('year') || n.includes('1 an');
+                  return false;
+                });
+
+                return (
+                  <div
+                    key={preset.key}
+                    className={`rounded-2xl border-2 p-4 flex flex-col justify-between gap-3 transition-all ${
+                      matchedPlan
+                        ? 'border-emerald-500/40 bg-emerald-500/5'
+                        : 'border-dashed border-border bg-muted/20'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-primary/15 text-primary">
+                          {preset.label}
+                        </span>
+                        {matchedPlan ? (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${matchedPlan.is_active ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                            {matchedPlan.is_active ? '● Actif' : 'Inactif'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground font-medium">Non configuré</span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-sm">{matchedPlan ? matchedPlan.name : preset.label}</h4>
+                      <p className="text-xs text-muted-foreground">{preset.subtitle}</p>
+                      {matchedPlan && (
+                        <p className="text-lg font-extrabold text-foreground pt-1">
+                          {Number(matchedPlan.price_xaf).toLocaleString()} <span className="text-xs font-semibold text-muted-foreground">XAF</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {matchedPlan ? (
+                      <div className="flex flex-wrap gap-1.5 pt-2 border-t">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 h-8 text-xs gap-1"
+                          onClick={() => {
+                            setEditingPlan(matchedPlan);
+                            setPlanForm({
+                              name: matchedPlan.name,
+                              description: matchedPlan.description || '',
+                              price_xaf: matchedPlan.price_xaf,
+                              duration_days: matchedPlan.duration_days,
+                              trial_days: matchedPlan.trial_days || 0,
+                              features: Array.isArray(matchedPlan.features) ? matchedPlan.features.join('\n') : '',
+                              is_active: matchedPlan.is_active
+                            });
+                            setShowPlanModal(true);
+                          }}
+                        >
+                          <Edit2 className="h-3 w-3" /> Modifier
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          className="h-8 px-2.5 text-xs"
+                          onClick={() => handleDeletePlan(matchedPlan.id || matchedPlan._id)}
+                          title="Supprimer ce forfait"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full h-8 text-xs gap-1 font-bold"
+                        onClick={() => {
+                          setEditingPlan(null);
+                          setPlanForm({
+                            name: preset.label,
+                            description: preset.defaultDesc,
+                            price_xaf: '',
+                            duration_days: preset.duration_days,
+                            trial_days: 0,
+                            features: "Accès complet aux formations vidéo\nSignaux & analyses de marché en direct\nOutils Graphique Démo & Backtesting\nSupport & Coaching",
+                            is_active: true
+                          });
+                          setShowPlanModal(true);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Configurer {preset.label}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Bandeau rapide de sélection de passerelle (iKeePay / SEBPAY) directement dans l'onglet Plans */}
         <Card className="border-primary/30 bg-primary/5">
@@ -5058,7 +5204,7 @@ const AdminDashboard = () => {
         {/* Modal Création / Modification de Plan */}
         {showPlanModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in-0">
-            <div className="bg-card border rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+            <div className="bg-card border rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-4 max-h-[92vh] overflow-y-auto">
               <button
                 onClick={() => setShowPlanModal(false)}
                 className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
@@ -5067,21 +5213,52 @@ const AdminDashboard = () => {
               </button>
 
               <h3 className="font-bold text-lg">
-                {editingPlan ? 'Modifier le Plan' : 'Créer un Nouveau Plan de Souscription'}
+                {editingPlan ? `Modifier le Forfait : ${editingPlan.name}` : 'Créer / Configurer un Forfait de Souscription'}
               </h3>
 
               <form onSubmit={handleSavePlan} className="space-y-4">
                 <div>
-                  <label className="text-xs font-semibold block mb-1">Nom du Plan *</label>
+                  <label className="text-xs font-semibold block mb-1.5">Choisir le type de forfait :</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {STANDARD_PLAN_PRESETS.map((preset) => {
+                      const isSelectedPreset = Number(planForm.duration_days) === preset.duration_days;
+                      return (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() =>
+                            setPlanForm((prev) => ({
+                              ...prev,
+                              name: preset.label,
+                              duration_days: preset.duration_days,
+                              description: prev.description || preset.defaultDesc,
+                            }))
+                          }
+                          className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all text-center ${
+                            isSelectedPreset
+                              ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                              : 'border-border bg-muted/40 hover:border-primary/50 text-foreground'
+                          }`}
+                        >
+                          <div>{preset.label}</div>
+                          <div className="text-[10px] opacity-80 font-normal">{preset.duration_days} jours</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Nom du Forfait *</label>
                   <Input
                     required
-                    placeholder="Ex: Abonnement VIP Mensuel"
+                    placeholder="Ex: Monthly, 3 Month, 6 Month, 01 Year"
                     value={planForm.name}
                     onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-xs font-semibold block mb-1">Prix en XAF *</label>
                     <Input
@@ -5107,7 +5284,7 @@ const AdminDashboard = () => {
                     <Input
                       type="number"
                       min="0"
-                      placeholder="Ex: 7"
+                      placeholder="Ex: 0"
                       value={planForm.trial_days}
                       onChange={(e) => setPlanForm({ ...planForm, trial_days: e.target.value })}
                     />
@@ -5142,13 +5319,13 @@ const AdminDashboard = () => {
                     onChange={(e) => setPlanForm({ ...planForm, is_active: e.target.checked })}
                   />
                   <label htmlFor="plan-active" className="text-xs font-medium cursor-pointer">
-                    Plan actif et visible pour les utilisateurs
+                    Forfait actif et visible sur la page d'accueil / inscription
                   </label>
                 </div>
 
                 <div className="pt-2 flex gap-2">
                   <Button type="submit" disabled={savingPlan} className="flex-1">
-                    {savingPlan ? 'Enregistrement...' : (editingPlan ? 'Mettre à jour' : 'Créer le Plan')}
+                    {savingPlan ? 'Enregistrement...' : (editingPlan ? 'Mettre à jour le Forfait' : 'Créer le Forfait')}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setShowPlanModal(false)}>
                     Annuler
@@ -5165,21 +5342,25 @@ const AdminDashboard = () => {
         ) : safePlans.length === 0 ? (
           <Card className="p-8 text-center border-dashed">
             <CreditCard className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-            <p className="font-semibold">Aucun plan de souscription configuré</p>
-            <p className="text-xs text-muted-foreground mt-1">Cliquez sur « + Nouveau Plan » pour en créer un.</p>
+            <p className="font-semibold">Aucun forfait de souscription configuré</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Utilisez les cartes rapides ci-dessus (Monthly, 3 Month, 6 Month, 01 Year) ou cliquez sur « + Ajouter un Plan ».
+            </p>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
             {safePlans.map((p) => {
               const feats = Array.isArray(p.features) ? p.features : [];
               return (
-                <Card key={p.id} className="relative flex flex-col justify-between">
+                <Card key={p.id || p._id} className="relative flex flex-col justify-between border-2 hover:border-primary/50 transition-all">
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${p.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground'}`}>
                         {p.is_active ? 'Actif' : 'Inactif'}
                       </span>
-                      <span className="text-xs text-muted-foreground">{p.duration_days} jours</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-primary/15 text-primary">
+                        {getPeriodBadgeLabel(p.duration_days)}
+                      </span>
                     </div>
                     <CardTitle className="text-lg mt-2">{p.name}</CardTitle>
                     <p className="text-xs text-muted-foreground">{p.description}</p>
@@ -5197,7 +5378,7 @@ const AdminDashboard = () => {
                         </div>
                       ))}
                     </div>
-                    <div className="flex gap-2 pt-2 border-t">
+                    <div className="flex flex-wrap gap-2 pt-2 border-t">
                       <Button
                         size="sm"
                         variant="outline"
@@ -5220,8 +5401,17 @@ const AdminDashboard = () => {
                       </Button>
                       <Button
                         size="sm"
+                        variant={p.is_active ? 'outline' : 'default'}
+                        onClick={() => handleTogglePlanActive(p)}
+                        title={p.is_active ? 'Désactiver ce plan' : 'Activer ce plan'}
+                      >
+                        {p.is_active ? 'Désactiver' : 'Activer'}
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="destructive"
                         onClick={() => handleDeletePlan(p.id || p._id)}
+                        title="Supprimer ce plan"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>

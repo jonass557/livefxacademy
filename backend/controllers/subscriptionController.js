@@ -61,23 +61,74 @@ const DEFAULT_OPERATORS_BY_COUNTRY = {
   ],
 };
 
+function inferBillingPeriod(durationDays, billingPeriod) {
+  if (billingPeriod && ['monthly', '3_months', '6_months', '1_year', 'custom'].includes(billingPeriod)) {
+    return billingPeriod;
+  }
+  const d = Number(durationDays) || 30;
+  if (d === 30 || d === 31) return 'monthly';
+  if (d >= 88 && d <= 93) return '3_months';
+  if (d >= 178 && d <= 186) return '6_months';
+  if (d >= 360 && d <= 366) return '1_year';
+  return 'custom';
+}
+
+function getPlanPeriodLabel(durationDays, billingPeriod) {
+  const period = inferBillingPeriod(durationDays, billingPeriod);
+  if (period === 'monthly') return 'Monthly';
+  if (period === '3_months') return '3 Month';
+  if (period === '6_months') return '6 Month';
+  if (period === '1_year') return '01 Year';
+  return `${Number(durationDays) || 30} Days`;
+}
+
 // Normalise un plan pour exposer systématiquement id et _id
 function serializePlan(planDoc) {
   if (!planDoc) return null;
   const obj = typeof planDoc.toObject === 'function' ? planDoc.toObject({ virtuals: true }) : { ...planDoc };
   const strId = String(obj._id || obj.id || '');
+  const billing_period = inferBillingPeriod(obj.duration_days, obj.billing_period);
   return {
     ...obj,
     _id: strId,
     id: strId,
+    billing_period,
+    period_label: getPlanPeriodLabel(obj.duration_days, billing_period),
   };
 }
 
-// Formate le numéro au format international sans (+) exigé par SEBPAY (ex: "22997000000")
+// Détecte automatiquement l'opérateur Mobile Money au Bénin (BJ) selon le préfixe à 2 chiffres (après 01 éventuel)
+function detectBeninOperatorFromCore(eightDigitCore) {
+  if (!eightDigitCore || eightDigitCore.length !== 8) return null;
+  const prefix = eightDigitCore.slice(0, 2);
+  const mtnPrefixes = ['42', '46', '50', '51', '52', '53', '54', '56', '57', '59', '61', '62', '66', '67', '69', '90', '91', '96', '97'];
+  const moovPrefixes = ['55', '58', '60', '63', '64', '65', '68', '94', '95', '98', '99'];
+  const celtiisPrefixes = ['40', '41', '43', '44', '45', '47', '48', '49', '92', '93'];
+  if (mtnPrefixes.includes(prefix)) return 'mtn';
+  if (moovPrefixes.includes(prefix)) return 'moov';
+  if (celtiisPrefixes.includes(prefix)) return 'celtiis';
+  return null;
+}
+
+// Détecte si le numéro saisi commence déjà par un indicatif pays connu (ex: 229, 225, 228, 221, 237...)
+function detectCountryFromPhoneDigits(digits) {
+  for (const [iso, dial] of Object.entries(COUNTRY_DIAL_CODES)) {
+    if (digits.startsWith(dial) && digits.length >= dial.length + 8) {
+      return { iso, dial, localDigits: digits.slice(dial.length) };
+    }
+  }
+  return null;
+}
+
+// Formate le numéro au format international sans (+) exigé par SEBPAY (ex: "2290197000000" ou "22997000000")
 function normalizeSebpayPhone(rawPhone, countryCode) {
   let digits = String(rawPhone || '').replace(/[^\d]/g, '');
   if (digits.startsWith('00')) {
     digits = digits.slice(2);
+  }
+  const detected = detectCountryFromPhoneDigits(digits);
+  if (detected) {
+    return digits;
   }
   const iso = String(countryCode || 'BJ').trim().toUpperCase();
   const dial = COUNTRY_DIAL_CODES[iso];
@@ -85,6 +136,164 @@ function normalizeSebpayPhone(rawPhone, countryCode) {
     digits = `${dial}${digits}`;
   }
   return digits;
+}
+
+// Construit les combinaisons (phone, operator, country) à tester auprès de SEBPAY en cas de refus opérateur
+function buildSebpayCandidates(rawPhone, rawOperator, rawCountry) {
+  let digits = String(rawPhone || '').replace(/[^\d]/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+
+  let country = String(rawCountry || 'BJ').trim().toUpperCase();
+  const detectedCountry = detectCountryFromPhoneDigits(digits);
+  if (detectedCountry) {
+    country = detectedCountry.iso;
+  }
+
+  const dial = COUNTRY_DIAL_CODES[country] || '229';
+  let local = digits.startsWith(dial) && digits.length >= dial.length + 8
+    ? digits.slice(dial.length)
+    : digits;
+
+  const userOp = String(rawOperator || 'mtn').trim().toLowerCase();
+  const candidates = [];
+  const pushUnique = (phone, operator, ctry) => {
+    if (!phone || phone.length < 8) return;
+    const key = `${phone}|${operator}|${ctry}`;
+    if (!candidates.some((c) => `${c.phone}|${c.operator}|${c.country}` === key)) {
+      candidates.push({ phone, operator, country: ctry });
+    }
+  };
+
+  if (country === 'BJ') {
+    // Au Bénin : les numéros sont passés de 8 chiffres (97XXXXXX) à 10 chiffres avec préfixe "01" (0197XXXXXX)
+    let core8 = local;
+    const had01 = local.length === 10 && local.startsWith('01');
+    if (had01) {
+      core8 = local.slice(2);
+    }
+    const detectedOp = detectBeninOperatorFromCore(core8);
+    // Si l'utilisateur a laissé un mauvais opérateur mais que le préfixe Bénin identifie clairement MTN/Moov/Celtiis
+    const primaryOp = userOp;
+    const secondaryOp = detectedOp && detectedOp !== userOp ? detectedOp : null;
+
+    if (core8.length === 8) {
+      const phoneWith01 = `22901${core8}`;
+      const phoneWithout01 = `229${core8}`;
+      // Si l'utilisateur a saisi 01..., on teste d'abord avec 01 puis sans 01 (et inversement)
+      const firstPhone = had01 ? phoneWith01 : phoneWithout01;
+      const secondPhone = had01 ? phoneWithout01 : phoneWith01;
+
+      pushUnique(firstPhone, primaryOp, 'BJ');
+      pushUnique(secondPhone, primaryOp, 'BJ');
+      if (secondaryOp) {
+        pushUnique(firstPhone, secondaryOp, 'BJ');
+        pushUnique(secondPhone, secondaryOp, 'BJ');
+      }
+    } else {
+      pushUnique(`${dial}${local}`, primaryOp, 'BJ');
+      if (secondaryOp) pushUnique(`${dial}${local}`, secondaryOp, 'BJ');
+    }
+  } else {
+    // Autres pays (CI, TG, SN, BF, CM, ML, NE...)
+    const intlPhone = `${dial}${local}`;
+    pushUnique(intlPhone, userOp, country);
+    if (local.startsWith('0') && local.length > 8) {
+      pushUnique(`${dial}${local.slice(1)}`, userOp, country);
+    }
+  }
+
+  return candidates.slice(0, 4);
+}
+
+// Exécute la requête de collecte SEBPAY avec réessai intelligent (nouvel external_reference + format avec/sans 01 + opérateur détecté)
+async function executeSebpayCollectionWithRetry({
+  sebpayPublicKey,
+  sebpaySecretKey,
+  amount,
+  callbackUrl,
+  customerName,
+  customerEmail,
+  otp_code,
+  rawPhone,
+  rawOperator,
+  rawCountry,
+  refPrefix = 'SUB',
+}) {
+  const candidates = buildSebpayCandidates(rawPhone, rawOperator, rawCountry);
+  let lastResStatus = 400;
+  let lastResData = {};
+  let lastAttempt = candidates[0] || {
+    phone: normalizeSebpayPhone(rawPhone, rawCountry),
+    operator: String(rawOperator || 'mtn').toLowerCase(),
+    country: String(rawCountry || 'BJ').toUpperCase(),
+  };
+
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const externalRef = `${refPrefix}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const payload = {
+      amount: Math.round(Number(amount)),
+      currency: 'XOF',
+      phone: candidate.phone,
+      operator: candidate.operator,
+      country: candidate.country,
+      external_reference: externalRef,
+      callback_url: callbackUrl,
+      customer_name: customerName || 'Membre LiveFX',
+      customer_email: customerEmail || undefined,
+    };
+    if (otp_code && String(otp_code).trim()) {
+      payload.otp_code = String(otp_code).trim();
+    }
+
+    const sebResponse = await fetch(`${SEBPAY_API_URL}/collections`, {
+      method: 'POST',
+      headers: {
+        'X-Public-Key': sebpayPublicKey,
+        'X-Secret-Key': sebpaySecretKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const resData = await sebResponse.json().catch(() => ({}));
+    lastResStatus = sebResponse.status;
+    lastResData = resData;
+    lastAttempt = { ...candidate, external_reference: externalRef };
+
+    if (sebResponse.ok && resData.success !== false) {
+      return {
+        ok: true,
+        status: sebResponse.status,
+        resData,
+        dataPayload: resData.data || resData,
+        usedPhone: candidate.phone,
+        usedOperator: candidate.operator,
+        usedCountry: candidate.country,
+        externalReference: externalRef,
+      };
+    }
+
+    const rawMsg = String(resData?.message || resData?.data?.message || '');
+    const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawMsg);
+    const isOtpRequired = sebResponse.status === 422 && /otp/i.test(rawMsg + String(resData?.code || ''));
+    // Si l'erreur est un blocage IP ou une demande de code OTP, inutile de réessayer un autre format de numéro
+    if (isIpBlocked || isOtpRequired) {
+      break;
+    }
+  }
+
+  return {
+    ok: false,
+    status: lastResStatus,
+    resData: lastResData,
+    dataPayload: lastResData.data || lastResData,
+    usedPhone: lastAttempt.phone,
+    usedOperator: lastAttempt.operator,
+    usedCountry: lastAttempt.country,
+    externalReference: lastAttempt.external_reference || `${refPrefix}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+  };
 }
 
 // Active l'abonnement d'un utilisateur lorsqu'une transaction SEBPAY passe à 'approved' / 'completed'
@@ -111,7 +320,7 @@ async function activateUserSubscriptionFromTransaction(transaction, planDoc) {
 // Liste des plans actifs pour les utilisateurs
 exports.getActivePlans = async (req, res) => {
   try {
-    const plans = await SubscriptionPlan.find({ is_active: true, is_deleted: { $ne: true } }).sort({ price_xaf: 1 });
+    const plans = await SubscriptionPlan.find({ is_active: true, is_deleted: { $ne: true } }).sort({ duration_days: 1, price_xaf: 1 });
     res.json(plans.map(serializePlan));
   } catch (err) {
     console.error('getActivePlans error:', err);
@@ -122,7 +331,7 @@ exports.getActivePlans = async (req, res) => {
 // Admin : Liste de tous les plans
 exports.getAdminPlans = async (req, res) => {
   try {
-    const plans = await SubscriptionPlan.find({ is_deleted: { $ne: true } }).sort({ created_at: -1 });
+    const plans = await SubscriptionPlan.find({ is_deleted: { $ne: true } }).sort({ duration_days: 1, price_xaf: 1 });
     res.json(plans.map(serializePlan));
   } catch (err) {
     console.error('getAdminPlans error:', err);
@@ -133,16 +342,18 @@ exports.getAdminPlans = async (req, res) => {
 // Admin : Créer un plan
 exports.createPlan = async (req, res) => {
   try {
-    const { name, description, price_xaf, duration_days, trial_days, features, is_active } = req.body;
+    const { name, description, price_xaf, duration_days, billing_period, trial_days, features, is_active } = req.body;
     if (!name || price_xaf == null) {
       return res.status(400).json({ message: 'Le nom et le prix en XAF sont obligatoires' });
     }
 
+    const dur = Number(duration_days) || 30;
     const plan = await SubscriptionPlan.create({
       name,
       description: description || '',
       price_xaf: Number(price_xaf),
-      duration_days: Number(duration_days) || 30,
+      duration_days: dur,
+      billing_period: inferBillingPeriod(dur, billing_period),
       trial_days: Math.max(0, Number(trial_days) || 0),
       features: Array.isArray(features) ? features : [],
       is_active: is_active !== undefined ? is_active : true,
@@ -169,6 +380,7 @@ exports.updatePlan = async (req, res) => {
     }
     if (updateData.duration_days !== undefined) {
       updateData.duration_days = Number(updateData.duration_days) || 30;
+      updateData.billing_period = inferBillingPeriod(updateData.duration_days, updateData.billing_period);
     }
     const plan = await SubscriptionPlan.findByIdAndUpdate(id, updateData, { new: true });
     if (!plan) return res.status(404).json({ message: 'Plan non trouvé' });
@@ -443,70 +655,53 @@ exports.initiateMobilePayment = async (req, res) => {
       }
     }
 
-    // Formater le numéro de téléphone au format international sans (+) comme exigé par SEBPAY (ex: 22997000000)
     const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
     if (!cleanPhone || cleanPhone.length < 8) {
       return res.status(400).json({
-        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 97000000).'
+        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 0197000000 ou 97000000).'
       });
     }
 
-    const externalRef = `SUB-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
 
-    // Créer la transaction locale d'abord
-    const transaction = await PaymentTransaction.create({
-      user_id: user._id,
-      plan_id: plan._id,
-      amount: Math.round(Number(plan.price_xaf)),
-      currency: 'XOF',
-      phone: cleanPhone,
-      operator: rawOperator.toLowerCase(),
-      country: rawCountry,
-      external_reference: externalRef,
-      status: 'pending',
-      referrer_id: referrerId,
-      referral_commission_amount: referralCommission,
-      referral_percentage: referralPct
-    });
-
-    // Appeler l'API de collectes SEBPAY (POST https://newapi.sebpay.bj/api/v1/collections)
-    const payload = {
-      amount: Math.round(Number(plan.price_xaf)),
-      currency: 'XOF',
-      phone: cleanPhone,
-      operator: rawOperator.toLowerCase(),
-      country: rawCountry,
-      external_reference: externalRef,
-      callback_url: callbackUrl,
-      customer_name: user.full_name || 'Membre LiveFX',
-      customer_email: user.email || undefined,
-    };
-
-    if (otp_code && String(otp_code).trim()) {
-      payload.otp_code = String(otp_code).trim();
-    }
-
     try {
-      const sebResponse = await fetch(`${SEBPAY_API_URL}/collections`, {
-        method: 'POST',
-        headers: {
-          'X-Public-Key': sebpayPublicKey,
-          'X-Secret-Key': sebpaySecretKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
+      const attempt = await executeSebpayCollectionWithRetry({
+        sebpayPublicKey,
+        sebpaySecretKey,
+        amount: Math.round(Number(plan.price_xaf)),
+        callbackUrl,
+        customerName: user.full_name || 'Membre LiveFX',
+        customerEmail: user.email || undefined,
+        otp_code,
+        rawPhone,
+        rawOperator,
+        rawCountry,
+        refPrefix: 'SUB',
       });
 
-      const resData = await sebResponse.json().catch(() => ({}));
-      const dataPayload = resData.data || resData;
+      const { resData, dataPayload, usedPhone, usedOperator, usedCountry, externalReference } = attempt;
 
-      if (!sebResponse.ok || resData.success === false) {
+      const transaction = await PaymentTransaction.create({
+        user_id: user._id,
+        plan_id: plan._id,
+        amount: Math.round(Number(plan.price_xaf)),
+        currency: 'XOF',
+        phone: usedPhone,
+        operator: usedOperator,
+        country: usedCountry,
+        external_reference: externalReference,
+        status: 'pending',
+        referrer_id: referrerId,
+        referral_commission_amount: referralCommission,
+        referral_percentage: referralPct
+      });
+
+      if (!attempt.ok) {
         const errCode = resData?.code || resData?.error_code || dataPayload?.code || '';
         const rawSebMessage = resData?.message || dataPayload?.message || '';
-        const isOtpRequired = sebResponse.status === 422 || String(errCode).toUpperCase().includes('OTP_REQUIRED');
+        const isOtpRequired = attempt.status === 422 && String(errCode + rawSebMessage).toUpperCase().includes('OTP');
         const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawSebMessage);
+        const isOperatorDeclined = /operator declined|check the phone number/i.test(rawSebMessage);
         transaction.status = 'failed';
         transaction.sebpay_response = resData;
         await transaction.save();
@@ -514,11 +709,13 @@ exports.initiateMobilePayment = async (req, res) => {
         let finalMessage = rawSebMessage;
         if (isIpBlocked) {
           const srvIp = await detectServerPublicIp();
-          finalMessage = `Cette adresse IP (${srvIp}) n'est pas encore autorisée sur votre clé API SEBPAY. Dans votre tableau de bord SEBPAY (new.sebpay.bj > Clés API), ajoutez l'adresse IP du serveur : ${srvIp} dans les « Adresses IP autorisées » (ou laissez le champ IP vide pour autoriser toutes les adresses IP).`;
+          finalMessage = `Cette adresse IP (${srvIp}) n'est pas encore autorisée sur votre clé API SEBPAY. Dans votre tableau de bord SEBPAY (new.sebpay.bj > Clés API), ajoutez l'adresse IP du serveur : ${srvIp} dans les « Adresses IP autorisées » (ou laissez le champ IP vide).`;
+        } else if (isOperatorDeclined) {
+          finalMessage = `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez que : 1) Ce numéro possède bien un compte Mobile Money actif chez ${usedOperator.toUpperCase()}, 2) Votre solde est suffisant (${Math.round(Number(plan.price_xaf)).toLocaleString()} XOF), puis cliquez à nouveau sur Payer.`;
         } else if (!finalMessage) {
           finalMessage = isOtpRequired
             ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
-            : `Le paiement a été refusé par l'opérateur (HTTP ${sebResponse.status}). Vérifiez votre numéro et l'opérateur choisi.`;
+            : `Le paiement a été refusé par l'opérateur (HTTP ${attempt.status}). Vérifiez votre numéro et l'opérateur choisi.`;
         }
 
         return res.status(isOtpRequired ? 422 : 400).json({
@@ -547,17 +744,13 @@ exports.initiateMobilePayment = async (req, res) => {
         success: true,
         message: dataPayload.message || resData.message || 'Demande de paiement envoyée ! Veuillez confirmer sur votre téléphone Mobile Money.',
         transaction_id: transaction.transaction_id,
-        external_reference: externalRef,
+        external_reference: externalReference,
         provider_link: dataPayload.provider_link || null,
         payment_url: dataPayload.provider_link || null,
         status: transaction.status
       });
     } catch (sebErr) {
       console.error('Erreur appel SEBPAY:', sebErr.message);
-      transaction.status = 'failed';
-      transaction.sebpay_response = { error: sebErr.message };
-      await transaction.save();
-
       return res.status(400).json({
         success: false,
         message: sebErr.message || 'Erreur de connexion au service Mobile Money SEBPAY. Veuillez réessayer.'
@@ -992,63 +1185,49 @@ exports.initiatePublicMobilePayment = async (req, res) => {
     const cleanPhone = normalizeSebpayPhone(rawPhone, rawCountry);
     if (!cleanPhone || cleanPhone.length < 8) {
       return res.status(400).json({
-        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 97000000).'
+        message: 'Numéro de téléphone Mobile Money invalide. Veuillez saisir un numéro valide (ex: 0197000000 ou 97000000).'
       });
     }
 
-    const externalRef = `PRE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const callbackUrl = `${process.env.API_PUBLIC_URL || 'https://api.livefx-trading.com'}/api/subscriptions/webhook/sebpay`;
+
+    const attempt = await executeSebpayCollectionWithRetry({
+      sebpayPublicKey,
+      sebpaySecretKey,
+      amount: Math.round(Number(plan.price_xaf)),
+      callbackUrl,
+      customerName: req.body.customer_name || 'Nouveau Membre LiveFX',
+      customerEmail: req.body.customer_email || undefined,
+      otp_code,
+      rawPhone,
+      rawOperator,
+      rawCountry,
+      refPrefix: 'PRE',
+    });
+
+    const { resData, dataPayload, usedPhone, usedOperator, usedCountry, externalReference } = attempt;
 
     const transaction = await PaymentTransaction.create({
       user_id: null,
       plan_id: plan._id,
       amount: Math.round(Number(plan.price_xaf)),
       currency: 'XOF',
-      phone: cleanPhone,
-      operator: rawOperator.toLowerCase(),
-      country: rawCountry,
-      external_reference: externalRef,
+      phone: usedPhone,
+      operator: usedOperator,
+      country: usedCountry,
+      external_reference: externalReference,
       status: 'pending',
       referrer_id: referrerId,
       referral_commission_amount: referralCommission,
       referral_percentage: referralPct
     });
 
-    const payload = {
-      amount: Math.round(Number(plan.price_xaf)),
-      currency: 'XOF',
-      phone: cleanPhone,
-      operator: rawOperator.toLowerCase(),
-      country: rawCountry,
-      external_reference: externalRef,
-      callback_url: callbackUrl,
-      customer_name: req.body.customer_name || 'Nouveau Membre LiveFX',
-      customer_email: req.body.customer_email || undefined,
-    };
-
-    if (otp_code && String(otp_code).trim()) {
-      payload.otp_code = String(otp_code).trim();
-    }
-
-    const sebResponse = await fetch(`${SEBPAY_API_URL}/collections`, {
-      method: 'POST',
-      headers: {
-        'X-Public-Key': sebpayPublicKey,
-        'X-Secret-Key': sebpaySecretKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const resData = await sebResponse.json().catch(() => ({}));
-    const dataPayload = resData.data || resData;
-
-    if (!sebResponse.ok || resData.success === false) {
+    if (!attempt.ok) {
       const errCode = resData?.code || resData?.error_code || dataPayload?.code || '';
       const rawSebMessage = resData?.message || dataPayload?.message || '';
-      const isOtpRequired = sebResponse.status === 422 || String(errCode).toUpperCase().includes('OTP_REQUIRED');
+      const isOtpRequired = attempt.status === 422 && String(errCode + rawSebMessage).toUpperCase().includes('OTP');
       const isIpBlocked = /adresse ip|ip.*autoris|whitelist/i.test(rawSebMessage);
+      const isOperatorDeclined = /operator declined|check the phone number/i.test(rawSebMessage);
       transaction.status = 'failed';
       transaction.sebpay_response = resData;
       await transaction.save();
@@ -1057,10 +1236,12 @@ exports.initiatePublicMobilePayment = async (req, res) => {
       if (isIpBlocked) {
         const srvIp = await detectServerPublicIp();
         finalMessage = `Cette adresse IP (${srvIp}) n'est pas encore autorisée sur la clé API SEBPAY. L'administrateur doit autoriser l'IP ${srvIp} (ou laisser la liste d'IP vide) dans son compte SEBPAY.`;
+      } else if (isOperatorDeclined) {
+        finalMessage = `L'opérateur Mobile Money (${usedOperator.toUpperCase()}) a refusé la demande pour le numéro ${usedPhone}. Vérifiez que : 1) Ce numéro possède bien un compte Mobile Money actif chez ${usedOperator.toUpperCase()}, 2) Votre solde est suffisant (${Math.round(Number(plan.price_xaf)).toLocaleString()} XOF), puis cliquez à nouveau sur Payer.`;
       } else if (!finalMessage) {
         finalMessage = isOtpRequired
           ? 'Cet opérateur exige un code de validation OTP. Veuillez saisir le code OTP pour confirmer.'
-          : `Le paiement a été refusé par l'opérateur (HTTP ${sebResponse.status}). Vérifiez votre numéro et l'opérateur choisi.`;
+          : `Le paiement a été refusé par l'opérateur (HTTP ${attempt.status}). Vérifiez votre numéro et l'opérateur choisi.`;
       }
 
       return res.status(isOtpRequired ? 422 : 400).json({
@@ -1089,7 +1270,7 @@ exports.initiatePublicMobilePayment = async (req, res) => {
       message: transaction.status === 'completed'
         ? 'Paiement validé ! Vous pouvez maintenant finaliser votre inscription Élève ou Formateur.'
         : "Demande de paiement envoyée sur votre téléphone. Validez avec votre code secret Mobile Money pour débloquer l'inscription.",
-      reference: externalRef,
+      reference: externalReference,
       transaction_id: transaction.transaction_id,
       provider_link: transaction.provider_link,
       status: transaction.status,
