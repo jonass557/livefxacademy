@@ -1839,13 +1839,13 @@ const ClientDashboard = ({ lockToSubscription = false }) => {
             <div className={isChartSection ? 'relative h-full w-full flex-1 min-h-0 overflow-hidden p-0 m-0' : 'space-y-4'}>
               {isChartSection ? (
                 <>
-                  {/* Bouton retour clair, grand et très visible superposé en haut à gauche pour les graphiques */}
+                  {/* Bouton retour clair et bien aligné en haut à gauche pour les graphiques */}
                   <button
                     onClick={handleGoBack}
-                    className="fixed top-2.5 left-2.5 sm:top-3 sm:left-3 z-[75] flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground font-bold px-3.5 py-1.5 text-xs sm:text-sm hover:bg-primary/90 active:scale-95 transition-all shadow-2xl border border-primary-foreground/20 cursor-pointer"
+                    className="fixed top-1.5 left-1.5 sm:top-2 sm:left-2.5 z-[75] flex items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl bg-primary text-primary-foreground font-bold h-7 sm:h-8 px-2.5 sm:px-3.5 text-[11px] sm:text-xs hover:bg-primary/90 active:scale-95 transition-all shadow-lg border border-primary-foreground/20 cursor-pointer"
                     title={isEn ? "Back to previous page" : "Retour à la page précédente"}
                   >
-                    <ArrowLeft className="h-4 w-4" /> {isEn ? 'Back' : 'Retour'}
+                    <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> {isEn ? 'Back' : 'Retour'}
                   </button>
                   <AppErrorBoundary resetKey={activeSection}>{renderContent()}</AppErrorBoundary>
                 </>

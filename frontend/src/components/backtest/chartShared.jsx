@@ -2281,11 +2281,19 @@ export function ChartStyleButton({ onClick, className = '' }) {
   );
 }
 
-// Menu déroulant générique robuste (tactile, mobile, PC) avec fermeture au clic extérieur.
+// Menu déroulant générique robuste (tactile, mobile, PC) avec fermeture au clic extérieur et alignement intelligent dans l'écran.
 export function Dropdown({ trigger, open, setOpen, children, align = 'left', width = 'w-56' }) {
   const ref = React.useRef(null);
+  const [autoAlignRight, setAutoAlignRight] = React.useState(align === 'right');
+
   React.useEffect(() => {
     if (!open) return;
+    if (align === 'right') {
+      setAutoAlignRight(true);
+    } else if (ref.current && typeof window !== 'undefined') {
+      const rect = ref.current.getBoundingClientRect();
+      setAutoAlignRight(rect.left > window.innerWidth * 0.48);
+    }
     const onDown = (e) => {
       if (ref.current && !ref.current.contains(e.target)) {
         setOpen(false);
@@ -2299,7 +2307,7 @@ export function Dropdown({ trigger, open, setOpen, children, align = 'left', wid
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('touchstart', onDown);
     };
-  }, [open, setOpen]);
+  }, [open, setOpen, align]);
 
   return (
     <div ref={ref} className="relative inline-block" data-chart-dropdown-wrapper>
@@ -2308,7 +2316,7 @@ export function Dropdown({ trigger, open, setOpen, children, align = 'left', wid
         <div
           data-chart-dropdown
           onPointerDown={(e) => e.stopPropagation()}
-          className={`absolute top-full mt-1.5 z-[80] max-w-[calc(100vw-1rem)] max-h-[82vh] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-2xl ${width} ${align === 'right' ? 'right-0' : 'left-0'}`}
+          className={`absolute top-full mt-1.5 z-[80] max-w-[calc(100vw-1rem)] max-h-[80vh] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-2xl ${width} ${autoAlignRight ? 'right-0' : 'left-0'}`}
         >
           {children}
         </div>
@@ -4558,11 +4566,11 @@ export function ChartWatermark() {
   };
 
   return (
-    <div className="absolute bottom-20 sm:bottom-8 left-3 sm:left-4 pointer-events-none z-20 select-none opacity-95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
+    <div className="absolute bottom-8 left-2.5 sm:left-4 pointer-events-none z-20 select-none opacity-95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
       <img
         src={logoUrl}
         alt="LivefxTrading"
-        className="h-10 sm:h-12 md:h-14 lg:h-16 w-auto max-w-[170px] sm:max-w-[210px] md:max-w-[250px] object-contain transition-all"
+        className="h-9 sm:h-12 md:h-14 lg:h-16 w-auto max-w-[150px] sm:max-w-[210px] md:max-w-[250px] object-contain transition-all"
         onError={handleImgError}
       />
     </div>

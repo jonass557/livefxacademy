@@ -940,27 +940,33 @@ export default function ReplayChart({
   const digits = priceDigits;
 
   const wrapClass = fullscreen
-    ? 'fixed inset-0 z-[60] flex flex-col gap-1.5 bg-background p-1.5 overflow-hidden'
-    : 'flex-1 min-h-0 w-full flex flex-col gap-1.5 overflow-hidden';
+    ? 'fixed inset-0 z-[60] flex flex-col gap-1 bg-background p-1 overflow-hidden'
+    : 'flex-1 min-h-0 w-full flex flex-col gap-1 overflow-hidden';
   const chartHeight = fullscreen ? undefined : '100%';
 
   return (
     <ChartErrorBoundary>
       <div className={wrapClass}>
-        {/* ==================== BARRE DE CONTRÔLE (TOOLBAR AVEC MENUS DÉROULANTS) ==================== */}
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-card p-1.5 sm:gap-2 sm:p-2 shrink-0" data-chart-toolbar data-replay-controls>
+        {/* ==================== BARRE DE CONTRÔLE (TOOLBAR COMPACTE & ORGANISÉE) ==================== */}
+        <div
+          className={`flex flex-wrap items-center gap-1 sm:gap-1.5 rounded-lg border bg-card px-1.5 py-1 sm:p-1.5 shrink-0 ${
+            fullscreen ? 'pl-[74px] sm:pl-24' : ''
+          }`}
+          data-chart-toolbar
+          data-replay-controls
+        >
           {/* 1. Bouton CUT (Couper) */}
           <Button
             size="sm"
             variant={isCutting ? 'destructive' : cutIndex !== null ? 'secondary' : 'default'}
             onClick={toggleCut}
-            className={`h-8 gap-1.5 font-semibold transition-all ${
+            className={`h-7 sm:h-8 px-2 sm:px-2.5 gap-1 font-semibold transition-all ${
               isCutting ? 'animate-pulse ring-2 ring-destructive' : cutIndex !== null ? 'border-amber-500/50 text-amber-500' : ''
             }`}
             title={isCutting ? (isEnglish ? 'Click on a candle to cut or click again to cancel' : 'Cliquez sur une bougie pour couper ou ré-appuyez pour annuler') : (isEnglish ? 'Activate chart cut replay' : 'Activer la coupe mobile du graphique')}
           >
-            <Scissors className="h-3.5 w-3.5" />
-            <span className="text-xs">{isCutting ? (isEnglish ? 'Cancel' : 'Annuler') : cutIndex !== null ? (isEnglish ? 'Recut' : 'Recouper') : (isEnglish ? 'Cut' : 'Couper')}</span>
+            <Scissors className="h-3.5 w-3.5 shrink-0" />
+            <span className="text-[11px] sm:text-xs">{isCutting ? (isEnglish ? 'Cancel' : 'Annuler') : cutIndex !== null ? (isEnglish ? 'Recut' : 'Recouper') : (isEnglish ? 'Cut' : 'Couper')}</span>
           </Button>
 
           {/* 2. Menu Déroulant VITESSE (×-3; ×-2; ×-1; ×+1; ×+2; ×+3) */}
@@ -973,12 +979,13 @@ export default function ReplayChart({
                 size="sm"
                 variant="outline"
                 onClick={() => setSpeedDropdownOpen((o) => !o)}
-                className="h-8 px-2 text-xs font-bold gap-1 tabular-nums border-muted-foreground/30 hover:bg-muted"
+                className="h-7 sm:h-8 px-1.5 sm:px-2 text-[11px] sm:text-xs font-bold gap-1 tabular-nums border-muted-foreground/30 hover:bg-muted"
                 title={isEnglish ? 'Replay speed and direction' : 'Vitesse et direction de rejeu'}
               >
-                <Zap className="h-3.5 w-3.5 text-amber-500" />
-                <span>{isEnglish ? 'Speed:' : 'Vitesse :'} {REPLAY_SPEEDS.find((s) => s.key === speed)?.label || '×+1'}</span>
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                <span className="hidden sm:inline">{isEnglish ? 'Speed:' : 'Vitesse :'}</span>
+                <span>{REPLAY_SPEEDS.find((s) => s.key === speed)?.label || '×+1'}</span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
               </Button>
             }
           >
@@ -1022,28 +1029,28 @@ export default function ReplayChart({
                 setPlaying((p) => !p);
               }
             }}
-            className="h-8 gap-1.5 font-bold px-3 shadow-xs"
+            className="h-7 sm:h-8 gap-1 font-bold px-2 sm:px-3 shadow-xs"
           >
-            {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-            <span className="text-xs">{playing ? 'Pause' : 'Play'}</span>
+            {playing ? <Pause className="h-3.5 w-3.5 shrink-0" /> : <Play className="h-3.5 w-3.5 shrink-0" />}
+            <span className="text-[11px] sm:text-xs">{playing ? 'Pause' : 'Play'}</span>
           </Button>
 
           {/* Bougie précédente & Bougie suivante */}
-          <Button size="sm" variant="outline" onClick={stepBackward} title={isEnglish ? 'Step back one candle' : "Reculer d'une bougie"} className="px-2 h-8">
+          <Button size="sm" variant="outline" onClick={stepBackward} title={isEnglish ? 'Step back one candle' : "Reculer d'une bougie"} className="h-7 w-7 sm:h-8 sm:w-8 p-0">
             <SkipBack className="h-3.5 w-3.5" />
           </Button>
-          <Button size="sm" variant="outline" onClick={stepForward} title={isEnglish ? 'Step forward one candle' : "Avancer d'une bougie"} className="px-2 h-8">
+          <Button size="sm" variant="outline" onClick={stepForward} title={isEnglish ? 'Step forward one candle' : "Avancer d'une bougie"} className="h-7 w-7 sm:h-8 sm:w-8 p-0">
             <SkipForward className="h-3.5 w-3.5" />
           </Button>
 
           {/* Recommencer */}
-          <Button size="sm" variant="outline" onClick={resetReplay} title={isEnglish ? 'Restart from beginning' : 'Recommencer depuis le point de départ'} className="px-2 h-8">
+          <Button size="sm" variant="outline" onClick={resetReplay} title={isEnglish ? 'Restart from beginning' : 'Recommencer depuis le point de départ'} className="h-7 w-7 sm:h-8 sm:w-8 p-0">
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
 
           {/* Vue complète (si coupé) */}
           {cutIndex !== null && (
-            <Button size="sm" variant="ghost" onClick={resetToFull} className="gap-1 text-xs h-8 px-2">
+            <Button size="sm" variant="ghost" onClick={resetToFull} className="gap-1 text-xs h-7 sm:h-8 px-1.5 sm:px-2">
               <Eye className="h-3.5 w-3.5" /> <span className="hidden md:inline">{isEnglish ? 'Full view' : 'Vue complète'}</span>
             </Button>
           )}
@@ -1057,12 +1064,12 @@ export default function ReplayChart({
               <Button
                 size="sm"
                 onClick={() => setOrderDropdownOpen((o) => !o)}
-                className="h-8 gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-3 shadow-xs"
+                className="h-7 sm:h-8 gap-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-2 sm:px-3 shadow-xs"
                 title={isEnglish ? 'Place Buy / Sell / Limit or Stop order' : 'Placer un ordre Buy / Sell / Ordre Limite ou Stop'}
               >
-                <PlusCircle className="h-3.5 w-3.5" />
-                <span className="text-xs">{isEnglish ? 'Order' : 'Ordre'}</span>
-                <ChevronDown className="h-3 w-3" />
+                <PlusCircle className="h-3.5 w-3.5 shrink-0" />
+                <span className="text-[11px] sm:text-xs">{isEnglish ? 'Order' : 'Ordre'}</span>
+                <ChevronDown className="h-3 w-3 shrink-0" />
               </Button>
             }
           >
@@ -1243,7 +1250,7 @@ export default function ReplayChart({
                   size="sm"
                   variant="outline"
                   onClick={() => setPendingDropdownOpen((o) => !o)}
-                  className="h-8 gap-1 border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-xs font-semibold px-2"
+                  className="h-7 sm:h-8 gap-1 border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-[11px] sm:text-xs font-semibold px-1.5 sm:px-2"
                 >
                   <span>{isEnglish ? `Pending (${pendingOrders.length})` : `Attente (${pendingOrders.length})`}</span>
                   <ChevronDown className="h-3 w-3" />
@@ -1276,41 +1283,42 @@ export default function ReplayChart({
             </Dropdown>
           )}
 
-          {/* Résumé Solde, Équité, Trades */}
-          <div className="flex items-center gap-2 text-xs font-mono ml-auto">
-            <span className="hidden xl:inline text-muted-foreground">
-              📅 {cur?.time ? fmtDateLong(cur.time) : '—'}
-            </span>
-            <span className="border-l pl-2 border-border/50 hidden sm:inline">
-              {isEnglish ? 'Balance:' : 'Solde:'} <b className="text-foreground">{balance.toFixed(2)} $</b>
-            </span>
-            <span className="border-l pl-2 border-border/50">
-              {isEnglish ? 'Equity:' : 'Équité:'} <b className={equity >= initialBalance ? 'text-green-500' : 'text-red-500'}>{equity.toFixed(2)} $</b>
-            </span>
-          </div>
-
-          {/* Contrôles du graphique */}
+          {/* Contrôles du graphique + Équité regroupés proprement */}
           <ChartZoomControls chartRef={chartRef} />
           <DrawToolsMenu chartRef={chartRef} overlayManager={overlayManager} />
           <IndicatorsMenu chartRef={chartRef} active={activeIndicators} setActive={setActiveIndicators} panesRef={indicatorPanesRef} />
           <ChartAlertsMenu alertsManager={alertsManager} currentPrice={cur?.close} symbol={symbolName} isEnglish={isEnglish} />
           <ChartStyleButton onClick={() => setStyleModalOpen(true)} />
-          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? (isEnglish ? 'Exit fullscreen (Esc)' : 'Quitter le plein écran (Échap)') : (isEnglish ? 'Fullscreen' : 'Plein écran')} className="px-2 h-8">
-            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          <Button size="sm" variant="outline" onClick={() => setFullscreen((f) => !f)} title={fullscreen ? (isEnglish ? 'Exit fullscreen (Esc)' : 'Quitter le plein écran (Échap)') : (isEnglish ? 'Fullscreen' : 'Plein écran')} className="h-7 w-7 sm:h-8 sm:w-8 p-0">
+            {fullscreen ? <Minimize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <Maximize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           </Button>
+
+          {/* Résumé Solde, Équité, Trades */}
+          <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-mono ml-auto">
+            <span className="hidden xl:inline text-muted-foreground">
+              📅 {cur?.time ? fmtDateLong(cur.time) : '—'}
+            </span>
+            <span className="border-l pl-1.5 border-border/50 hidden md:inline">
+              {isEnglish ? 'Balance:' : 'Solde:'} <b className="text-foreground">{balance.toFixed(2)} $</b>
+            </span>
+            <span className="sm:border-l sm:pl-1.5 border-border/50 whitespace-nowrap">
+              <span className="text-muted-foreground hidden xs:inline">{isEnglish ? 'Equity:' : 'Équité:'} </span>
+              <b className={equity >= initialBalance ? 'text-green-500' : 'text-red-500'}>{equity.toFixed(2)} $</b>
+            </span>
+          </div>
         </div>
 
         {/* Message d'aide si Coupe activée */}
         {isCutting && (
-          <div className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-1.5 text-xs text-amber-500 shrink-0 animate-fadeIn">
-            <Scissors className="h-4 w-4 shrink-0" />
+          <div className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/40 px-2.5 py-1 text-[11px] sm:text-xs text-amber-500 shrink-0 animate-fadeIn">
+            <Scissors className="h-3.5 w-3.5 shrink-0" />
             <span>{isEnglish ? 'Move cursor over the chart and click the candle where you want to cut historical data to start analysis.' : "Déplacez le curseur sur le graphique et cliquez sur la bougie où vous voulez couper l'historique pour commencer l'analyse."}</span>
           </div>
         )}
 
         {/* Barre ultra-fine de Position active (si position ouverte) */}
         {position && (
-          <div className="flex items-center justify-between gap-2 rounded-md bg-muted/80 px-2.5 py-1 border border-primary/20 text-xs shrink-0">
+          <div className="flex items-center justify-between gap-2 rounded-md bg-muted/80 px-2 py-0.5 border border-primary/20 text-[11px] sm:text-xs shrink-0">
             <div className="flex items-center gap-2 overflow-x-auto min-w-0">
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${position.side === 'buy' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                 {position.side} {position.lot}
@@ -1329,7 +1337,7 @@ export default function ReplayChart({
         )}
 
         {/* Barre de progression temporelle ultra-fine (Slider) */}
-        <div className="w-full px-1 py-0.5 flex items-center gap-2 shrink-0">
+        <div className="w-full px-1 py-0 flex items-center gap-2 shrink-0 h-4">
           <input
             type="range"
             min={startIdx}
@@ -1348,14 +1356,14 @@ export default function ReplayChart({
             className="w-full h-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary hover:h-1.5 transition-all"
             title={isEnglish ? 'Replay time slider' : 'Curseur temporel de replay'}
           />
-          <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 font-mono">
+          <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 font-mono leading-none">
             {progressPct}%
           </span>
         </div>
 
         {/* ==================== CONTENEUR DU GRAPHIQUE ==================== */}
         <div
-          className={`relative flex-1 min-h-[480px] sm:min-h-[600px] w-full rounded-none border-0 overflow-hidden transition-colors ${
+          className={`relative flex-1 min-h-0 w-full rounded-none border-0 overflow-hidden transition-colors ${
             isCutting ? 'cursor-crosshair' : ''
           }`}
           style={{ height: chartHeight, backgroundColor: chartColors?.bgColor || undefined }}
@@ -1402,7 +1410,7 @@ export default function ReplayChart({
           <div
             ref={containerRef}
             className="w-full h-full"
-            style={{ width: '100%', height: '100%', minHeight: '420px' }}
+            style={{ width: '100%', height: '100%', minHeight: '220px' }}
             onContextMenu={handleContextMenu}
           />
           <ChartWatermark />

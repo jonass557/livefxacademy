@@ -97,11 +97,13 @@ const TrainerDashboard = () => {
   ];
 
 
+  const isChartSection = activeSection === 'trading-demo' || activeSection === 'backtesting';
+
   return (
-    <div className="min-h-[calc(100vh-4rem)]">
-      <main className="w-full">
-        {/* Backtesting : pleine largeur pour maximiser l'espace du graphique */}
-        <div className={`p-4 md:p-6 mx-auto ${activeSection === 'backtesting' ? 'max-w-none' : 'max-w-7xl'}`}>
+    <div className={isChartSection ? 'h-screen max-h-screen w-screen max-w-full overflow-hidden flex flex-col p-0 m-0' : 'min-h-[calc(100vh-4rem)]'}>
+      <main className={isChartSection ? 'w-full h-full flex-1 min-h-0 flex flex-col p-0 m-0' : 'w-full'}>
+        {/* Graphiques : pleine largeur et hauteur sans padding pour maximiser l'espace */}
+        <div className={isChartSection ? 'h-full w-full flex-1 min-h-0 overflow-hidden p-0 m-0' : `p-4 md:p-6 mx-auto max-w-7xl`}>
           {activeSection === 'dashboard' ? (
             <div className="space-y-8">
               {/* Header */}
@@ -169,10 +171,20 @@ const TrainerDashboard = () => {
               <DashboardOverview key={`dashboard-${refreshKey}`} user={user} onNavigate={handleSectionChange} />
             </div>
           ) : (
-            <div className="space-y-4">
-              <Button variant="ghost" className="gap-2" onClick={handleGoBack}>
-                <ArrowLeft className="h-4 w-4" /> Retour
-              </Button>
+            <div className={isChartSection ? 'relative h-full w-full flex-1 min-h-0 overflow-hidden p-0 m-0' : 'space-y-4'}>
+              {isChartSection ? (
+                <button
+                  onClick={handleGoBack}
+                  className="fixed top-1.5 left-1.5 sm:top-2 sm:left-2.5 z-[75] flex items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl bg-primary text-primary-foreground font-bold h-7 sm:h-8 px-2.5 sm:px-3.5 text-[11px] sm:text-xs hover:bg-primary/90 active:scale-95 transition-all shadow-lg border border-primary-foreground/20 cursor-pointer"
+                  title="Retour à la page précédente"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Retour
+                </button>
+              ) : (
+                <Button variant="ghost" className="gap-2" onClick={handleGoBack}>
+                  <ArrowLeft className="h-4 w-4" /> Retour
+                </Button>
+              )}
               {activeSection === 'profile' && <ProfileSection key={`profile-${refreshKey}`} />}
               {activeSection === 'registration' && <RegistrationDetails key={`registration-${refreshKey}`} />}
               {activeSection === 'strategies' && <StrategiesSection key={`strategies-${refreshKey}`} />}
