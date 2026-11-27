@@ -544,14 +544,20 @@ function buildLineWithTextFigures({
     });
   }
 
-  // Cibles tactiles invisibles sur les points d'ancrage
+  // Poignées visuelles TradingView sur les points d'ancrage (ignoreEvent: true pour que l'intercepteur tactile gère l'étirement sans déplacer tout l'outil)
   if (Array.isArray(endpointCircles)) {
     endpointCircles.forEach((pt) => {
       if (pt && pt.x != null && pt.y != null) {
         figures.push({
           type: 'circle',
-          attrs: { x: pt.x, y: pt.y, r: 18 },
-          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+          attrs: { x: pt.x, y: pt.y, r: 5 },
+          styles: {
+            style: 'stroke_fill',
+            color: '#ffffff',
+            borderColor: lineColor || '#2563eb',
+            borderSize: 2,
+          },
+          ignoreEvent: true,
         });
       }
     });
@@ -759,8 +765,9 @@ export function ensureCustomOverlaysAndIndicators() {
       coordinates.forEach((pt) => {
         figures.push({
           type: 'circle',
-          attrs: { x: pt.x, y: pt.y, r: 18 },
-          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+          attrs: { x: pt.x, y: pt.y, r: 5 },
+          styles: { style: 'stroke_fill', color: '#ffffff', borderColor: lineColor, borderSize: 2 },
+          ignoreEvent: true,
         });
       });
 
@@ -768,7 +775,7 @@ export function ensureCustomOverlaysAndIndicators() {
         const p1 = coordinates[coordinates.length - 2];
         const p2 = coordinates[coordinates.length - 1];
         const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-        const headLen = Math.max(12, lineSize * 4.5);
+        const headLen = Math.max(10, lineSize * 4.2);
         const w1 = {
           x: p2.x - headLen * Math.cos(angle - Math.PI / 6),
           y: p2.y - headLen * Math.sin(angle - Math.PI / 6),
@@ -791,24 +798,35 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
-  // 2. Rectangle / Zone avec alignement complet TradingView (Top/Middle/Bottom & Left/Center/Right)
+  // 2. Rectangle / Zone avec 8 points d'étirement (Haut, Bas, Gauche, Droite + 4 Coins) et texte TradingView
   registerOverlay({
     name: 'rect',
     totalStep: 3,
-    needDefaultPointFigure: true,
+    needDefaultPointFigure: false,
     createPointFigures: ({ coordinates, overlay }) => {
-      if (!coordinates || coordinates.length < 2) return [];
-      const [a, b] = coordinates;
+      if (!coordinates || coordinates.length < 1) return [];
+      const a = coordinates[0];
+      const b = coordinates[1] || { x: a.x + 80, y: a.y + 45 };
+      const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
+      const toolScale = Math.max(0.4, Math.min(2.5, Number(ext.toolScale) || 1));
+
       const strokeColor = overlay?.styles?.polygon?.borderColor || overlay?.styles?.rect?.borderColor || overlay?.styles?.line?.color || '#3b82f6';
-      const strokeSize = overlay?.styles?.polygon?.borderSize || overlay?.styles?.rect?.borderSize || overlay?.styles?.line?.size || 1.5;
+      const strokeSize = (overlay?.styles?.polygon?.borderSize || overlay?.styles?.rect?.borderSize || overlay?.styles?.line?.size || 1.5) * toolScale;
       const strokeStyle = overlay?.styles?.polygon?.borderStyle || overlay?.styles?.rect?.borderStyle || overlay?.styles?.line?.style || 'solid';
       const dashedValue = overlay?.styles?.polygon?.borderDashedValue || overlay?.styles?.rect?.borderDashedValue || (strokeStyle === 'dashed' ? [6, 4] : undefined);
       const fillColor = overlay?.styles?.polygon?.color || overlay?.styles?.rect?.color || hexToRgba(strokeColor, 0.18);
 
+      const minX = Math.min(a.x, b.x);
+      const maxX = Math.max(a.x, b.x);
+      const minY = Math.min(a.y, b.y);
+      const maxY = Math.max(a.y, b.y);
+      const midX = (minX + maxX) / 2;
+      const midY = (minY + maxY) / 2;
+
       const figures = [
         {
           type: 'polygon',
-          attrs: { coordinates: [{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }] },
+          attrs: { coordinates: [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }] },
           styles: {
             style: 'stroke_fill',
             color: fillColor,
@@ -820,34 +838,28 @@ export function ensureCustomOverlaysAndIndicators() {
         },
       ];
 
-      if (overlay.extendData?.text) {
-        const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : overlay.extendData;
+      if (ext.text) {
         const txt = String(ext.text || '');
         if (txt.trim()) {
           const hAlign = String(ext.align || 'center').toLowerCase();
           const vAlign = String(ext.vAlign || ext.verticalAlign || 'middle').toLowerCase();
-          const fontSize = Number(ext.fontSize) || 14;
+          const fontSize = Math.max(6, Math.round((Number(ext.fontSize) || 13) * toolScale));
           const isBold = ext.bold !== false;
           const isItalic = Boolean(ext.italic);
           const weightStr = isItalic && isBold ? 'italic bold' : isItalic ? 'italic' : isBold ? 'bold' : 'normal';
           const textColor = ext.textColor || ext.color || strokeColor || '#ffffff';
 
-          const minX = Math.min(a.x, b.x);
-          const maxX = Math.max(a.x, b.x);
-          const minY = Math.min(a.y, b.y);
-          const maxY = Math.max(a.y, b.y);
-
-          let tx = (minX + maxX) / 2;
+          let tx = midX;
           if (hAlign === 'left') tx = minX + 10;
           else if (hAlign === 'right') tx = maxX - 10;
 
-          let ty = (minY + maxY) / 2;
+          let ty = midY;
           let baseline = 'middle';
           if (vAlign === 'top') {
-            ty = minY + 8;
+            ty = minY + 6;
             baseline = 'top';
           } else if (vAlign === 'bottom') {
-            ty = maxY - 8;
+            ty = maxY - 6;
             baseline = 'bottom';
           }
 
@@ -871,18 +883,155 @@ export function ensureCustomOverlaysAndIndicators() {
         }
       }
 
-      figures.push(
-        { type: 'circle', attrs: { x: a.x, y: a.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: b.x, y: a.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: b.x, y: b.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: a.x, y: b.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
-      );
+      // 8 points d'étirement visuels : 4 coins + 4 côtés (Haut, Bas, Gauche, Droite)
+      const handlePts = [
+        { x: minX, y: minY }, // Coin Haut-Gauche
+        { x: midX, y: minY }, // Côté Haut
+        { x: maxX, y: minY }, // Coin Haut-Droit
+        { x: maxX, y: midY }, // Côté Droit
+        { x: maxX, y: maxY }, // Coin Bas-Droit
+        { x: midX, y: maxY }, // Côté Bas
+        { x: minX, y: maxY }, // Coin Bas-Gauche
+        { x: minX, y: midY }, // Côté Gauche
+      ];
+      handlePts.forEach((pt) => {
+        figures.push({
+          type: 'circle',
+          attrs: { x: pt.x, y: pt.y, r: 5 },
+          styles: {
+            style: 'stroke_fill',
+            color: '#ffffff',
+            borderColor: strokeColor || '#2563eb',
+            borderSize: 2,
+          },
+          ignoreEvent: true,
+        });
+      });
 
       return figures;
     },
   });
 
-  // 3. Texte / Annotation (écriture directe sur la zone cliquée du graphique)
+  // 2b. Retracement Fibonacci ICT / OTE (exactement conforme à la capture : 0, 0.5, 0.62, 0.705, 0.79, 1 + diagonale pointillée)
+  registerOverlay({
+    name: 'fibonacciLine',
+    totalStep: 3,
+    needDefaultPointFigure: false,
+    createPointFigures: ({ coordinates, overlay }) => {
+      if (!coordinates || coordinates.length < 1) return [];
+      const p1 = coordinates[0];
+      const p2 = coordinates[1] || { x: p1.x + 110, y: p1.y - 90 };
+      const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
+      const toolScale = Math.max(0.4, Math.min(2.5, Number(ext.toolScale) || 1));
+      const baseLineSize = Number(overlay?.styles?.line?.size) || 1.8;
+      const lineSize = Math.max(0.8, baseLineSize * toolScale);
+      const fontSize = Math.max(7, Math.round((Number(ext.fontSize) || 12) * toolScale));
+
+      const leftX = Math.min(p1.x, p2.x);
+      const rightX = Math.max(leftX + 36, Math.max(p1.x, p2.x));
+
+      const FIB_LEVELS = [
+        { level: 0,     label: '0',     color: '#f23645' },
+        { level: 0.5,   label: '0.5',   color: '#22ab94' },
+        { level: 0.62,  label: '0.62',  color: '#00897b' },
+        { level: 0.705, label: '0.705', color: '#2962ff' },
+        { level: 0.79,  label: '0.79',  color: '#00bcd4' },
+        { level: 1,     label: '1',     color: '#787b86' },
+      ];
+
+      const figures = [
+        // Ligne diagonale pointillée grise reliant le point 1 (niveau 1) au point 2 (niveau 0)
+        {
+          type: 'line',
+          attrs: { coordinates: [p1, p2] },
+          styles: {
+            color: '#787b86',
+            size: Math.max(1, 1.5 * toolScale),
+            style: 'dashed',
+            dashedValue: [6, 5],
+          },
+        },
+      ];
+
+      FIB_LEVELS.forEach((item) => {
+        const y = p2.y + (p1.y - p2.y) * item.level;
+        // Ligne horizontale bornée entre leftX et rightX
+        figures.push({
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: leftX, y },
+              { x: rightX, y },
+            ],
+          },
+          styles: {
+            color: item.color,
+            size: lineSize,
+            style: 'solid',
+          },
+        });
+        // Couloir tactile invisible sur chaque niveau pour faciliter la sélection/déplacement
+        figures.push({
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: leftX, y },
+              { x: rightX, y },
+            ],
+          },
+          styles: {
+            color: 'rgba(0,0,0,0)',
+            size: 14,
+            style: 'solid',
+          },
+        });
+        // Libellé du niveau à droite de la ligne dans la même couleur
+        figures.push({
+          type: 'text',
+          attrs: {
+            x: rightX + 8,
+            y,
+            text: item.label,
+            align: 'left',
+            baseline: 'middle',
+          },
+          styles: {
+            color: item.color,
+            size: fontSize,
+            weight: 'normal',
+            family: 'sans-serif',
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            borderSize: 0,
+            paddingLeft: 0,
+            paddingRight: 0,
+            paddingTop: 0,
+            paddingBottom: 0,
+          },
+          ignoreEvent: true,
+        });
+      });
+
+      // Poignées d'étirement sur p1 et p2
+      [p1, p2].forEach((pt) => {
+        figures.push({
+          type: 'circle',
+          attrs: { x: pt.x, y: pt.y, r: 5 },
+          styles: {
+            style: 'stroke_fill',
+            color: '#ffffff',
+            borderColor: '#2563eb',
+            borderSize: 2,
+          },
+          ignoreEvent: true,
+        });
+      });
+
+      return figures;
+    },
+  });
+
+  // 3. Texte / Annotation (écriture directe sur la zone cliquée du graphique, taille ajustable sur mobile & PC)
   registerOverlay({
     name: 'text',
     totalStep: 2,
@@ -893,7 +1042,8 @@ export function ensureCustomOverlaysAndIndicators() {
       const rawText = ext.text != null ? String(ext.text) : '';
       const align = ext.align || 'left';
       const vAlign = String(ext.vAlign || 'middle').toLowerCase();
-      const fontSize = Number(ext.fontSize) || 16;
+      const toolScale = Math.max(0.4, Math.min(2.5, Number(ext.toolScale) || 1));
+      const fontSize = Math.max(6, Math.round((Number(ext.fontSize) || 14) * toolScale));
       const isBold = ext.bold !== false;
       const isItalic = Boolean(ext.italic);
       const weightStr = isItalic && isBold ? 'italic bold' : isItalic ? 'italic' : isBold ? 'bold' : 'normal';
@@ -944,16 +1094,19 @@ export function ensureCustomOverlaysAndIndicators() {
   registerOverlay({
     name: 'arrow',
     totalStep: 3,
-    needDefaultPointFigure: true,
+    needDefaultPointFigure: false,
     createPointFigures: ({ coordinates, overlay }) => {
-      if (!coordinates || coordinates.length < 2) return [];
-      const [p1, p2] = coordinates;
+      if (!coordinates || coordinates.length < 1) return [];
+      const p1 = coordinates[0];
+      const p2 = coordinates[1] || { x: p1.x + 70, y: p1.y - 35 };
+      const ext = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
+      const toolScale = Math.max(0.4, Math.min(2.5, Number(ext.toolScale) || 1));
       const color = overlay?.styles?.line?.color || '#3b82f6';
-      const size = overlay?.styles?.line?.size || 2;
+      const size = (overlay?.styles?.line?.size || 2) * toolScale;
       const lineStyle = overlay?.styles?.line?.style || 'solid';
       const dashedValue = overlay?.styles?.line?.dashedValue;
       const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      const headLen = Math.max(14, size * 5);
+      const headLen = Math.max(10, size * 5);
       const w1 = { x: p2.x - headLen * Math.cos(angle - Math.PI / 6), y: p2.y - headLen * Math.sin(angle - Math.PI / 6) };
       const w2 = { x: p2.x - headLen * Math.cos(angle + Math.PI / 6), y: p2.y - headLen * Math.sin(angle + Math.PI / 6) };
       const figs = buildLineWithTextFigures({
@@ -972,7 +1125,7 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
-  // 5. Arrow Marker (Marqueur flèche)
+  // 5. Arrow Marker (Marqueur flèche — taille ajustable via toolScale)
   registerOverlay({
     name: 'arrowMarker',
     totalStep: 2,
@@ -980,16 +1133,17 @@ export function ensureCustomOverlaysAndIndicators() {
     createPointFigures: ({ coordinates, overlay }) => {
       if (!coordinates || coordinates.length < 1) return [];
       const p = coordinates[0];
+      const scale = Math.max(0.4, Math.min(2.5, Number(overlay?.extendData?.toolScale) || 1));
       const color = overlay?.styles?.line?.color || '#3b82f6';
       return [
-        { type: 'circle', attrs: { x: p.x, y: p.y - 20, r: 8 }, styles: { style: 'fill', color } },
-        { type: 'line', attrs: { coordinates: [{ x: p.x, y: p.y - 12 }, { x: p.x, y: p.y - 2 }] }, styles: { size: 2, color } },
-        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y }, { x: p.x - 5, y: p.y - 6 }, { x: p.x + 5, y: p.y - 6 }] }, styles: { style: 'fill', color } },
+        { type: 'circle', attrs: { x: p.x, y: p.y - 20 * scale, r: 8 * scale }, styles: { style: 'fill', color } },
+        { type: 'line', attrs: { coordinates: [{ x: p.x, y: p.y - 12 * scale }, { x: p.x, y: p.y - 2 * scale }] }, styles: { size: 2 * scale, color } },
+        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y }, { x: p.x - 5 * scale, y: p.y - 6 * scale }, { x: p.x + 5 * scale, y: p.y - 6 * scale }] }, styles: { style: 'fill', color } },
       ];
     },
   });
 
-  // 6. Arrow Up (Signal Haussier ▲)
+  // 6. Arrow Up (Signal Haussier ▲ — taille ajustable via toolScale)
   registerOverlay({
     name: 'arrowUp',
     totalStep: 2,
@@ -997,15 +1151,15 @@ export function ensureCustomOverlaysAndIndicators() {
     createPointFigures: ({ coordinates, overlay }) => {
       if (!coordinates || coordinates.length < 1) return [];
       const p = coordinates[0];
+      const scale = Math.max(0.4, Math.min(2.5, Number(overlay?.extendData?.toolScale) || 1));
       const color = overlay?.styles?.line?.color || overlay?.styles?.polygon?.borderColor || '#22c55e';
       return [
-        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y - 16 }, { x: p.x - 8, y: p.y }, { x: p.x + 8, y: p.y }] }, styles: { style: 'fill', color } },
-        { type: 'circle', attrs: { x: p.x, y: p.y - 8, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y - 16 * scale }, { x: p.x - 8 * scale, y: p.y }, { x: p.x + 8 * scale, y: p.y }] }, styles: { style: 'fill', color } },
       ];
     },
   });
 
-  // 7. Arrow Down (Signal Baissier ▼)
+  // 7. Arrow Down (Signal Baissier ▼ — taille ajustable via toolScale)
   registerOverlay({
     name: 'arrowDown',
     totalStep: 2,
@@ -1013,35 +1167,39 @@ export function ensureCustomOverlaysAndIndicators() {
     createPointFigures: ({ coordinates, overlay }) => {
       if (!coordinates || coordinates.length < 1) return [];
       const p = coordinates[0];
+      const scale = Math.max(0.4, Math.min(2.5, Number(overlay?.extendData?.toolScale) || 1));
       const color = overlay?.styles?.line?.color || overlay?.styles?.polygon?.borderColor || '#ef4444';
       return [
-        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y + 16 }, { x: p.x - 8, y: p.y }, { x: p.x + 8, y: p.y }] }, styles: { style: 'fill', color } },
-        { type: 'circle', attrs: { x: p.x, y: p.y + 8, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
+        { type: 'polygon', attrs: { coordinates: [{ x: p.x, y: p.y + 16 * scale }, { x: p.x - 8 * scale, y: p.y }, { x: p.x + 8 * scale, y: p.y }] }, styles: { style: 'fill', color } },
       ];
     },
   });
 
-  // 7. Position Long (Risk / Reward TradingView)
+  // 7b. Position Long (Risk / Reward TradingView — apparition dès le 1er clic + poignées d'étirement sur tous les côtés)
   registerOverlay({
     name: 'positionLong',
-    totalStep: 4,
-    needDefaultPointFigure: true,
+    totalStep: 3,
+    needDefaultPointFigure: false,
     createPointFigures: ({ coordinates, overlay, yAxis }) => {
-      if (coordinates.length < 2) return [];
+      if (!coordinates || coordinates.length < 1) return [];
       const pEntry = coordinates[0];
-      const pTp = coordinates[1];
-      const pSl = coordinates[2] || { x: pTp.x, y: pEntry.y + (pEntry.y - pTp.y) * 0.5 };
+      const pTp = coordinates[1] || { x: pEntry.x + 120, y: pEntry.y - 55 };
+      const pSl = coordinates[2] || { x: pTp.x, y: pEntry.y + Math.max(25, Math.abs(pEntry.y - pTp.y) * 0.55) };
       const left = Math.min(pEntry.x, pTp.x, pSl.x);
-      const right = Math.max(pEntry.x + 140, pTp.x, pSl.x);
+      const right = Math.max(left + 80, pEntry.x, pTp.x, pSl.x);
+      const midX = (left + right) / 2;
+
+      const ext = overlay.extendData || {};
+      const toolScale = Math.max(0.4, Math.min(2.5, Number(ext.toolScale) || 1));
+      const labelFontSize = Math.max(7, Math.round(((Number(ext.fontSize) || 11) * toolScale)));
 
       const entryPrice = overlay.points[0]?.value || 0;
-      const tpPrice = overlay.points[1]?.value || 0;
+      const tpPrice = overlay.points[1]?.value || (entryPrice * 1.003);
       const slPrice = overlay.points[2]?.value || (entryPrice - Math.abs(tpPrice - entryPrice) * 0.5);
       const risk = Math.abs(entryPrice - slPrice);
       const reward = Math.abs(tpPrice - entryPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
 
-      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché avec fallback garanti
       const rawCurrent = overlay.extendData?.currentPrice;
       const currentPrice = (rawCurrent != null && Number.isFinite(Number(rawCurrent)))
         ? Number(rawCurrent)
@@ -1068,35 +1226,30 @@ export function ensureCustomOverlaysAndIndicators() {
         styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.16)', borderColor: '#ef4444', borderSize: 1 },
       });
 
-      // Calcul PnL et pips
       const diff = currentPrice - entryPrice;
       const pct = entryPrice > 0 ? (diff / entryPrice) * 100 : 0;
       const pipSize = entryPrice > 500 ? (entryPrice > 5000 ? 1 : 0.1) : (entryPrice > 20 ? 0.01 : 0.0001);
       const pips = diff / pipSize;
 
-      // Évolution dynamique du prix (zone parcourue plus foncée + ligne pointillée + badge)
       if (pCurrentY != null && !isNaN(pCurrentY)) {
         if (currentPrice > entryPrice) {
-          // Évolution positive vers le TP : zone verte plus foncée
-          const clampY = Math.max(pTp.y, pCurrentY);
+          const clampY = Math.max(Math.min(pTp.y, pEntry.y), Math.min(pEntry.y, pCurrentY));
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.45)' },
+            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.42)' },
             ignoreEvent: true,
           });
         } else if (currentPrice < entryPrice) {
-          // Évolution négative vers le SL : zone rouge plus foncée
-          const clampY = Math.min(pSl.y, pCurrentY);
+          const clampY = Math.min(Math.max(pSl.y, pEntry.y), Math.max(pEntry.y, pCurrentY));
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.45)' },
+            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.42)' },
             ignoreEvent: true,
           });
         }
 
-        // Ligne pointillée marquant le niveau actuel d'évolution du trade
         const lineColor = currentPrice >= entryPrice ? '#22c55e' : '#ef4444';
         figures.push({
           type: 'line',
@@ -1105,28 +1258,20 @@ export function ensureCustomOverlaysAndIndicators() {
           ignoreEvent: true,
         });
 
-        // Trajectoire directe depuis l'entrée vers l'évolution actuelle
-        const pEvolutionX = Math.min(right, left + (right - left) * 0.65);
-        figures.push({
-          type: 'line',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: pEvolutionX, y: pCurrentY }] },
-          styles: { size: 1.2, color: lineColor, style: 'dashed', dashedValue: [3, 3] },
-          ignoreEvent: true,
-        });
-
-        // Badge d'évolution du trade (Gain/Perte en pips et %)
         const badgeText = `${diff >= 0 ? '+' : ''}${pips.toFixed(1)} pips (${diff >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
-        const badgeY = Math.max(pTp.y + 16, Math.min(pSl.y - 16, pCurrentY));
+        const badgeY = Math.max(Math.min(pTp.y, pSl.y) + 14, Math.min(Math.max(pTp.y, pSl.y) - 14, pCurrentY));
+        const bW = Math.round(118 * toolScale);
+        const bH = Math.round(18 * toolScale);
         figures.push({
           type: 'rect',
-          attrs: { x: right - 130, y: badgeY - 10, width: 125, height: 20 },
+          attrs: { x: right - bW - 4, y: badgeY - bH / 2, width: bW, height: bH },
           styles: { style: 'fill', color: currentPrice >= entryPrice ? 'rgba(22, 163, 74, 0.92)' : 'rgba(220, 38, 38, 0.92)' },
           ignoreEvent: true,
         });
         figures.push({
           type: 'text',
-          attrs: { x: right - 68, y: badgeY, text: badgeText, align: 'center', baseline: 'middle' },
-          styles: { color: '#ffffff', size: 10, weight: 'bold' },
+          attrs: { x: right - bW / 2 - 4, y: badgeY, text: badgeText, align: 'center', baseline: 'middle' },
+          styles: { color: '#ffffff', size: Math.max(7, Math.round(9.5 * toolScale)), weight: 'bold' },
           ignoreEvent: true,
         });
       }
@@ -1141,36 +1286,49 @@ export function ensureCustomOverlaysAndIndicators() {
       // Badge R:R et TP
       figures.push({
         type: 'text',
-        attrs: { x: left + 6, y: pTp.y + 14, text: `TP | R:R ${rr}` },
-        styles: { color: '#22c55e', size: 11, weight: 'bold' },
+        attrs: { x: left + 6, y: pTp.y + 12, text: `TP | R:R ${rr}` },
+        styles: { color: '#22c55e', size: labelFontSize, weight: 'bold' },
+        ignoreEvent: true,
       });
 
       // Badge SL
       figures.push({
         type: 'text',
         attrs: { x: left + 6, y: pSl.y - 6, text: `SL` },
-        styles: { color: '#ef4444', size: 11, weight: 'bold' },
+        styles: { color: '#ef4444', size: labelFontSize, weight: 'bold' },
+        ignoreEvent: true,
       });
 
-      // Points de contrôle
-      figures.push(
-        { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
-      );
+      // Poignées visuelles d'étirement (TP haut, SL bas, Entrée gauche, Largeur droite)
+      const handles = [
+        { x: midX, y: pTp.y, border: '#22c55e' },
+        { x: right, y: pTp.y, border: '#22c55e' },
+        { x: midX, y: pSl.y, border: '#ef4444' },
+        { x: right, y: pSl.y, border: '#ef4444' },
+        { x: left, y: pEntry.y, border: '#2563eb' },
+        { x: right, y: pEntry.y, border: '#2563eb' },
+      ];
+      handles.forEach((h) => {
+        figures.push({
+          type: 'circle',
+          attrs: { x: h.x, y: h.y, r: 5 },
+          styles: { style: 'stroke_fill', color: '#ffffff', borderColor: h.border, borderSize: 2 },
+          ignoreEvent: true,
+        });
+      });
 
       return figures;
     },
     createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
-      if (!coordinates || coordinates.length < 2) return [];
+      if (!coordinates || coordinates.length < 1) return [];
       const entryPrice = overlay.points[0]?.value || 0;
       const tpPrice = overlay.points[1]?.value || 0;
       const slPrice = overlay.points[2]?.value ?? (entryPrice - Math.abs(tpPrice - entryPrice) * 0.5);
       const dec = precision?.price ?? 4;
 
       const pEntryY = coordinates[0]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(entryPrice) : 0);
-      const pTpY = coordinates[1]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(tpPrice) : 0);
-      const pSlY = coordinates[2]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(slPrice) : (pEntryY + (pEntryY - pTpY) * 0.5));
+      const pTpY = coordinates[1]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(tpPrice) : pEntryY - 50);
+      const pSlY = coordinates[2]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(slPrice) : (pEntryY + Math.abs(pEntryY - pTpY) * 0.5));
 
       const isFromZero = yAxis?.isFromZero ? yAxis.isFromZero() : false;
       const width = bounding?.width || 65;
@@ -1178,14 +1336,14 @@ export function ensureCustomOverlaysAndIndicators() {
       const align = isFromZero ? 'left' : 'right';
 
       const items = [
-        { price: entryPrice, y: pEntryY, color: '#2563eb' }, // Bleu pour le point d'entrée
-        { price: tpPrice, y: pTpY, color: '#16a34a' },       // Vert pour le TP
-        { price: slPrice, y: pSlY, color: '#dc2626' },       // Rouge pour le SL
+        { price: entryPrice, y: pEntryY, color: '#2563eb' },
+        { price: tpPrice, y: pTpY, color: '#16a34a' },
+        { price: slPrice, y: pSlY, color: '#dc2626' },
       ];
 
       const figures = [];
       items.forEach(item => {
-        if (typeof item.y === 'number' && !isNaN(item.y)) {
+        if (typeof item.y === 'number' && !isNaN(item.y) && item.price > 0) {
           figures.push({
             type: 'rect',
             attrs: { x: 0, y: item.y - 9, width, height: 18 },
@@ -1210,27 +1368,31 @@ export function ensureCustomOverlaysAndIndicators() {
     },
   });
 
-  // 8. Position Short (Risk / Reward TradingView)
+  // 8. Position Short (Risk / Reward TradingView — apparition dès le 1er clic + poignées d'étirement sur tous les côtés)
   registerOverlay({
     name: 'positionShort',
-    totalStep: 4,
-    needDefaultPointFigure: true,
+    totalStep: 3,
+    needDefaultPointFigure: false,
     createPointFigures: ({ coordinates, overlay, yAxis }) => {
-      if (coordinates.length < 2) return [];
+      if (!coordinates || coordinates.length < 1) return [];
       const pEntry = coordinates[0];
-      const pTp = coordinates[1];
-      const pSl = coordinates[2] || { x: pTp.x, y: pEntry.y - (pTp.y - pEntry.y) * 0.5 };
+      const pTp = coordinates[1] || { x: pEntry.x + 120, y: pEntry.y + 55 };
+      const pSl = coordinates[2] || { x: pTp.x, y: pEntry.y - Math.max(25, Math.abs(pTp.y - pEntry.y) * 0.55) };
       const left = Math.min(pEntry.x, pTp.x, pSl.x);
-      const right = Math.max(pEntry.x + 140, pTp.x, pSl.x);
+      const right = Math.max(left + 80, pEntry.x, pTp.x, pSl.x);
+      const midX = (left + right) / 2;
+
+      const ext = overlay.extendData || {};
+      const toolScale = Math.max(0.4, Math.min(2.5, Number(ext.toolScale) || 1));
+      const labelFontSize = Math.max(7, Math.round(((Number(ext.fontSize) || 11) * toolScale)));
 
       const entryPrice = overlay.points[0]?.value || 0;
-      const tpPrice = overlay.points[1]?.value || 0;
+      const tpPrice = overlay.points[1]?.value || (entryPrice * 0.997);
       const slPrice = overlay.points[2]?.value || (entryPrice + Math.abs(entryPrice - tpPrice) * 0.5);
       const risk = Math.abs(slPrice - entryPrice);
       const reward = Math.abs(entryPrice - tpPrice);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '—';
 
-      // Évolution dynamique du trade (TradingView) : lecture du dernier prix de marché avec fallback garanti
       const rawCurrent = overlay.extendData?.currentPrice;
       const currentPrice = (rawCurrent != null && Number.isFinite(Number(rawCurrent)))
         ? Number(rawCurrent)
@@ -1257,35 +1419,30 @@ export function ensureCustomOverlaysAndIndicators() {
         styles: { style: 'stroke_fill', color: 'rgba(239, 68, 68, 0.16)', borderColor: '#ef4444', borderSize: 1 },
       });
 
-      // Calcul PnL et pips pour Short : profit si currentPrice < entryPrice
       const diff = entryPrice - currentPrice;
       const pct = entryPrice > 0 ? (diff / entryPrice) * 100 : 0;
       const pipSize = entryPrice > 500 ? (entryPrice > 5000 ? 1 : 0.1) : (entryPrice > 20 ? 0.01 : 0.0001);
       const pips = diff / pipSize;
 
-      // Évolution dynamique du prix (zone parcourue plus foncée + ligne pointillée + badge)
       if (pCurrentY != null && !isNaN(pCurrentY)) {
         if (currentPrice < entryPrice) {
-          // Évolution positive vers le TP : zone verte plus foncée
-          const clampY = Math.min(pTp.y, pCurrentY);
+          const clampY = Math.min(Math.max(pTp.y, pEntry.y), Math.max(pEntry.y, pCurrentY));
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.45)' },
+            styles: { style: 'fill', color: 'rgba(34, 197, 94, 0.42)' },
             ignoreEvent: true,
           });
         } else if (currentPrice > entryPrice) {
-          // Évolution négative vers le SL : zone rouge plus foncée
-          const clampY = Math.max(pSl.y, pCurrentY);
+          const clampY = Math.max(Math.min(pSl.y, pEntry.y), Math.min(pEntry.y, pCurrentY));
           figures.push({
             type: 'polygon',
             attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: right, y: pEntry.y }, { x: right, y: clampY }, { x: left, y: clampY }] },
-            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.45)' },
+            styles: { style: 'fill', color: 'rgba(239, 68, 68, 0.42)' },
             ignoreEvent: true,
           });
         }
 
-        // Ligne pointillée marquant le niveau actuel d'évolution du trade
         const lineColor = currentPrice <= entryPrice ? '#22c55e' : '#ef4444';
         figures.push({
           type: 'line',
@@ -1294,28 +1451,20 @@ export function ensureCustomOverlaysAndIndicators() {
           ignoreEvent: true,
         });
 
-        // Trajectoire directe depuis l'entrée vers l'évolution actuelle
-        const pEvolutionX = Math.min(right, left + (right - left) * 0.65);
-        figures.push({
-          type: 'line',
-          attrs: { coordinates: [{ x: left, y: pEntry.y }, { x: pEvolutionX, y: pCurrentY }] },
-          styles: { size: 1.2, color: lineColor, style: 'dashed', dashedValue: [3, 3] },
-          ignoreEvent: true,
-        });
-
-        // Badge d'évolution du trade (Gain/Perte en pips et %)
         const badgeText = `${diff >= 0 ? '+' : ''}${pips.toFixed(1)} pips (${diff >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
-        const badgeY = Math.max(pSl.y + 16, Math.min(pTp.y - 16, pCurrentY));
+        const badgeY = Math.max(Math.min(pTp.y, pSl.y) + 14, Math.min(Math.max(pTp.y, pSl.y) - 14, pCurrentY));
+        const bW = Math.round(118 * toolScale);
+        const bH = Math.round(18 * toolScale);
         figures.push({
           type: 'rect',
-          attrs: { x: right - 130, y: badgeY - 10, width: 125, height: 20 },
+          attrs: { x: right - bW - 4, y: badgeY - bH / 2, width: bW, height: bH },
           styles: { style: 'fill', color: currentPrice <= entryPrice ? 'rgba(22, 163, 74, 0.92)' : 'rgba(220, 38, 38, 0.92)' },
           ignoreEvent: true,
         });
         figures.push({
           type: 'text',
-          attrs: { x: right - 68, y: badgeY, text: badgeText, align: 'center', baseline: 'middle' },
-          styles: { color: '#ffffff', size: 10, weight: 'bold' },
+          attrs: { x: right - bW / 2 - 4, y: badgeY, text: badgeText, align: 'center', baseline: 'middle' },
+          styles: { color: '#ffffff', size: Math.max(7, Math.round(9.5 * toolScale)), weight: 'bold' },
           ignoreEvent: true,
         });
       }
@@ -1331,35 +1480,48 @@ export function ensureCustomOverlaysAndIndicators() {
       figures.push({
         type: 'text',
         attrs: { x: left + 6, y: pTp.y - 6, text: `TP | R:R ${rr}` },
-        styles: { color: '#22c55e', size: 11, weight: 'bold' },
+        styles: { color: '#22c55e', size: labelFontSize, weight: 'bold' },
+        ignoreEvent: true,
       });
 
       // Badge SL
       figures.push({
         type: 'text',
         attrs: { x: left + 6, y: pSl.y + 14, text: `SL` },
-        styles: { color: '#ef4444', size: 11, weight: 'bold' },
+        styles: { color: '#ef4444', size: labelFontSize, weight: 'bold' },
+        ignoreEvent: true,
       });
 
-      // Points de contrôle
-      figures.push(
-        { type: 'circle', attrs: { x: pEntry.x, y: pEntry.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: pTp.x, y: pTp.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: pSl.x, y: pSl.y, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
-      );
+      // Poignées visuelles d'étirement (TP bas, SL haut, Entrée gauche, Largeur droite)
+      const handles = [
+        { x: midX, y: pTp.y, border: '#22c55e' },
+        { x: right, y: pTp.y, border: '#22c55e' },
+        { x: midX, y: pSl.y, border: '#ef4444' },
+        { x: right, y: pSl.y, border: '#ef4444' },
+        { x: left, y: pEntry.y, border: '#2563eb' },
+        { x: right, y: pEntry.y, border: '#2563eb' },
+      ];
+      handles.forEach((h) => {
+        figures.push({
+          type: 'circle',
+          attrs: { x: h.x, y: h.y, r: 5 },
+          styles: { style: 'stroke_fill', color: '#ffffff', borderColor: h.border, borderSize: 2 },
+          ignoreEvent: true,
+        });
+      });
 
       return figures;
     },
     createYAxisFigures: ({ coordinates, overlay, bounding, precision, yAxis }) => {
-      if (!coordinates || coordinates.length < 2) return [];
+      if (!coordinates || coordinates.length < 1) return [];
       const entryPrice = overlay.points[0]?.value || 0;
       const tpPrice = overlay.points[1]?.value || 0;
       const slPrice = overlay.points[2]?.value ?? (entryPrice + Math.abs(entryPrice - tpPrice) * 0.5);
       const dec = precision?.price ?? 4;
 
       const pEntryY = coordinates[0]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(entryPrice) : 0);
-      const pTpY = coordinates[1]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(tpPrice) : 0);
-      const pSlY = coordinates[2]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(slPrice) : (pEntryY - (pTpY - pEntryY) * 0.5));
+      const pTpY = coordinates[1]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(tpPrice) : pEntryY + 50);
+      const pSlY = coordinates[2]?.y ?? (yAxis?.convertToPixel ? yAxis.convertToPixel(slPrice) : (pEntryY - Math.abs(pTpY - pEntryY) * 0.5));
 
       const isFromZero = yAxis?.isFromZero ? yAxis.isFromZero() : false;
       const width = bounding?.width || 65;
@@ -1367,14 +1529,14 @@ export function ensureCustomOverlaysAndIndicators() {
       const align = isFromZero ? 'left' : 'right';
 
       const items = [
-        { price: entryPrice, y: pEntryY, color: '#2563eb' }, // Bleu pour le point d'entrée
-        { price: tpPrice, y: pTpY, color: '#16a34a' },       // Vert pour le TP
-        { price: slPrice, y: pSlY, color: '#dc2626' },       // Rouge pour le SL
+        { price: entryPrice, y: pEntryY, color: '#2563eb' },
+        { price: tpPrice, y: pTpY, color: '#16a34a' },
+        { price: slPrice, y: pSlY, color: '#dc2626' },
       ];
 
       const figures = [];
       items.forEach(item => {
-        if (typeof item.y === 'number' && !isNaN(item.y)) {
+        if (typeof item.y === 'number' && !isNaN(item.y) && item.price > 0) {
           figures.push({
             type: 'rect',
             attrs: { x: 0, y: item.y - 9, width, height: 18 },
@@ -1506,22 +1668,20 @@ export function ensureCustomOverlaysAndIndicators() {
     totalStep: 7,
     needDefaultPointFigure: true,
     createPointFigures: ({ coordinates, overlay }) => {
-      if (coordinates.length < 2) return [];
+      if (coordinates.length < 1) return [];
       const labels = ['(0)', '(1)', '(2)', '(3)', '(4)', '(5)'];
+      const scale = Math.max(0.4, Math.min(2.5, Number(overlay?.extendData?.toolScale) || 1));
+      const fontSize = Math.max(7, Math.round(((Number(overlay?.extendData?.fontSize) || 11) * scale)));
       const lineColor = overlay?.styles?.line?.color || '#eab308';
       const figures = [
-        { type: 'line', attrs: { coordinates }, styles: { size: 2, color: lineColor } },
+        { type: 'line', attrs: { coordinates }, styles: { size: 2 * scale, color: lineColor } },
       ];
       coordinates.forEach((pt, idx) => {
         figures.push({
           type: 'text',
-          attrs: { x: pt.x, y: pt.y - 12, text: labels[idx] || `(${idx})`, align: 'center', baseline: 'middle' },
-          styles: { color: '#000000', size: 11, weight: 'bold', backgroundColor: lineColor, borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
-        });
-        figures.push({
-          type: 'circle',
-          attrs: { x: pt.x, y: pt.y, r: 18 },
-          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+          attrs: { x: pt.x, y: pt.y - 12 * scale, text: labels[idx] || `(${idx})`, align: 'center', baseline: 'middle' },
+          styles: { color: '#000000', size: fontSize, weight: 'bold', backgroundColor: lineColor, borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
+          ignoreEvent: true,
         });
       });
       return figures;
@@ -1534,22 +1694,20 @@ export function ensureCustomOverlaysAndIndicators() {
     totalStep: 5,
     needDefaultPointFigure: true,
     createPointFigures: ({ coordinates, overlay }) => {
-      if (coordinates.length < 2) return [];
+      if (coordinates.length < 1) return [];
       const labels = ['(0)', '(A)', '(B)', '(C)'];
+      const scale = Math.max(0.4, Math.min(2.5, Number(overlay?.extendData?.toolScale) || 1));
+      const fontSize = Math.max(7, Math.round(((Number(overlay?.extendData?.fontSize) || 11) * scale)));
       const lineColor = overlay?.styles?.line?.color || '#ec4899';
       const figures = [
-        { type: 'line', attrs: { coordinates }, styles: { size: 2, color: lineColor } },
+        { type: 'line', attrs: { coordinates }, styles: { size: 2 * scale, color: lineColor } },
       ];
       coordinates.forEach((pt, idx) => {
         figures.push({
           type: 'text',
-          attrs: { x: pt.x, y: pt.y - 12, text: labels[idx] || `(${idx})`, align: 'center', baseline: 'middle' },
-          styles: { color: '#ffffff', size: 11, weight: 'bold', backgroundColor: lineColor, borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
-        });
-        figures.push({
-          type: 'circle',
-          attrs: { x: pt.x, y: pt.y, r: 18 },
-          styles: { style: 'fill', color: 'rgba(0,0,0,0)' },
+          attrs: { x: pt.x, y: pt.y - 12 * scale, text: labels[idx] || `(${idx})`, align: 'center', baseline: 'middle' },
+          styles: { color: '#ffffff', size: fontSize, weight: 'bold', backgroundColor: lineColor, borderRadius: 8, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
+          ignoreEvent: true,
         });
       });
       return figures;
@@ -1560,19 +1718,23 @@ export function ensureCustomOverlaysAndIndicators() {
   registerOverlay({
     name: 'gannBox',
     totalStep: 3,
-    needDefaultPointFigure: true,
+    needDefaultPointFigure: false,
     createPointFigures: ({ coordinates, overlay }) => {
-      if (coordinates.length < 2) return [];
-      const [a, b] = coordinates;
+      if (!coordinates || coordinates.length < 1) return [];
+      const a = coordinates[0];
+      const b = coordinates[1] || { x: a.x + 100, y: a.y + 60 };
       const minX = Math.min(a.x, b.x);
       const maxX = Math.max(a.x, b.x);
       const minY = Math.min(a.y, b.y);
       const maxY = Math.max(a.y, b.y);
+      const midX = (minX + maxX) / 2;
+      const midY = (minY + maxY) / 2;
       const dx = maxX - minX;
       const dy = maxY - minY;
 
+      const scale = Math.max(0.4, Math.min(2.5, Number(overlay?.extendData?.toolScale) || 1));
       const strokeColor = overlay?.styles?.polygon?.borderColor || overlay?.styles?.rect?.borderColor || overlay?.styles?.line?.color || '#10b981';
-      const strokeSize = overlay?.styles?.polygon?.borderSize || overlay?.styles?.rect?.borderSize || overlay?.styles?.line?.size || 1.5;
+      const strokeSize = (overlay?.styles?.polygon?.borderSize || overlay?.styles?.rect?.borderSize || overlay?.styles?.line?.size || 1.5) * scale;
       const strokeStyle = overlay?.styles?.polygon?.borderStyle || overlay?.styles?.rect?.borderStyle || overlay?.styles?.line?.style || 'solid';
       const dashedValue = overlay?.styles?.polygon?.borderDashedValue || overlay?.styles?.rect?.borderDashedValue || (strokeStyle === 'dashed' ? [6, 4] : undefined);
       const fillColor = overlay?.styles?.polygon?.color || overlay?.styles?.rect?.color || hexToRgba(strokeColor, 0.08);
@@ -1598,7 +1760,8 @@ export function ensureCustomOverlaysAndIndicators() {
         figures.push({
           type: 'text',
           attrs: { x: minX + 4, y: y - 2, text: r.toString() },
-          styles: { color: strokeColor, size: 10 },
+          styles: { color: strokeColor, size: Math.max(7, Math.round(10 * scale)) },
+          ignoreEvent: true,
         });
       });
 
@@ -1611,12 +1774,24 @@ export function ensureCustomOverlaysAndIndicators() {
         });
       });
 
-      figures.push(
-        { type: 'circle', attrs: { x: minX, y: minY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: maxX, y: minY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: maxX, y: maxY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } },
-        { type: 'circle', attrs: { x: minX, y: maxY, r: 18 }, styles: { style: 'fill', color: 'rgba(0,0,0,0)' } }
-      );
+      const handlePts = [
+        { x: minX, y: minY },
+        { x: midX, y: minY },
+        { x: maxX, y: minY },
+        { x: maxX, y: midY },
+        { x: maxX, y: maxY },
+        { x: midX, y: maxY },
+        { x: minX, y: maxY },
+        { x: minX, y: midY },
+      ];
+      handlePts.forEach((pt) => {
+        figures.push({
+          type: 'circle',
+          attrs: { x: pt.x, y: pt.y, r: 5 },
+          styles: { style: 'stroke_fill', color: '#ffffff', borderColor: strokeColor, borderSize: 2 },
+          ignoreEvent: true,
+        });
+      });
 
       return figures;
     },
@@ -2600,21 +2775,20 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
     return () => window.removeEventListener('beforeunload', saveDrawings);
   }, [saveDrawings]);
 
-  // Désactive le scroll du graphique lorsqu'un outil est sélectionné pour permettre
-  // à l'utilisateur de déplacer ou étirer facilement l'outil au doigt sans conflit de pan
+  // Garantit que le défilement gauche-droite et le zoom restent toujours actifs au repos (évite tout blocage du graphique)
   useEffect(() => {
     const chart = chartRef?.current;
     if (!chart) return;
-    try {
-      if (selectedOverlay) {
-        chart.setScrollEnabled?.(false);
-      } else {
+    if (!drawingOverlayIdRef.current && !touchDragInfoRef.current) {
+      try {
         chart.setScrollEnabled?.(true);
-      }
-    } catch (_) {}
+        chart.setZoomEnabled?.(true);
+      } catch (_) {}
+    }
     return () => {
       try {
         chart?.setScrollEnabled?.(true);
+        chart?.setZoomEnabled?.(true);
       } catch (_) {}
     };
   }, [selectedOverlay, chartRef]);
@@ -2648,6 +2822,18 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
     if (!chart) return null;
     chart._lfxSaveDrawings = saveDrawings;
 
+    // Si un outil précédent était resté en attente de dessin non posé, le finaliser ou nettoyer
+    if (drawingOverlayIdRef.current) {
+      const prevOv = chart.getOverlayById?.(drawingOverlayIdRef.current);
+      if (prevOv && (!Array.isArray(prevOv.points) || prevOv.points.length === 0 || prevOv.points[0]?.value == null)) {
+        try { chart.removeOverlay({ id: drawingOverlayIdRef.current }); } catch (_) {}
+        activeOverlayIdsRef.current.delete(drawingOverlayIdRef.current);
+      } else if (prevOv && typeof prevOv.forceComplete === 'function') {
+        try { prevOv.forceComplete(); } catch (_) {}
+      }
+      drawingOverlayIdRef.current = null;
+    }
+
     const targetSym = options?.symbol || extra.extendData?.symbol;
     const initialPrice = extra.extendData?.currentPrice ?? getChartLatestPrice(targetSym);
     const extendData = {
@@ -2663,13 +2849,13 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       extendData,
       onDrawEnd: ({ overlay, x, y }) => {
         drawingOverlayIdRef.current = null;
+        try { chart.setScrollEnabled?.(true); } catch (_) {}
         if (x != null && y != null) {
           overlay._clickPixel = { x, y };
         }
         if (overlay.name === 'text') {
           overlay._editTrigger = Date.now();
         }
-        // Léger délai de 25ms pour laisser l'événement mouseup/touchend se terminer proprement
         setTimeout(() => {
           setSelectedOverlay(overlay);
           setEditTick((t) => t + 1);
@@ -2677,7 +2863,12 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
         }, 25);
         return true;
       },
+      onPressedMoveStart: () => {
+        try { chart.setScrollEnabled?.(false); } catch (_) {}
+        return false;
+      },
       onPressedMoveEnd: () => {
+        try { chart.setScrollEnabled?.(true); } catch (_) {}
         setTimeout(() => saveDrawings(), 60);
         return true;
       },
@@ -2687,6 +2878,7 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       },
       onDeselected: () => {
         setSelectedOverlay(null);
+        try { chart.setScrollEnabled?.(true); } catch (_) {}
         return true;
       },
       onClick: ({ overlay, x, y }) => {
@@ -2699,6 +2891,8 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
           if (typeof overlay?.forceComplete === 'function') {
             try { overlay.forceComplete(); } catch (_) {}
           }
+          drawingOverlayIdRef.current = null;
+          try { chart.setScrollEnabled?.(true); } catch (_) {}
           return true;
         }
         if (x != null && y != null) overlay._clickPixel = { x, y };
@@ -2712,6 +2906,8 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
           if (typeof overlay?.forceComplete === 'function') {
             try { overlay.forceComplete(); } catch (_) {}
           }
+          drawingOverlayIdRef.current = null;
+          try { chart.setScrollEnabled?.(true); } catch (_) {}
           return true;
         }
         deleteOverlay(overlay);
@@ -2723,39 +2919,328 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
     if (id) {
       activeOverlayIdsRef.current.add(id);
       drawingOverlayIdRef.current = id;
-      try {
-        chart.setScrollEnabled?.(false);
-      } catch (_) {}
     }
     return id;
   }, [chartRef, deleteOverlay, options?.symbol, saveDrawings]);
 
-  // Gestion du positionnement immédiat au clic/tap (pour Texte et outils à 1 point) et étirement au glisser
+  // Système unifié :
+  // 1) Apparition dès le 1er clic + étirement immédiat à partir du 1er point pour tous les outils (Position Long/Short, Rectangle, Fibonacci, Lignes...)
+  // 2) Intercepteur tactile & souris haute précision sur les poignées d'étirement (8 poignées du rectangle, TP/SL/Largeur de Long/Short, points de Fibonacci et lignes)
   useEffect(() => {
     const container = containerRef?.current;
     if (!container) return;
 
-    const handleStart = (clientX, clientY, targetEl) => {
+    const TWO_POINT_STRETCH_TOOLS = new Set([
+      'segment',
+      'rayLine',
+      'horizontalRayLine',
+      'rect',
+      'fibonacciLine',
+      'gannBox',
+      'arrow',
+      'positionLong',
+      'positionShort',
+    ]);
+
+    const pxToPt = (chart, x, y) => {
+      try {
+        const res = chart.convertFromPixel?.([{ x, y }], { paneId: 'candle_pane' });
+        const pt = Array.isArray(res) ? res[0] : res;
+        if (pt && pt.value != null) return pt;
+      } catch (_) {}
+      try {
+        const pt = chart.convertFromPixel?.({ x, y });
+        if (pt && pt.value != null) return pt;
+      } catch (_) {}
+      return null;
+    };
+
+    const ptsToPx = (chart, points) => {
+      if (!chart || !Array.isArray(points) || points.length === 0) return [];
+      try {
+        const res = chart.convertToPixel?.(points, { paneId: 'candle_pane' });
+        if (Array.isArray(res)) return res;
+        if (res && res.x != null) return [res];
+      } catch (_) {}
+      return [];
+    };
+
+    const finalizeKLineDrawing = (chart, overlay) => {
+      if (typeof overlay?.forceComplete === 'function') {
+        try { overlay.forceComplete(); } catch (_) {}
+      }
+      try { chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.(); } catch (_) {}
+    };
+
+    // Recherche si le doigt/curseur (x, y) touche une poignée d'étirement d'un outil existant
+    const findHitHandle = (chart, x, y, isTouch) => {
+      const hitRadius = isTouch ? 28 : 14;
+      const edgeTolerance = isTouch ? 18 : 10;
+
+      // Tester d'abord l'outil sélectionné, puis les autres outils actifs
+      const candidateIds = [];
+      if (selectedOverlay?.id) candidateIds.push(selectedOverlay.id);
+      activeOverlayIdsRef.current.forEach((id) => {
+        if (!candidateIds.includes(id)) candidateIds.push(id);
+      });
+
+      for (const id of candidateIds) {
+        const ov = chart.getOverlayById?.(id);
+        if (!ov || !Array.isArray(ov.points) || ov.points.length === 0) continue;
+        const coords = ptsToPx(chart, ov.points);
+        if (!coords.length) continue;
+
+        // CAS 1 : Rectangle & Boîte de Gann -> 8 poignées (4 coins + Haut, Bas, Gauche, Droite)
+        if ((ov.name === 'rect' || ov.name === 'gannBox') && coords.length >= 2) {
+          const [c0, c1] = coords;
+          if (!c0 || !c1 || c0.x == null || c1.x == null) continue;
+          const idxMinX = c0.x <= c1.x ? 0 : 1;
+          const idxMaxX = 1 - idxMinX;
+          const idxMinY = c0.y <= c1.y ? 0 : 1;
+          const idxMaxY = 1 - idxMinY;
+
+          const minX = Math.min(c0.x, c1.x);
+          const maxX = Math.max(c0.x, c1.x);
+          const minY = Math.min(c0.y, c1.y);
+          const maxY = Math.max(c0.y, c1.y);
+          const midX = (minX + maxX) / 2;
+          const midY = (minY + maxY) / 2;
+
+          const rectHandles = [
+            { kind: 'nw', hx: minX, hy: minY, idxX: idxMinX, idxY: idxMinY },
+            { kind: 'ne', hx: maxX, hy: minY, idxX: idxMaxX, idxY: idxMinY },
+            { kind: 'se', hx: maxX, hy: maxY, idxX: idxMaxX, idxY: idxMaxY },
+            { kind: 'sw', hx: minX, hy: maxY, idxX: idxMinX, idxY: idxMaxY },
+            { kind: 'n',  hx: midX, hy: minY, idxX: null,    idxY: idxMinY },
+            { kind: 's',  hx: midX, hy: maxY, idxX: null,    idxY: idxMaxY },
+            { kind: 'w',  hx: minX, hy: midY, idxX: idxMinX, idxY: null    },
+            { kind: 'e',  hx: maxX, hy: midY, idxX: idxMaxX, idxY: null    },
+          ];
+
+          let best = null;
+          let bestDist = hitRadius;
+          for (const h of rectHandles) {
+            const d = Math.hypot(x - h.hx, y - h.hy);
+            if (d <= bestDist) {
+              bestDist = d;
+              best = h;
+            }
+          }
+          if (best) {
+            return { overlay: ov, type: 'rect_handle', handle: best };
+          }
+
+          // Aussi permettre d'étirer directement en tirant l'un des 4 bords (Haut, Bas, Gauche, Droite)
+          if (x >= minX && x <= maxX) {
+            if (Math.abs(y - minY) <= edgeTolerance) {
+              return { overlay: ov, type: 'rect_handle', handle: { kind: 'n', idxX: null, idxY: idxMinY } };
+            }
+            if (Math.abs(y - maxY) <= edgeTolerance) {
+              return { overlay: ov, type: 'rect_handle', handle: { kind: 's', idxX: null, idxY: idxMaxY } };
+            }
+          }
+          if (y >= minY && y <= maxY) {
+            if (Math.abs(x - minX) <= edgeTolerance) {
+              return { overlay: ov, type: 'rect_handle', handle: { kind: 'w', idxX: idxMinX, idxY: null } };
+            }
+            if (Math.abs(x - maxX) <= edgeTolerance) {
+              return { overlay: ov, type: 'rect_handle', handle: { kind: 'e', idxX: idxMaxX, idxY: null } };
+            }
+          }
+          continue;
+        }
+
+        // CAS 2 : Position Long & Position Short -> poignées TP, SL, Entrée gauche, Largeur droite
+        if ((ov.name === 'positionLong' || ov.name === 'positionShort') && coords.length >= 2) {
+          const cEntry = coords[0];
+          const cTp = coords[1];
+          const cSl = coords[2] || { x: cTp.x, y: cEntry.y + (cEntry.y - cTp.y) * 0.55 };
+          const left = Math.min(cEntry.x, cTp.x, cSl.x);
+          const right = Math.max(left + 80, cEntry.x, cTp.x, cSl.x);
+          const midX = (left + right) / 2;
+
+          const posHandles = [
+            { kind: 'tp_right', hx: right, hy: cTp.y },
+            { kind: 'tp_mid',   hx: midX,  hy: cTp.y },
+            { kind: 'tp_left',  hx: left,  hy: cTp.y },
+            { kind: 'sl_right', hx: right, hy: cSl.y },
+            { kind: 'sl_mid',   hx: midX,  hy: cSl.y },
+            { kind: 'sl_left',  hx: left,  hy: cSl.y },
+            { kind: 'entry_left',  hx: left,  hy: cEntry.y },
+            { kind: 'entry_right', hx: right, hy: cEntry.y },
+          ];
+
+          let best = null;
+          let bestDist = hitRadius;
+          for (const h of posHandles) {
+            const d = Math.hypot(x - h.hx, y - h.hy);
+            if (d <= bestDist) {
+              bestDist = d;
+              best = h;
+            }
+          }
+          if (best) {
+            return { overlay: ov, type: 'pos_handle', handle: best };
+          }
+          // Bord horizontal TP ou SL
+          if (x >= left - 8 && x <= right + 8) {
+            if (Math.abs(y - cTp.y) <= edgeTolerance) {
+              return { overlay: ov, type: 'pos_handle', handle: { kind: 'tp_mid' } };
+            }
+            if (Math.abs(y - cSl.y) <= edgeTolerance) {
+              return { overlay: ov, type: 'pos_handle', handle: { kind: 'sl_mid' } };
+            }
+          }
+          continue;
+        }
+
+        // CAS 3 : Tous les autres outils (Fibonacci, Segment, Demi-droites, Flèches, Path, Elliott...)
+        let bestIdx = -1;
+        let bestDist = hitRadius;
+        for (let i = 0; i < coords.length; i++) {
+          const c = coords[i];
+          if (!c || c.x == null || c.y == null) continue;
+          const d = Math.hypot(x - c.x, y - c.y);
+          if (d <= bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx >= 0) {
+          return { overlay: ov, type: 'point_handle', pointIndex: bestIdx };
+        }
+      }
+      return null;
+    };
+
+    const handleStart = (clientX, clientY, targetEl, isTouch, rawEvent) => {
       const chart = chartRef?.current;
-      if (!chart || !drawingOverlayIdRef.current) return;
+      if (!chart) return;
       if (targetEl && (targetEl.closest?.('button') || targetEl.closest?.('[data-chart-toolbar]') || targetEl.closest?.('[data-text-editor-box]'))) {
         return;
       }
       const rect = container.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
-      const pt1 = chart.convertFromPixel?.({ x, y });
-      if (!pt1 || pt1.value == null) return;
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
 
-      touchDragInfoRef.current = {
-        startX: clientX,
-        startY: clientY,
-        x,
-        y,
-        pt1,
-        hasDragged: false,
-        overlayId: drawingOverlayIdRef.current,
-      };
+      // 1. Si un nouvel outil vient d'être sélectionné dans le menu Outils :
+      //    On le fait apparaître DÈS LE 1ER CLIC et on permet de l'étirer immédiatement à partir de ce 1er point !
+      if (drawingOverlayIdRef.current) {
+        const ovId = drawingOverlayIdRef.current;
+        const ov = chart.getOverlayById?.(ovId);
+        const pt1 = pxToPt(chart, x, y);
+        if (!ov || !pt1) return;
+
+        if (SINGLE_POINT_OVERLAY_TOOLS.has(ov.name)) {
+          if (ov.name === 'priceAlertLine') {
+            const targetVal = pt1.value;
+            activeOverlayIdsRef.current.delete(ovId);
+            drawingOverlayIdRef.current = null;
+            try { chart.removeOverlay({ id: ovId }); } catch (_) {}
+            try { chart.setScrollEnabled?.(true); } catch (_) {}
+            const mgr = options?.alertsManager || chart._lfxAlertsManager;
+            if (mgr && typeof mgr.addAlert === 'function' && targetVal != null) {
+              mgr.addAlert({ targetPrice: targetVal });
+            }
+            return;
+          }
+          chart.overrideOverlay?.({ id: ovId, points: [pt1] });
+          finalizeKLineDrawing(chart, ov);
+          ov._clickPixel = { x, y };
+          ov._clientPixel = { x: clientX, y: clientY };
+          if (ov.name === 'text') {
+            ov._editTrigger = Date.now();
+          }
+          drawingOverlayIdRef.current = null;
+          try { chart.setScrollEnabled?.(true); } catch (_) {}
+          setTimeout(() => {
+            setSelectedOverlay(ov);
+            setEditTick((t) => t + 1);
+            saveDrawings();
+          }, 20);
+          return;
+        }
+
+        if (TWO_POINT_STRETCH_TOOLS.has(ov.name)) {
+          rawEvent?.stopPropagation?.();
+          try { chart.setScrollEnabled?.(false); } catch (_) {}
+
+          const rightPx = Math.min(rect.width - 75, x + 105);
+          if (ov.name === 'positionLong' || ov.name === 'positionShort') {
+            const isLong = ov.name === 'positionLong';
+            const tpY = isLong ? Math.max(18, y - 56) : Math.min(rect.height - 28, y + 56);
+            const slY = isLong ? Math.min(rect.height - 28, y + 38) : Math.max(18, y - 38);
+            const ptTp = pxToPt(chart, rightPx, tpY) || { ...pt1, value: isLong ? pt1.value * 1.003 : pt1.value * 0.997 };
+            const ptSl = pxToPt(chart, rightPx, slY) || { ...pt1, value: isLong ? pt1.value * 0.998 : pt1.value * 1.002 };
+
+            chart.overrideOverlay?.({
+              id: ovId,
+              points: [pt1, ptTp, ptSl],
+            });
+            finalizeKLineDrawing(chart, ov);
+            drawingOverlayIdRef.current = null;
+            setSelectedOverlay(ov);
+
+            touchDragInfoRef.current = {
+              mode: 'create_pos',
+              overlayId: ovId,
+              isLong,
+              pt1,
+              defaultTp: ptTp,
+              defaultSl: ptSl,
+              startX: clientX,
+              startY: clientY,
+              hasDragged: false,
+            };
+            return;
+          }
+
+          // Outils à 2 points (Rectangle, Fibonacci, Segment, Demi-droite, Flèche, Gann) :
+          // Apparaît dès le 1er clic avec une taille initiale visible et s'étire en direct si l'utilisateur glisse !
+          const dyDefault = ov.name === 'fibonacciLine' ? -72 : (ov.name === 'horizontalRayLine' ? 0 : (ov.name === 'rect' || ov.name === 'gannBox' ? 46 : -42));
+          const targetY = Math.max(18, Math.min(rect.height - 28, y + dyDefault));
+          const pt2Default = pxToPt(chart, rightPx, targetY) || pt1;
+
+          chart.overrideOverlay?.({
+            id: ovId,
+            points: [pt1, pt2Default],
+          });
+          finalizeKLineDrawing(chart, ov);
+          drawingOverlayIdRef.current = null;
+          setSelectedOverlay(ov);
+
+          touchDragInfoRef.current = {
+            mode: 'create_2pt',
+            overlayId: ovId,
+            toolName: ov.name,
+            pt1,
+            defaultPt2: pt2Default,
+            startX: clientX,
+            startY: clientY,
+            hasDragged: false,
+          };
+          return;
+        }
+        return;
+      }
+
+      // 2. Sinon, vérifier si l'utilisateur touche/clique une poignée d'étirement d'un outil existant
+      const hit = findHitHandle(chart, x, y, isTouch);
+      if (hit) {
+        rawEvent?.stopPropagation?.();
+        if (isTouch) rawEvent?.preventDefault?.();
+        try { chart.setScrollEnabled?.(false); } catch (_) {}
+        setSelectedOverlay(hit.overlay);
+        touchDragInfoRef.current = {
+          mode: 'resize_handle',
+          overlayId: hit.overlay.id,
+          hit,
+          initialPoints: hit.overlay.points.map((p) => ({ ...p })),
+          startX: clientX,
+          startY: clientY,
+        };
+      }
     };
 
     const handleMove = (clientX, clientY, preventDef) => {
@@ -2763,136 +3248,214 @@ export function useChartOverlayManager(chartRef, containerRef, options = {}) {
       const info = touchDragInfoRef.current;
       if (!chart || !info) return;
 
-      const ov = chart.getOverlayById?.(info.overlayId);
-      if (ov && SINGLE_POINT_OVERLAY_TOOLS.has(ov.name)) return;
+      const rect = container.getBoundingClientRect();
+      const curX = Math.max(4, Math.min(rect.width - 70, clientX - rect.left));
+      const curY = Math.max(6, Math.min(rect.height - 24, clientY - rect.top));
 
-      const dist = Math.hypot(clientX - info.startX, clientY - info.startY);
-      if (dist > 6) {
-        info.hasDragged = true;
-        preventDef?.();
-        const rect = container.getBoundingClientRect();
-        const curX = clientX - rect.left;
-        const curY = clientY - rect.top;
-        const pt2 = chart.convertFromPixel?.({ x: curX, y: curY });
-        if (pt2 && pt2.value != null) {
-          try {
-            chart.overrideOverlay?.({
-              id: info.overlayId,
-              points: [info.pt1, pt2],
-            });
-            chart.adjustPaneViewport?.(false, true, true, true, true);
-          } catch (_) {}
+      if (info.mode === 'create_2pt') {
+        const dist = Math.hypot(clientX - info.startX, clientY - info.startY);
+        if (dist > 5) {
+          info.hasDragged = true;
+          preventDef?.();
+          const pt2 = pxToPt(chart, curX, curY);
+          if (pt2) {
+            const finalPt2 = info.toolName === 'horizontalRayLine'
+              ? { ...pt2, value: info.pt1.value }
+              : pt2;
+            try {
+              chart.overrideOverlay?.({
+                id: info.overlayId,
+                points: [info.pt1, finalPt2],
+              });
+              chart.adjustPaneViewport?.(false, true, true, true, true);
+            } catch (_) {}
+          }
         }
+        return;
+      }
+
+      if (info.mode === 'create_pos') {
+        const dist = Math.hypot(clientX - info.startX, clientY - info.startY);
+        if (dist > 6) {
+          info.hasDragged = true;
+          preventDef?.();
+          const ptCur = pxToPt(chart, Math.max(curX, (clientX - rect.left)), curY);
+          if (ptCur && ptCur.value != null) {
+            const entryVal = info.pt1.value;
+            const delta = Math.abs(ptCur.value - entryVal);
+            if (delta > 0) {
+              const tpVal = info.isLong ? entryVal + delta : entryVal - delta;
+              const slVal = info.isLong ? entryVal - delta * 0.6 : entryVal + delta * 0.6;
+              const endTs = ptCur.timestamp ?? info.defaultTp.timestamp;
+              const endIdx = ptCur.dataIndex ?? info.defaultTp.dataIndex;
+              try {
+                chart.overrideOverlay?.({
+                  id: info.overlayId,
+                  points: [
+                    info.pt1,
+                    { timestamp: endTs, dataIndex: endIdx, value: tpVal },
+                    { timestamp: endTs, dataIndex: endIdx, value: slVal },
+                  ],
+                });
+                chart.adjustPaneViewport?.(false, true, true, true, true);
+              } catch (_) {}
+            }
+          }
+        }
+        return;
+      }
+
+      if (info.mode === 'resize_handle') {
+        preventDef?.();
+        const ov = chart.getOverlayById?.(info.overlayId);
+        if (!ov || !Array.isArray(ov.points)) return;
+        const ptCur = pxToPt(chart, curX, curY);
+        if (!ptCur) return;
+
+        const nextPoints = ov.points.map((p) => ({ ...p }));
+        const { hit } = info;
+
+        if (hit.type === 'rect_handle') {
+          const { idxX, idxY } = hit.handle;
+          if (idxX != null && nextPoints[idxX]) {
+            if (ptCur.timestamp != null) nextPoints[idxX].timestamp = ptCur.timestamp;
+            if (ptCur.dataIndex != null) nextPoints[idxX].dataIndex = ptCur.dataIndex;
+          }
+          if (idxY != null && nextPoints[idxY]) {
+            nextPoints[idxY].value = ptCur.value;
+          }
+        } else if (hit.type === 'pos_handle') {
+          const kind = hit.handle.kind;
+          if (kind.startsWith('tp') && nextPoints[1]) {
+            nextPoints[1].value = ptCur.value;
+            if (kind === 'tp_right') {
+              if (ptCur.timestamp != null) {
+                nextPoints[1].timestamp = ptCur.timestamp;
+                if (nextPoints[2]) nextPoints[2].timestamp = ptCur.timestamp;
+              }
+              if (ptCur.dataIndex != null) {
+                nextPoints[1].dataIndex = ptCur.dataIndex;
+                if (nextPoints[2]) nextPoints[2].dataIndex = ptCur.dataIndex;
+              }
+            }
+          } else if (kind.startsWith('sl') && nextPoints[2]) {
+            nextPoints[2].value = ptCur.value;
+            if (kind === 'sl_right') {
+              if (ptCur.timestamp != null) {
+                nextPoints[1].timestamp = ptCur.timestamp;
+                nextPoints[2].timestamp = ptCur.timestamp;
+              }
+              if (ptCur.dataIndex != null) {
+                nextPoints[1].dataIndex = ptCur.dataIndex;
+                nextPoints[2].dataIndex = ptCur.dataIndex;
+              }
+            }
+          } else if (kind === 'entry_left' && nextPoints[0]) {
+            nextPoints[0].value = ptCur.value;
+            if (ptCur.timestamp != null) nextPoints[0].timestamp = ptCur.timestamp;
+            if (ptCur.dataIndex != null) nextPoints[0].dataIndex = ptCur.dataIndex;
+          } else if (kind === 'entry_right') {
+            if (ptCur.timestamp != null) {
+              if (nextPoints[1]) nextPoints[1].timestamp = ptCur.timestamp;
+              if (nextPoints[2]) nextPoints[2].timestamp = ptCur.timestamp;
+            }
+            if (ptCur.dataIndex != null) {
+              if (nextPoints[1]) nextPoints[1].dataIndex = ptCur.dataIndex;
+              if (nextPoints[2]) nextPoints[2].dataIndex = ptCur.dataIndex;
+            }
+          }
+        } else if (hit.type === 'point_handle') {
+          const idx = hit.pointIndex;
+          if (nextPoints[idx]) {
+            if (ov.name === 'horizontalRayLine') {
+              nextPoints[0].value = ptCur.value;
+              if (nextPoints[1]) nextPoints[1].value = ptCur.value;
+              if (ptCur.timestamp != null) nextPoints[idx].timestamp = ptCur.timestamp;
+              if (ptCur.dataIndex != null) nextPoints[idx].dataIndex = ptCur.dataIndex;
+            } else {
+              nextPoints[idx] = { ...nextPoints[idx], ...ptCur };
+            }
+          }
+        }
+
+        try {
+          chart.overrideOverlay?.({
+            id: ov.id,
+            points: nextPoints,
+          });
+          ov.points = nextPoints;
+          chart.adjustPaneViewport?.(false, true, true, true, true);
+        } catch (_) {}
       }
     };
 
-    const handleEnd = (clientX, clientY) => {
+    const handleEnd = () => {
       const chart = chartRef?.current;
-      const info = touchDragInfoRef.current;
-      if (!chart || !info) return;
-
-      try {
-        const overlay = chart.getOverlayById?.(info.overlayId);
-        if (overlay && SINGLE_POINT_OVERLAY_TOOLS.has(overlay.name)) {
-          // Si l'utilisateur place une Alerte de prix depuis le menu Outils :
-          // on la convertit en véritable alerte surveillée (qui se supprimera dès déclenchement)
-          if (overlay.name === 'priceAlertLine') {
-            const targetVal = info.pt1?.value;
-            activeOverlayIdsRef.current.delete(info.overlayId);
-            drawingOverlayIdRef.current = null;
-            try { chart.removeOverlay({ id: info.overlayId }); } catch (_) {}
-            try { chart.setScrollEnabled?.(true); } catch (_) {}
-            const mgr = options?.alertsManager || chart._lfxAlertsManager;
-            if (mgr && typeof mgr.addAlert === 'function' && targetVal != null) {
-              mgr.addAlert({ targetPrice: targetVal });
-            }
-            touchDragInfoRef.current = null;
-            return;
-          }
-          // Outil à 1 seul point (comme Texte / Annotation) : dès le simple clic sur la zone du graphique,
-          // on fixe le point et on ouvre immédiatement la zone d'écriture directe à cet endroit précis !
-          chart.overrideOverlay?.({
-            id: info.overlayId,
-            points: [info.pt1],
-          });
-          if (typeof overlay?.forceComplete === 'function') {
-            try { overlay.forceComplete(); } catch (_) {}
-          }
-          try { chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.(); } catch (_) {}
-          overlay._clickPixel = { x: info.x, y: info.y };
-          overlay._clientPixel = { x: clientX ?? info.startX, y: clientY ?? info.startY };
-          if (overlay.name === 'text') {
-            overlay._editTrigger = Date.now();
-          }
-          drawingOverlayIdRef.current = null;
-          setTimeout(() => {
-            setSelectedOverlay(overlay);
-            setEditTick((t) => t + 1);
-            saveDrawings();
-          }, 20);
-        } else if (info.hasDragged && overlay) {
-          const rect = container.getBoundingClientRect();
-          const endX = clientX != null ? clientX - rect.left : info.x;
-          const endY = clientY != null ? clientY - rect.top : info.y;
-          const pt2 = chart.convertFromPixel?.({ x: endX, y: endY }) || info.pt1;
-          chart.overrideOverlay?.({
-            id: info.overlayId,
-            points: [info.pt1, pt2],
-          });
-          if (typeof overlay?.forceComplete === 'function') {
-            try { overlay.forceComplete(); } catch (_) {}
-          }
-          try { chart._chartStore?.getOverlayStore()?.progressInstanceComplete?.(); } catch (_) {}
-          setSelectedOverlay(overlay);
-          drawingOverlayIdRef.current = null;
-          setTimeout(() => saveDrawings(), 100);
-        }
-      } catch (_) {}
-
-      touchDragInfoRef.current = null;
+      if (chart) {
+        try {
+          chart.setScrollEnabled?.(true);
+          chart.setZoomEnabled?.(true);
+        } catch (_) {}
+      }
+      if (touchDragInfoRef.current) {
+        const info = touchDragInfoRef.current;
+        touchDragInfoRef.current = null;
+        const ov = chart?.getOverlayById?.(info.overlayId);
+        if (ov) setSelectedOverlay(ov);
+        setTimeout(() => saveDrawings(), 60);
+      }
     };
 
-    // Listeners tactiles (téléphone / tablette)
+    // Listeners tactiles en phase capture pour intercepter les poignées avant que KLineCharts ne déplace tout l'outil
     const onTouchStart = (e) => {
-      if (e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
+      if (e.touches.length === 1) {
+        handleStart(e.touches[0].clientX, e.touches[0].clientY, e.target, true, e);
+      }
     };
     const onTouchMove = (e) => {
-      if (e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY, () => e.preventDefault());
+      if (e.touches.length === 1 && touchDragInfoRef.current) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY, () => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      }
     };
-    const onTouchEnd = (e) => {
-      const t = e.changedTouches?.[0] || e.touches?.[0];
-      handleEnd(t ? t.clientX : null, t ? t.clientY : null);
+    const onTouchEnd = () => {
+      handleEnd();
     };
 
-    // Listeners souris (PC / trackpad)
     const onMouseDown = (e) => {
-      if (e.button === 0) handleStart(e.clientX, e.clientY, e.target);
+      if (e.button === 0) {
+        handleStart(e.clientX, e.clientY, e.target, false, e);
+      }
     };
     const onMouseMove = (e) => {
-      handleMove(e.clientX, e.clientY);
+      if (touchDragInfoRef.current) {
+        handleMove(e.clientX, e.clientY, () => e.preventDefault());
+      }
     };
-    const onMouseUp = (e) => {
-      if (e.button === 0) handleEnd(e.clientX, e.clientY);
+    const onMouseUp = () => {
+      handleEnd();
     };
 
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd, { passive: true });
-    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
-    container.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    container.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
+    container.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    container.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+    container.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
+    container.addEventListener('mousedown', onMouseDown, { capture: true });
+    window.addEventListener('mousemove', onMouseMove, { capture: true });
+    window.addEventListener('mouseup', onMouseUp, { capture: true });
 
     return () => {
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-      container.removeEventListener('touchcancel', onTouchEnd);
-      container.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      container.removeEventListener('touchstart', onTouchStart, { capture: true });
+      container.removeEventListener('touchmove', onTouchMove, { capture: true });
+      container.removeEventListener('touchend', onTouchEnd, { capture: true });
+      container.removeEventListener('touchcancel', onTouchEnd, { capture: true });
+      container.removeEventListener('mousedown', onMouseDown, { capture: true });
+      window.removeEventListener('mousemove', onMouseMove, { capture: true });
+      window.removeEventListener('mouseup', onMouseUp, { capture: true });
     };
-  }, [containerRef, chartRef, saveDrawings]);
+  }, [containerRef, chartRef, saveDrawings, selectedOverlay, options?.alertsManager]);
 
   return {
     selectedOverlay,
@@ -3104,19 +3667,45 @@ export function TextAnnotationModal({
                 />
               </label>
 
-              <select
-                value={fontSize}
-                onChange={(e) => {
-                  const s = Number(e.target.value);
-                  setFontSize(s);
-                  emitLive(text, selectedColor, s, align, vAlign, bold, italic);
-                }}
-                className="h-7 rounded-md border border-white/20 bg-slate-900 px-1.5 text-xs text-white focus:outline-none"
-              >
-                {[10, 12, 14, 16, 18, 20, 24, 28, 32].map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const s = Math.max(6, Number(fontSize) - 2);
+                    setFontSize(s);
+                    emitLive(text, selectedColor, s, align, vAlign, bold, italic);
+                  }}
+                  className="h-7 w-6 rounded-l-md border border-white/20 bg-slate-900 text-xs font-bold text-white hover:bg-slate-800 flex items-center justify-center"
+                  title={isEn ? 'Decrease text size' : 'Diminuer la taille du texte'}
+                >
+                  −
+                </button>
+                <select
+                  value={fontSize}
+                  onChange={(e) => {
+                    const s = Number(e.target.value);
+                    setFontSize(s);
+                    emitLive(text, selectedColor, s, align, vAlign, bold, italic);
+                  }}
+                  className="h-7 border-y border-white/20 bg-slate-900 px-1 text-xs text-white focus:outline-none"
+                >
+                  {[6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40].map((s) => (
+                    <option key={s} value={s}>{s}px</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const s = Math.min(48, Number(fontSize) + 2);
+                    setFontSize(s);
+                    emitLive(text, selectedColor, s, align, vAlign, bold, italic);
+                  }}
+                  className="h-7 w-6 rounded-r-md border border-white/20 bg-slate-900 text-xs font-bold text-white hover:bg-slate-800 flex items-center justify-center"
+                  title={isEn ? 'Increase text size' : 'Augmenter la taille du texte'}
+                >
+                  +
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -3240,7 +3829,8 @@ export function TradingViewToolSettingsModal({
 
   const [text, setText] = useState(ext.text || '');
   const [textColor, setTextColor] = useState(ext.textColor || ext.color || lineColor || '#000000');
-  const [fontSize, setFontSize] = useState(Number(ext.fontSize) || 18);
+  const [fontSize, setFontSize] = useState(Number(ext.fontSize) || 14);
+  const [toolScale, setToolScale] = useState(Number(ext.toolScale) || 1);
   const [bold, setBold] = useState(ext.bold !== false);
   const [italic, setItalic] = useState(Boolean(ext.italic));
   const [vAlign, setVAlign] = useState(ext.vAlign || ext.verticalAlign || 'middle');
@@ -3272,7 +3862,8 @@ export function TradingViewToolSettingsModal({
       const curExt = typeof overlay.extendData === 'string' ? { text: overlay.extendData } : (overlay.extendData || {});
       const initText = curExt.text || '';
       const initTextColor = curExt.textColor || curExt.color || lineColor || '#3b82f6';
-      const initSize = Number(curExt.fontSize) || 18;
+      const initSize = Number(curExt.fontSize) || 14;
+      const initScale = Number(curExt.toolScale) || 1;
       const initBold = curExt.bold !== false;
       const initItalic = Boolean(curExt.italic);
       const initVAlign = curExt.vAlign || curExt.verticalAlign || 'middle';
@@ -3281,6 +3872,7 @@ export function TradingViewToolSettingsModal({
       setText(initText);
       setTextColor(initTextColor);
       setFontSize(initSize);
+      setToolScale(initScale);
       setBold(initBold);
       setItalic(initItalic);
       setVAlign(initVAlign);
@@ -3291,6 +3883,7 @@ export function TradingViewToolSettingsModal({
         text: initText,
         textColor: initTextColor,
         fontSize: initSize,
+        toolScale: initScale,
         bold: initBold,
         italic: initItalic,
         vAlign: initVAlign,
@@ -3316,6 +3909,7 @@ export function TradingViewToolSettingsModal({
       color: next.textColor ?? textColor,
       textColor: next.textColor ?? textColor,
       fontSize: next.fontSize ?? fontSize,
+      toolScale: next.toolScale ?? toolScale,
       bold: next.bold ?? bold,
       italic: next.italic ?? italic,
       vAlign: next.vAlign ?? vAlign,
@@ -3331,6 +3925,7 @@ export function TradingViewToolSettingsModal({
         color: s.textColor,
         textColor: s.textColor,
         fontSize: s.fontSize,
+        toolScale: s.toolScale,
         bold: s.bold,
         italic: s.italic,
         vAlign: s.vAlign,
@@ -3347,6 +3942,7 @@ export function TradingViewToolSettingsModal({
       color: textColor,
       textColor,
       fontSize,
+      toolScale,
       bold,
       italic,
       vAlign,
@@ -3499,20 +4095,46 @@ export function TradingViewToolSettingsModal({
                   )}
                 </div>
 
-                {/* Sélecteur de taille de police */}
-                <select
-                  value={fontSize}
-                  onChange={(e) => {
-                    const nextSize = Number(e.target.value);
-                    setFontSize(nextSize);
-                    pushLiveText({ fontSize: nextSize });
-                  }}
-                  className="h-9 w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
-                >
-                  {[10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40].map((sz) => (
-                    <option key={sz} value={sz}>{sz}</option>
-                  ))}
-                </select>
+                {/* Sélecteur de taille de police avec boutons - et + */}
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextSize = Math.max(6, Number(fontSize) - 2);
+                      setFontSize(nextSize);
+                      pushLiveText({ fontSize: nextSize });
+                    }}
+                    className="h-9 w-8 rounded-l-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center cursor-pointer"
+                    title={isEn ? 'Decrease text size' : 'Diminuer la taille du texte'}
+                  >
+                    −
+                  </button>
+                  <select
+                    value={fontSize}
+                    onChange={(e) => {
+                      const nextSize = Number(e.target.value);
+                      setFontSize(nextSize);
+                      pushLiveText({ fontSize: nextSize });
+                    }}
+                    className="h-9 w-20 border-y border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-sm font-medium text-slate-900 dark:text-white focus:outline-none cursor-pointer"
+                  >
+                    {[6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40].map((sz) => (
+                      <option key={sz} value={sz}>{sz} px</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextSize = Math.min(48, Number(fontSize) + 2);
+                      setFontSize(nextSize);
+                      pushLiveText({ fontSize: nextSize });
+                    }}
+                    className="h-9 w-8 rounded-r-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center cursor-pointer"
+                    title={isEn ? 'Increase text size' : 'Augmenter la taille du texte'}
+                  >
+                    +
+                  </button>
+                </div>
 
                 {/* Bouton Gras (B) */}
                 <button
@@ -3665,8 +4287,8 @@ export function TradingViewToolSettingsModal({
                   <span>{isEn ? 'Thickness' : 'Épaisseur'}</span>
                   <span className="text-slate-900 dark:text-white">{lineSize} px</span>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {[1, 2, 3, 4, 5].map((w) => (
+                <div className="grid grid-cols-6 gap-1.5">
+                  {[0.5, 1, 1.5, 2, 3, 4].map((w) => (
                     <button
                       key={w}
                       type="button"
@@ -3677,10 +4299,74 @@ export function TradingViewToolSettingsModal({
                           : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                       }`}
                     >
-                      <span className="w-5 rounded-full bg-current" style={{ height: `${w}px` }} />
+                      <span className="w-5 rounded-full bg-current" style={{ height: `${Math.max(1, w)}px` }} />
                       <span className="text-[10px] leading-none">{w}px</span>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Taille de l'outil & du texte (Mobile & PC) */}
+              <div>
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
+                  <span>{isEn ? 'Tool & Text Scale' : "Taille de l'outil & du texte"}</span>
+                  <span className="text-slate-900 dark:text-white font-bold">{Math.round(toolScale * 100)}% ({fontSize}px)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextScale = Math.max(0.5, Number((toolScale - 0.15).toFixed(2)));
+                      const nextFont = Math.max(6, Math.round(fontSize - 2));
+                      setToolScale(nextScale);
+                      setFontSize(nextFont);
+                      pushLiveText({ toolScale: nextScale, fontSize: nextFont });
+                    }}
+                    className="h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer shrink-0"
+                    title={isEn ? 'Shrink tool & text' : "Diminuer la taille de l'outil et du texte"}
+                  >
+                    −
+                  </button>
+                  <div className="grid grid-cols-5 gap-1 flex-1">
+                    {[
+                      { label: '50%', scale: 0.5, font: 9 },
+                      { label: '75%', scale: 0.75, font: 11 },
+                      { label: '100%', scale: 1, font: 14 },
+                      { label: '125%', scale: 1.25, font: 18 },
+                      { label: '150%', scale: 1.5, font: 22 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setToolScale(preset.scale);
+                          setFontSize(preset.font);
+                          pushLiveText({ toolScale: preset.scale, fontSize: preset.font });
+                        }}
+                        className={`h-8 rounded-lg border text-[11px] font-semibold flex items-center justify-center cursor-pointer transition-colors ${
+                          Math.abs(toolScale - preset.scale) < 0.08
+                            ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextScale = Math.min(2, Number((toolScale + 0.15).toFixed(2)));
+                      const nextFont = Math.min(48, Math.round(fontSize + 2));
+                      setToolScale(nextScale);
+                      setFontSize(nextFont);
+                      pushLiveText({ toolScale: nextScale, fontSize: nextFont });
+                    }}
+                    className="h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer shrink-0"
+                    title={isEn ? 'Enlarge tool & text' : "Augmenter la taille de l'outil et du texte"}
+                  >
+                    +
+                  </button>
                 </div>
               </div>
 
@@ -3960,21 +4646,25 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     }
   };
 
-  const updateOverlayTextData = ({ text: newText, color: newColor, textColor: newTextColor, fontSize: newSize, align: newAlign, vAlign: newVAlign, bold: newBold, italic: newItalic }, finalize = false) => {
+  const updateOverlayTextData = ({ text: newText, color: newColor, textColor: newTextColor, fontSize: newSize, toolScale: newToolScale, align: newAlign, vAlign: newVAlign, bold: newBold, italic: newItalic }, finalize = false) => {
     const chart = chartRef?.current;
     if (!chart || !overlay?.id) return;
     try {
       const resolvedTextColor = newTextColor || newColor || color || '#3b82f6';
+      const prevExt = typeof overlay.extendData === 'object' ? overlay.extendData : {};
+      const resolvedFontSize = Number(newSize) || Number(prevExt.fontSize) || 14;
+      const resolvedToolScale = Number(newToolScale) || Number(prevExt.toolScale) || 1;
       const ext = {
-        ...(typeof overlay.extendData === 'object' ? overlay.extendData : {}),
-        text: newText,
+        ...prevExt,
+        text: newText !== undefined ? newText : (prevExt.text || ''),
         color: resolvedTextColor,
         textColor: resolvedTextColor,
-        fontSize: Number(newSize) || 18,
-        align: newAlign || 'center',
-        vAlign: newVAlign || 'middle',
-        bold: newBold !== false,
-        italic: Boolean(newItalic),
+        fontSize: resolvedFontSize,
+        toolScale: resolvedToolScale,
+        align: newAlign || prevExt.align || 'center',
+        vAlign: newVAlign || prevExt.vAlign || 'middle',
+        bold: newBold !== undefined ? newBold !== false : (prevExt.bold !== false),
+        italic: newItalic !== undefined ? Boolean(newItalic) : Boolean(prevExt.italic),
         isNew: !finalize,
       };
       chart.overrideOverlay({
@@ -3986,7 +4676,7 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
             ...(overlay.styles?.text || {}),
             color: resolvedTextColor,
             borderColor: resolvedTextColor,
-            size: Number(newSize) || 18,
+            size: resolvedFontSize,
           },
         },
       });
@@ -3999,6 +4689,31 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
     } catch (e) {
       console.warn('handleApplyText error:', e);
     }
+  };
+
+  const handleQuickResize = (deltaScale, deltaFont, deltaLine) => {
+    const prevExt = typeof overlay?.extendData === 'object' ? overlay.extendData : {};
+    const curScale = Number(prevExt.toolScale) || 1;
+    const curFont = Number(prevExt.fontSize) || 14;
+    const nextScale = Math.min(2, Math.max(0.45, Number((curScale + deltaScale).toFixed(2))));
+    const nextFont = Math.min(48, Math.max(6, Math.round(curFont + deltaFont)));
+    const nextLineSize = Math.min(5, Math.max(0.5, Number(((Number(size) || 2) + deltaLine).toFixed(1))));
+
+    updateOverlayTextData(
+      {
+        text: prevExt.text ?? (typeof overlay?.extendData === 'string' ? overlay.extendData : ''),
+        color: prevExt.textColor || prevExt.color || color,
+        textColor: prevExt.textColor || prevExt.color || color,
+        fontSize: nextFont,
+        toolScale: nextScale,
+        align: prevExt.align || 'center',
+        vAlign: prevExt.vAlign || 'middle',
+        bold: prevExt.bold !== false,
+        italic: Boolean(prevExt.italic),
+      },
+      true
+    );
+    applyOverlayStyle(color, nextLineSize, dashStyle);
   };
 
   const handleUpdatePointPrice = (pointIdx, newPrice) => {
@@ -4079,13 +4794,34 @@ export function SelectedOverlayBar({ overlay, onDelete, onDeselect, chartRef, on
           <span>{overlay.extendData?.text ? (isEn ? "Text" : "Texte") : (isEn ? "+ Text" : "+ Texte")}</span>
         </Button>
 
+        {/* Boutons rapides − / + pour diminuer ou agrandir la taille du texte et de l'outil sur Mobile & PC */}
+        <div className="flex items-center rounded-md border border-border/70 bg-muted/40 overflow-hidden shrink-0">
+          <button
+            type="button"
+            onClick={() => handleQuickResize(-0.15, -2, -0.5)}
+            className="h-6 px-1.5 text-[11px] font-bold text-foreground hover:bg-muted active:bg-primary/20 transition-colors cursor-pointer"
+            title={isEn ? 'Decrease tool & text size' : "Diminuer la taille du texte et de l'outil"}
+          >
+            A−
+          </button>
+          <span className="h-3.5 w-px bg-border/70" />
+          <button
+            type="button"
+            onClick={() => handleQuickResize(0.15, 2, 0.5)}
+            className="h-6 px-1.5 text-[11px] font-bold text-foreground hover:bg-muted active:bg-primary/20 transition-colors cursor-pointer"
+            title={isEn ? 'Increase tool & text size' : "Augmenter la taille du texte et de l'outil"}
+          >
+            A+
+          </button>
+        </div>
+
         {/* Bouton Engrenage (Paramètres complets TradingView : Style | Text | Coordinates | Visibility) */}
         <Button
           size="sm"
           variant="ghost"
           className={`h-6 w-6 p-0 hover:bg-muted cursor-pointer transition-colors ${tvModalOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           onClick={() => {
-            setTvModalTab('text');
+            setTvModalTab('style');
             setTvModalOpen(true);
           }}
           title={isEn ? "Settings (Style, Text, Coordinates, Visibility)" : "Paramètres (Style, Texte, Coordonnées, Visibilité)"}

@@ -487,15 +487,10 @@ export default function ReplayChart({
     indexRef.current = targetIdx;
     setIndex(targetIdx);
 
-    // Suppression preview et dessin marqueur fixe de coupure
+    // Suppression de la ligne de prévisualisation : aucune ligne de coupe ne reste sur le graphique
     chart.removeOverlay({ groupId: 'cut_preview' });
     chart.removeOverlay({ groupId: 'cut_marker' });
-    chart.createOverlay({
-      name: 'backtestCutLine',
-      groupId: 'cut_marker',
-      lock: true,
-      points: [{ timestamp: targetTimestamp }],
-    });
+    hoveredCandleRef.current = null;
 
     isCuttingRef.current = false;
     setIsCutting(false);
@@ -753,22 +748,33 @@ export default function ReplayChart({
     syncTradingOverlays();
   };
 
-  // Recommencer le replay depuis la coupe ou le début
+  // Réinitialiser : remet le graphique dans son état initial (historique complet, sans coupe, sans replay)
   const resetReplay = () => {
     const chart = chartRef.current;
     if (!chart || !klineData.length) return;
     setPlaying(false);
     clearInterval(timerRef.current);
+    setIsCutting(false);
+    isCuttingRef.current = false;
+    setCutIndex(null);
+    cutIndexRef.current = null;
+    hoveredCandleRef.current = null;
 
-    const minSafeBars = Math.min(30, klineData.length - 1);
-    const from = cutIndexRef.current != null ? cutIndexRef.current : Math.max(startIdx, minSafeBars);
-    chart.applyNewData(klineData.slice(0, from + 1));
+    try {
+      chart.removeOverlay({ groupId: 'cut_preview' });
+      chart.removeOverlay({ groupId: 'cut_marker' });
+    } catch (_) {}
+
+    chart.applyNewData(klineData);
     chart.setBarSpace?.(9);
     chart.scrollToRealTime?.();
+    try { chart.setScrollEnabled?.(true); chart.setZoomEnabled?.(true); } catch (_) {}
     drawPeriodBounds();
-    indexRef.current = from;
-    setIndex(from);
-    toast.info('Replay réinitialisé au point de départ');
+    indexRef.current = klineData.length - 1;
+    setIndex(klineData.length - 1);
+    setMode('full');
+    syncTradingOverlays();
+    toast.info(isEnglish ? 'Chart restored to its initial state' : 'Graphique remis à son état initial');
   };
 
   // Ouvrir un trade au marché (Buy ou Sell avec SL & TP)
@@ -955,18 +961,18 @@ export default function ReplayChart({
           data-chart-toolbar
           data-replay-controls
         >
-          {/* 1. Bouton CUT (Couper) */}
+          {/* 1. Bouton CUT (Couper) : revient immédiatement à Cut / Couper après la coupe */}
           <Button
             size="sm"
-            variant={isCutting ? 'destructive' : cutIndex !== null ? 'secondary' : 'default'}
+            variant={isCutting ? 'destructive' : 'default'}
             onClick={toggleCut}
             className={`h-7 sm:h-8 px-2 sm:px-2.5 gap-1 font-semibold transition-all ${
-              isCutting ? 'animate-pulse ring-2 ring-destructive' : cutIndex !== null ? 'border-amber-500/50 text-amber-500' : ''
+              isCutting ? 'animate-pulse ring-2 ring-destructive' : ''
             }`}
             title={isCutting ? (isEnglish ? 'Click on a candle to cut or click again to cancel' : 'Cliquez sur une bougie pour couper ou ré-appuyez pour annuler') : (isEnglish ? 'Activate chart cut replay' : 'Activer la coupe mobile du graphique')}
           >
             <Scissors className="h-3.5 w-3.5 shrink-0" />
-            <span className="text-[11px] sm:text-xs">{isCutting ? (isEnglish ? 'Cancel' : 'Annuler') : cutIndex !== null ? (isEnglish ? 'Recut' : 'Recouper') : (isEnglish ? 'Cut' : 'Couper')}</span>
+            <span className="text-[11px] sm:text-xs">{isCutting ? (isEnglish ? 'Cancel' : 'Annuler') : (isEnglish ? 'Cut' : 'Couper')}</span>
           </Button>
 
           {/* 2. Menu Déroulant VITESSE (×-3; ×-2; ×-1; ×+1; ×+2; ×+3) */}
